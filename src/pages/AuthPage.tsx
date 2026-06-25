@@ -257,7 +257,6 @@ useEffect(() => {
       <p className="text-neutral-400 text-xs tracking-normal">
         Establishing encrypted institutional node link...
       </p>
-    </div>
   </div>
           <form onSubmit={handleSubmit} className="space-y-5">
             
