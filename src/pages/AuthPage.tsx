@@ -760,13 +760,11 @@ useEffect(() => {
                     className="text-orbit-accent font-semibold hover:underline"
                   >
                     Register Now
-                  </button>
-                 </form>
-                ) : null}
-                    </div>
-                  </div>
-                </div>
-
+                  </button> 
+                </div>     
+              ) : null}    
+        </form>
+                
         {/* Secure signpost */}
         <div className="pt-8 border-t border-orbit-border/15 mt-8 text-center space-y-2 text-[10px] text-zinc-500">
           <div className="flex items-center justify-center gap-2">
