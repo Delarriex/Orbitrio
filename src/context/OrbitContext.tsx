@@ -528,11 +528,11 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return u;
       } catch (e) {}
     }
-    return {
+   return {
       isLoggedIn: false,
       email: null,
       name: null,
-      balance: 1000.00, // sandboxed default funds
+      balance: 0.00, // ✅ Fixed: Set default registration funds to 0
       portfolioValue: 0.00,
       activeInvestments: [],
       portfolio: [],
