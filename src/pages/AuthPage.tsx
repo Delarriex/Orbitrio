@@ -207,17 +207,20 @@ useEffect(() => {
         >
           Register Account
         </button>
-        <button
-          type="button"
-          onClick={() => { setActiveTab("login"); setErrorMsg(null); }}
-          className={`px-5 py-2 text-xs font-bold font-subheading rounded-full transition-all cursor-pointer ${
-           {activeTab === "login" ? (
-              ? "bg-orbit-accent text-orbit-bg shadow-md shadow-orbit-accent/10" 
-              : "text-orbit-gray-text hover:text-orbit-white bg-orbit-card/30 border border-orbit-border/25"
-          }`}
-        >
-          Sign In
-        </button>
+     <button
+  type="button"
+  onClick={() => {
+    setActiveTab("login");
+    setErrorMsg(null);
+  }}
+  className={`px-5 py-2 text-xs font-bold font-subheading rounded-full transition-all cursor-pointer ${
+    activeTab === "login"
+      ? "bg-orbit-accent text-orbit-bg shadow-md shadow-orbit-accent/10"
+      : "text-orbit-gray-text hover:text-orbit-white bg-orbit-card/30 border border-orbit-border/25"
+  }`}
+>
+  Sign In
+</button>
       </div>
 
       {/* Content Wrapper - Containerless & Borderless & maintaining Black Theme */}
