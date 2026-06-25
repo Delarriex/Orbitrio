@@ -763,10 +763,9 @@ useEffect(() => {
                   </button>
                 </div>
               </div>
-            )}
 
           </form>
-        )}
+    ) : null}
 
         {/* Secure signpost */}
         <div className="pt-8 border-t border-orbit-border/15 mt-8 text-center space-y-2 text-[10px] text-zinc-500">
