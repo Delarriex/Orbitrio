@@ -761,8 +761,8 @@ useEffect(() => {
                   >
                     Register Now
                   </button> 
-                </div>     
-             </form>   
+                </div> 
+             </div>  
         ) : null}
                 
         {/* Secure signpost */}
