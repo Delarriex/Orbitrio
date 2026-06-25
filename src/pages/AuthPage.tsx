@@ -761,9 +761,9 @@ useEffect(() => {
                   >
                     Register Now
                   </button>
-                </div>
+                 </form>
               </div>
-
+ </div>
           </form>
     ) : null}
 
