@@ -259,8 +259,6 @@ useEffect(() => {
       </p>
     </div>
   </div>
-) : (
-        ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
             
             {errorMsg && (
