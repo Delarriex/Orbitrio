@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useOrbit } from "../context/OrbitContext";
 import { Mail, Lock, User, CheckCircle2, Phone, ChevronDown } from "lucide-react";
 
@@ -35,7 +35,16 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
-
+// Automatically redirect to dashboard after showing premium loader
+useEffect(() => {
+  if (isSuccess) {
+    const timer = setTimeout(() => {
+      onNavigate("dashboard");
+    }, 2000); // 2 seconds allows them to see the institutional node link layout completely
+    
+    return () => clearTimeout(timer);
+  }
+}, [isSuccess, onNavigate]);
   const handleGoogleSignIn = async () => {
     setErrorMsg(null);
     setIsSuccess(true);
