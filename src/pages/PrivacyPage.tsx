@@ -110,7 +110,7 @@ export const PrivacyPage: React.FC<PrivacyPageProps> = ({ onNavigate }) => {
             <Mail className="w-6 h-6 text-orbit-accent" />
             8. Contact
           </h2>
-          <p>support@orbitrio.com</p>
+          <p>support@orbitriotrades.com</p>
         </section>
       </div>
     </motion.div>

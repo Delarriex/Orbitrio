@@ -52,13 +52,13 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
           <p className="text-[10px] leading-relaxed font-sans mb-1">
             Need help? Our support team is here for you.
           </p>
-          <a href="mailto:support@orbitrio.com" className="text-orbit-accent hover:underline text-[10px] font-sans">support@orbitrio.com</a>
+          <a href="mailto:support@orbitriotrades.com" className="text-orbit-accent hover:underline text-[10px] font-sans">support@orbitriotrades.com</a>
         </div>
 
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 border-t border-orbit-border/50 mt-8 text-center text-[10px] text-orbit-gray-text flex flex-col sm:flex-row items-center justify-between gap-4 font-sans">
-        <span>© 2026 <span className="lowercase text-orbit-white font-semibold">orbit<span className="text-orbit-accent">rio</span></span> Crypto Trading Platform. All rights reserved. Support Email: support@orbitrio.com</span>
+        <span>© 2026 <span className="lowercase text-orbit-white font-semibold">orbit<span className="text-orbit-accent">rio</span></span> Crypto Trading Platform. All rights reserved. Support Email: support@orbitriotrades.com</span>
         <div className="flex items-center gap-1">
           <ShieldCheck size={14} className="text-orbit-green shrink-0" />
           <span>Secure SSL Encryption</span>

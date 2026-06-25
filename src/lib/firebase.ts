@@ -4,19 +4,18 @@ import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
 // Config parsed from provisioned Firebase credentials
 const firebaseConfig = {
-  projectId: "atlantean-marker-g8gvj",
-  appId: "1:624560246851:web:800777675448fba47fc4f6",
-  apiKey: "AIzaSyAG1Gj8cqEgEZcaZh17jDSfPXECTco5fP4",
+  apiKey: "AIzaSyA7E2lFH_N1OLeWetNkK-WfcNqGNKHNn5U",
   authDomain: "orbitriotrades.com",
-  firestoreDatabaseId: "ai-studio-c5a41e8d-ed3a-4337-a9d3-2b1a6c769373",
-  storageBucket: "atlantean-marker-g8gvj.firebasestorage.app",
-  messagingSenderId: "624560246851"
+  projectId: "nbbbn-d8d10",
+  storageBucket: "nbbbn-d8d10.firebasestorage.app",
+  messagingSenderId: "589078455138",
+  appId: "1:589078455138:web:68182dbfa474e0699d423b"
 };
 
 const app = initializeApp(firebaseConfig);
 
-// Connect specifying the custom database ID from AI Studio
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+// Connect specifying the custom database ID from Firebase
+export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: "select_account" });

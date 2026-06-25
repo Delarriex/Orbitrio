@@ -111,7 +111,7 @@ export const TermsPage: React.FC<TermsPageProps> = ({ onNavigate }) => {
             <Mail className="w-6 h-6 text-orbit-accent" />
             9. Contact
           </h2>
-          <p>support@orbitrio.com</p>
+          <p>support@orbitriotrades.com</p>
         </section>
       </div>
     </motion.div>

@@ -182,8 +182,8 @@ export const PublicHome: React.FC<{ onNavigate: (view: string) => void }> = ({ o
           
           {/* Main Display Typography */}
           <div className="space-y-4 max-w-3xl">
-            <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-[40px] font-bold text-white tracking-tight leading-tight max-w-4xl mx-auto font-sans">
-              Trade Smarter With <span className="lowercase text-white font-bold">orbit<span className="text-[#F7931A]">rio</span></span>
+            <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-[64px] font-extrabold text-white tracking-tight leading-tight max-w-4xl mx-auto font-sans">
+              Trade Smarter With <span className="lowercase text-white font-extrabold">orbit<span className="text-[#F7931A]">rio</span></span>
             </h1>
             <p className="text-neutral-400 text-sm sm:text-base max-w-md mx-auto leading-relaxed">
               Access global markets through a secure, data-driven trading platform. Built for traders and investors who demand precision, speed, and reliability.

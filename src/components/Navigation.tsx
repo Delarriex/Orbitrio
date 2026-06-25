@@ -53,7 +53,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
   return (
     <>
       <nav className="fixed top-0 left-0 right-0 w-full bg-[#07090E]/90 backdrop-blur-md border-b border-orbit-border/80 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-12 sm:h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-6 lg:py-4 flex items-center justify-between">
           
           {/* Logo Brand Title (Upper Hemisphere Orange-Gold, Bottom Metallic White) */}
           <div 

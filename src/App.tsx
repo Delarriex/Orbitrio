@@ -152,6 +152,25 @@ function MainAppContent() {
     }
   }, [user.isLoggedIn, currentView]);
 
+  // Listen to path changes or initial page load for direct path routing (e.g. /admin)
+  useEffect(() => {
+    const handleUrlRouting = () => {
+      const path = window.location.pathname;
+      const hash = window.location.hash;
+      if (path === "/admin" || hash === "#/admin" || hash === "#admin") {
+        setCurrentView("dashboard-admin");
+      }
+    };
+
+    handleUrlRouting();
+    window.addEventListener("popstate", handleUrlRouting);
+    window.addEventListener("hashchange", handleUrlRouting);
+    return () => {
+      window.removeEventListener("popstate", handleUrlRouting);
+      window.removeEventListener("hashchange", handleUrlRouting);
+    };
+  }, []);
+
   const handleNavigate = (view: string, assetSymbol?: string) => {
     if (view.startsWith("dashboard") && !user.isLoggedIn) {
       setCurrentView("auth");
@@ -164,6 +183,17 @@ function MainAppContent() {
 
     if (view === "dashboard-wallet") {
       setWalletSubTab("deposit");
+    }
+
+    // Dynamic URL update for professional custom domain routing
+    if (view === "dashboard-admin") {
+      if (window.location.pathname !== "/admin") {
+        window.history.pushState(null, "", "/admin");
+      }
+    } else {
+      if (window.location.pathname === "/admin") {
+        window.history.pushState(null, "", "/");
+      }
     }
 
     setCurrentView(view);

@@ -6,7 +6,7 @@ export const DashboardReferral: React.FC = () => {
   const { user, withdrawEarnings, addNotification } = useOrbit();
   const [copied, setCopied] = useState(false);
 
-  const referralLink = `https://orbitrio.com/register?ref=${user.email?.split('@')[0] || 'user'}`;
+  const referralLink = `https://orbitriotrades.com/register?ref=${user.email?.split('@')[0] || 'user'}`;
   
   const referralCount = user.referralCount || 0;
   const points = user.points || 0;

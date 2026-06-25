@@ -17,7 +17,7 @@ const PublicContact = () => {
                 >
                     <Mail className="w-12 h-12 text-amber-500 mb-6" />
                     <h3 className="font-bold text-xl mb-2">Email Support</h3>
-                    <a href="mailto:support@orbitrio.com" className="text-amber-500 hover:text-amber-400 transition-colors">support@orbitrio.com</a>
+                    <a href="mailto:support@orbitriotrades.com" className="text-amber-500 hover:text-amber-400 transition-colors">support@orbitriotrades.com</a>
                 </motion.div>
                 
                 <motion.div 

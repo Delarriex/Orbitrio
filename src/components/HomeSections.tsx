@@ -3056,7 +3056,7 @@ export const ContactUs = () => (
             <div className="bg-[#161A1E] border border-[#2B3139] p-8 rounded-2xl inline-block shadow-lg hover:border-amber-500/30 transition-all">
                 <Mail className="w-12 h-12 text-amber-500 mx-auto mb-6 animate-pulse" />
                 <h3 className="font-bold text-xl text-white mb-2">Email Support</h3>
-                <a href="mailto:support@orbitrio.com" className="text-amber-500 hover:text-amber-400 text-lg transition-colors hover:underline">support@orbitrio.com</a>
+                <a href="mailto:support@orbitriotrades.com" className="text-amber-500 hover:text-amber-400 text-lg transition-colors hover:underline">support@orbitriotrades.com</a>
                 <p className="text-neutral-500 mt-6">24 Hours / 7 Days</p>
             </div>
         </motion.div>
@@ -3117,8 +3117,8 @@ export const Footer = () => (
             <div>
                 <h4 className="font-bold text-white mb-4">Contact Us</h4>
                 <p className="text-neutral-400 mb-2">Need help? Our support team is here for you.</p>
-                <a href="mailto:support@orbitrio.com" className="text-amber-500 hover:text-amber-400 hover:underline transition-colors flex items-center gap-2">
-                    support@orbitrio.com
+                <a href="mailto:support@orbitriotrades.com" className="text-amber-500 hover:text-amber-400 hover:underline transition-colors flex items-center gap-2">
+                    support@orbitriotrades.com
                 </a>
             </div>
         </div>
