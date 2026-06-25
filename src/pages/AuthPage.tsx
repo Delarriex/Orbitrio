@@ -240,27 +240,26 @@ useEffect(() => {
         </div>
 
         {/* Success screen loader */}
-      {isSuccess ? (
+{isSuccess ? (
   <div className="text-center py-16 space-y-6 flex flex-col items-center justify-center animate-fade-in">
+    
     <div className="relative flex items-center justify-center">
-      {/* Outer elegant track ring */}
       <div className="w-14 h-14 rounded-full border-4 border-neutral-800"></div>
-      
-      {/* Inner fast-spinning premium amber/gold accent ring */}
       <div className="absolute w-14 h-14 rounded-full border-4 border-t-amber-500 border-r-transparent border-b-transparent border-l-transparent animate-spin"></div>
-      
-      {/* Center core branding dot */}
       <div className="absolute w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div>
     </div>
 
     <div className="text-center space-y-1.5">
-     <h3 className="text-white font-medium text-base tracking-wide">
-  Securing Connection
-</h3>
+      <h3 className="text-white font-medium text-base tracking-wide">
+        Securing Connection
+      </h3>
       <p className="text-neutral-400 text-xs tracking-normal">
         Establishing encrypted institutional node link...
       </p>
+    </div>
+
   </div>
+) : (
           <form onSubmit={handleSubmit} className="space-y-5">
             
             {errorMsg && (
