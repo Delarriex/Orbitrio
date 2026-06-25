@@ -35,16 +35,18 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
-// Automatically redirect to dashboard after showing premium loader
-useEffect(() => {
-  if (isSuccess) {
-    const timer = setTimeout(() => {
-      onNavigate("dashboard");
-    }, 2000); // 2 seconds allows them to see the institutional node link layout completely
-    
-    return () => clearTimeout(timer);
-  }
-}, [isSuccess, onNavigate]);
+
+  // Automatically redirect to dashboard after showing premium loader
+  useEffect(() => {
+    if (isSuccess) {
+      const timer = setTimeout(() => {
+        onNavigate("dashboard");
+      }, 2000); 
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isSuccess, onNavigate]);
+
   const handleGoogleSignIn = async () => {
     setErrorMsg(null);
     setIsSuccess(true);
@@ -207,23 +209,23 @@ useEffect(() => {
         >
           Register Account
         </button>
-     <button
-  type="button"
-  onClick={() => {
-    setActiveTab("login");
-    setErrorMsg(null);
-  }}
-  className={`px-5 py-2 text-xs font-bold font-subheading rounded-full transition-all cursor-pointer ${
-    activeTab === "login"
-      ? "bg-orbit-accent text-orbit-bg shadow-md shadow-orbit-accent/10"
-      : "text-orbit-gray-text hover:text-orbit-white bg-orbit-card/30 border border-orbit-border/25"
-  }`}
->
-  Sign In
-</button>
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab("login");
+            setErrorMsg(null);
+          }}
+          className={`px-5 py-2 text-xs font-bold font-subheading rounded-full transition-all cursor-pointer ${
+            activeTab === "login"
+              ? "bg-orbit-accent text-orbit-bg shadow-md shadow-orbit-accent/10"
+              : "text-orbit-gray-text hover:text-orbit-white bg-orbit-card/30 border border-orbit-border/25"
+          }`}
+        >
+          Sign In
+        </button>
       </div>
 
-      {/* Content Wrapper - Containerless & Borderless & maintaining Black Theme */}
+      {/* Content Wrapper */}
       <div className="bg-transparent p-0 border-none shadow-none">
         
         {/* Header Title */}
@@ -239,29 +241,25 @@ useEffect(() => {
           </p>
         </div>
 
-        {/* Success screen loader */}
-{isSuccess ? (
-  <div className="text-center py-16 space-y-6 flex flex-col items-center justify-center animate-fade-in">
-    
-    <div className="relative flex items-center justify-center">
-      <div className="w-14 h-14 rounded-full border-4 border-neutral-800"></div>
-      <div className="absolute w-14 h-14 rounded-full border-4 border-t-amber-500 border-r-transparent border-b-transparent border-l-transparent animate-spin"></div>
-      <div className="absolute w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div>
-    </div>
-
-    <div className="text-center space-y-1.5">
-      <h3 className="text-white font-medium text-base tracking-wide">
-        Securing Connection
-      </h3>
-      <p className="text-neutral-400 text-xs tracking-normal">
-        Establishing encrypted institutional node link...
-      </p>
-    </div>
-
-  </div>
-) : (
+        {/* Dynamic Display Layout */}
+        {isSuccess ? (
+          <div className="text-center py-16 space-y-6 flex flex-col items-center justify-center animate-fade-in">
+            <div className="relative flex items-center justify-center">
+              <div className="w-14 h-14 rounded-full border-4 border-neutral-800"></div>
+              <div className="absolute w-14 h-14 rounded-full border-4 border-t-amber-500 border-r-transparent border-b-transparent border-l-transparent animate-spin"></div>
+              <div className="absolute w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div>
+            </div>
+            <div className="text-center space-y-1.5">
+              <h3 className="text-white font-medium text-base tracking-wide">
+                Securing Connection
+              </h3>
+              <p className="text-neutral-400 text-xs tracking-normal">
+                Establishing encrypted institutional node link...
+              </p>
+            </div>
+          </div>
+        ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
-            
             {errorMsg && (
               <div className="p-3.5 text-xs rounded-xl font-sans border bg-red-500/10 border-red-500/20 text-red-400">
                 {errorMsg}
@@ -275,10 +273,8 @@ useEffect(() => {
             )}
 
             {activeTab === "register" ? (
-              /* Interactive Register Form Layout exactly matching screens */
               <div className="space-y-5">
-                
-                {/* User Name */}
+                {/* Username */}
                 <div className="space-y-1.5">
                   <label className="text-[10px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
                     Set Username <span className="text-orbit-accent ml-0.5">*</span>
@@ -300,7 +296,6 @@ useEffect(() => {
 
                 {/* Name Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* First Name */}
                   <div className="space-y-1.5">
                     <label className="text-[10px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
                       First Name <span className="text-orbit-accent ml-0.5">*</span>
@@ -320,7 +315,6 @@ useEffect(() => {
                     </div>
                   </div>
 
-                  {/* Last Name */}
                   <div className="space-y-1.5">
                     <label className="text-[10px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
                       Last Name <span className="text-orbit-accent ml-0.5">*</span>
@@ -343,7 +337,6 @@ useEffect(() => {
 
                 {/* Sex & Phone Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Sex */}
                   <div className="space-y-1.5">
                     <label className="text-[10px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
                       Sex <span className="text-orbit-accent ml-0.5">*</span>
@@ -366,7 +359,6 @@ useEffect(() => {
                     </div>
                   </div>
 
-                  {/* Phone */}
                   <div className="space-y-1.5">
                     <label className="text-[10px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
                       Phone Number <span className="text-orbit-accent ml-0.5">*</span>
@@ -407,7 +399,7 @@ useEffect(() => {
                   </div>
                 </div>
 
-                {/* Account / Investment Type */}
+                {/* Account Type */}
                 <div className="space-y-1.5">
                   <label className="text-[10px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
                     Select Account Type <span className="text-orbit-accent ml-0.5">*</span>
@@ -434,7 +426,6 @@ useEffect(() => {
 
                 {/* Password Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Password */}
                   <div className="space-y-1.5">
                     <label className="text-[10px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
                       Password <span className="text-orbit-accent ml-0.5">*</span>
@@ -454,7 +445,6 @@ useEffect(() => {
                     </div>
                   </div>
 
-                  {/* Confirm Password */}
                   <div className="space-y-1.5">
                     <label className="text-[10px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
                       Confirm Password <span className="text-orbit-accent ml-0.5">*</span>
@@ -477,7 +467,6 @@ useEffect(() => {
 
                 {/* Country & Currency Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Country */}
                   <div className="space-y-1.5">
                     <label className="text-[10px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
                       Country <span className="text-orbit-accent ml-0.5">*</span>
@@ -500,7 +489,6 @@ useEffect(() => {
                     </div>
                   </div>
 
-                  {/* Currency */}
                   <div className="space-y-1.5">
                     <label className="text-[10px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
                       Select Currency <span className="text-orbit-accent ml-0.5">*</span>
@@ -524,7 +512,7 @@ useEffect(() => {
                   </div>
                 </div>
 
-                {/* Terms checkbox inside screen */}
+                {/* Terms checkbox */}
                 <div className="flex items-start gap-2.5 pt-2 text-xs text-orbit-gray-text font-sans">
                   <input
                     type="checkbox"
@@ -538,7 +526,6 @@ useEffect(() => {
                   </label>
                 </div>
 
-                {/* Register Button block */}
                 <button
                   type="submit"
                   className="w-full py-4 mt-4 rounded-xl bg-gradient-to-r from-orbit-accent to-amber-500 hover:from-orbit-accent-hover hover:to-amber-600 text-orbit-bg font-extrabold font-subheading text-xs uppercase shadow-md shadow-orbit-accent/15 hover:shadow-orbit-accent/25 transition-all text-center cursor-pointer tracking-wider"
@@ -565,22 +552,10 @@ useEffect(() => {
                   className="w-full py-3.5 px-4 rounded-xl border border-orbit-accent/30 hover:border-orbit-accent/80 bg-[#121318] hover:bg-orbit-accent/5 text-orbit-white hover:text-orbit-accent font-bold font-subheading text-xs transition-all flex items-center justify-center gap-2.5 cursor-pointer shadow-sm"
                 >
                   <svg className="w-4 h-4 cursor-pointer" viewBox="0 0 24 24">
-                    <path
-                      fill="currentColor"
-                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                    />
-                    <path
-                      fill="currentColor"
-                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                    />
-                    <path
-                      fill="currentColor"
-                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.87-2.6-2.3-4.53-3.85-5.63z"
-                    />
-                    <path
-                      fill="currentColor"
-                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                    />
+                    <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                    <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                    <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.87-2.6-2.3-4.53-3.85-5.63z" />
+                    <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
                   </svg>
                   Continue with Google
                 </button>
@@ -595,10 +570,8 @@ useEffect(() => {
                     Login
                   </button>
                 </div>
-
               </div>
             ) : showForgotPassword ? (
-              /* Forgot Password recovery view */
               <div className="space-y-5">
                 <div className="space-y-1">
                   <h3 className="text-sm font-subheading font-bold text-orbit-white">Reset Password</h3>
@@ -655,8 +628,8 @@ useEffect(() => {
                 </div>
               </div>
             ) : (
-              /* Traditional Clean Login View matching the dark card theme */
               <div className="space-y-5">
+                {/* Login Email */}
                 <div className="space-y-1.5">
                   <label className="text-[10px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
                     Email Address
@@ -676,6 +649,7 @@ useEffect(() => {
                   </div>
                 </div>
 
+                {/* Login Password */}
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center">
                     <label className="text-[10px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
@@ -688,9 +662,9 @@ useEffect(() => {
                         setErrorMsg(null);
                         setSuccessMsg(null);
                       }}
-                      className="text-[10px] font-semibold text-orbit-accent hover:underline cursor-pointer bg-transparent border-none outline-none"
+                      className="text-[10px] text-orbit-accent hover:underline outline-none cursor-pointer"
                     >
-                      Forgot Password?
+                      Forgot password?
                     </button>
                   </div>
                   <div className="relative">
@@ -701,7 +675,7 @@ useEffect(() => {
                       type="password"
                       value={loginPassword}
                       onChange={(e) => setLoginPassword(e.target.value)}
-                      placeholder="••••••••••"
+                      placeholder="••••••••"
                       className="w-full bg-orbit-bg border border-orbit-border/85 focus:border-orbit-accent rounded-xl pl-10 pr-4 py-3 text-xs text-orbit-white cursor-text font-sans outline-none"
                       required
                     />
@@ -710,14 +684,10 @@ useEffect(() => {
 
                 <button
                   type="submit"
-                  className="w-full py-4 mt-6 rounded-xl bg-gradient-to-r from-orbit-accent to-amber-500 hover:from-orbit-accent-hover hover:to-amber-600 text-orbit-bg font-extrabold font-subheading text-xs uppercase shadow-md shadow-orbit-accent/15 hover:shadow-orbit-accent/25 transition-all text-center cursor-pointer tracking-wider"
+                  className="w-full py-4 mt-2 rounded-xl bg-gradient-to-r from-orbit-accent to-amber-500 hover:from-orbit-accent-hover hover:to-amber-600 text-orbit-bg font-extrabold font-subheading text-xs uppercase shadow-md shadow-orbit-accent/15 transition-all text-center cursor-pointer tracking-wider"
                 >
-                  Login
+                  Sign In to Workspace
                 </button>
-
-                <p className="text-[10px] text-center text-orbit-gray-text leading-tight mt-2">
-                  By signing in, you agree to <span className="lowercase text-orbit-white font-medium">orbit<span className="text-orbit-accent">rio</span></span>’s <button type="button" onClick={() => onNavigate("terms")} className="text-orbit-accent hover:underline bg-transparent border-none outline-none cursor-pointer">Terms of Service</button> and <button type="button" onClick={() => onNavigate("privacy")} className="text-orbit-accent hover:underline bg-transparent border-none outline-none cursor-pointer">Privacy Policy</button>.
-                </p>
 
                 <div className="relative my-4">
                   <div className="absolute inset-0 flex items-center">
@@ -734,48 +704,34 @@ useEffect(() => {
                   className="w-full py-3.5 px-4 rounded-xl border border-orbit-accent/30 hover:border-orbit-accent/80 bg-[#121318] hover:bg-orbit-accent/5 text-orbit-white hover:text-orbit-accent font-bold font-subheading text-xs transition-all flex items-center justify-center gap-2.5 cursor-pointer shadow-sm"
                 >
                   <svg className="w-4 h-4 cursor-pointer" viewBox="0 0 24 24">
-                    <path
-                      fill="currentColor"
-                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                    />
-                    <path
-                      fill="currentColor"
-                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                    />
-                    <path
-                      fill="currentColor"
-                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.87-2.6-2.3-4.53-3.85-5.63z"
-                    />
-                    <path
-                      fill="currentColor"
-                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                    />
+                    <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                    <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                    <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.87-2.6-2.3-4.53-3.85-5.63z" />
+                    <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
                   </svg>
                   Continue with Google
                 </button>
 
                 <div className="text-center text-xs text-orbit-gray-text pt-2">
-                  Don't have an account yet?{" "}
+                  Don't have an account?{" "}
                   <button
                     type="button"
                     onClick={() => setActiveTab("register")}
                     className="text-orbit-accent font-semibold hover:underline"
                   >
                     Register Now
-                  </button> 
-                </div> 
-             </div> 
-       </form>
-     )}       
-                
+                  </button>
+                </div>
+              </div>
+            )}
+          </form>
+        )}
+
         {/* Secure signpost */}
         <div className="pt-8 border-t border-orbit-border/15 mt-8 text-center space-y-2 text-[10px] text-zinc-500">
           <div className="flex items-center justify-center gap-2">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-orbit-green animate-ping" />
-            Security node active. End-to-end multi-layer data encryption active.
-          </div>
-          <div className="text-zinc-400">
-            Need assistance? <a href="mailto:support@orbitriotrades.com" className="text-orbit-accent hover:underline">Contact Support</a>
+            <CheckCircle2 size={11} className="text-orbit-accent" />
+            <span>Secure 256-Bit SSL Workspace Encryption Active</span>
           </div>
         </div>
 
