@@ -1,0 +1,84 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&family=Space+Grotesk:wght@500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-subheading: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-data: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-brand: "Outfit", "Space Grotesk", "Plus Jakarta Sans", sans-serif;
+  --font-bybit: "IBM Plex Sans", "Inter", sans-serif;
+  
+  --color-orbit-bg: #0B0E11; /* Bybit signature background */
+  --color-orbit-card: #14181F; /* Bybit modular card */
+  --color-orbit-darkcard: #12161A; /* Bybit content panel background */
+  --color-orbit-accent: #FFB11A; /* Bybit primary brand yellow-gold */
+  --color-orbit-accent-hover: #E39C12;
+  --color-orbit-white: #FFFFFF; /* High-contrast white */
+  --color-orbit-gray-text: #848E9C; /* Bybit signature secondary text gray */
+  --color-orbit-border: #2B3139; /* Bybit subtle border contrast */
+  --color-orbit-green: #0ECB81; /* Success trade green */
+  --color-orbit-red: #F6465D; /* Danger bearish red */
+}
+
+/* Base resets & custom global styles */
+@layer base {
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: none; /* Prevents rubber-band / elastic background bounce */
+    -webkit-text-size-adjust: 100%; /* Prevents automatic element magnification */
+    -webkit-tap-highlight-color: transparent; /* Removes iOS touch flicker */
+    -webkit-overflow-scrolling: touch; /* Smooth kinetic scroll inertia */
+  }
+
+  body {
+    background-color: var(--color-orbit-bg);
+    /* background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='10' y='60' width='10' height='40' fill='%23474E55' opacity='0.5'/%3E%3Crect x='30' y='30' width='10' height='70' fill='%23474E55' opacity='0.5'/%3E%3Crect x='50' y='50' width='10' height='50' fill='%23474E55' opacity='0.5'/%3E%3Crect x='70' y='20' width='10' height='80' fill='%23474E55' opacity='0.5'/%3E%3Crect x='90' y='65' width='10' height='35' fill='%23474E55' opacity='0.5'/%3E%3C/svg%3E"); */
+    /* background-size: 200px 200px; */
+    color: var(--color-orbit-white);
+    font-family: var(--font-sans);
+    touch-action: manipulation; /* Prevents double-tap zooming */
+  }
+
+  /* Prevent browser-level zooming on inputs dynamically */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Custom premium scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0B0E11;
+}
+::-webkit-scrollbar-thumb {
+  background: #2B3139;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-orbit-accent);
+}
+
+/* Glow effects & micro-interactions */
+.gold-glow {
+  box-shadow: 0 0 15px rgba(255, 177, 26, 0.15);
+}
+.gold-glow-hover:hover {
+  box-shadow: 0 0 25px rgba(255, 177, 26, 0.35);
+  border-color: var(--color-orbit-accent);
+}
+.glass-panel {
+  background: rgba(15, 19, 28, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+

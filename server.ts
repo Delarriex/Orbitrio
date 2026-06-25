@@ -3,6 +3,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+import { handleSendEmail } from "./src/pages/api/send-email";
 
 dotenv.config();
 
@@ -31,6 +32,9 @@ function getGeminiClient(): GoogleGenAI {
 async function startServer() {
   const app = express();
   app.use(express.json());
+
+  // API Route: Send Transactional Email using Resend
+  app.post("/api/send-email", handleSendEmail);
 
   // API Route: AI Advisor Chat Integration
   app.post("/api/chat", async (req, res) => {
