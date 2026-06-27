@@ -336,13 +336,15 @@ function MainAppContent() {
       </main>
 
       {/* Global Standard Footer - Hidden on mobile */}
-      <div className="hidden md:block">
-        <Footer onNavigate={handleNavigate} />
-      </div>
+      {currentView !== "dashboard-admin" && currentView !== "auth" && (
+        <div className="hidden md:block">
+          <Footer onNavigate={handleNavigate} />
+        </div>
+      )}
 
-      <MobileNav currentView={currentView} onNavigate={handleNavigate} />
-
-      <TawkChat />
+      {currentView !== "dashboard-admin" && currentView !== "auth" && (
+        <TawkChat />
+      )}
 
       {/* QUICK DEPOSIT MODAL OUTLAY */}
       {depositModalOpen && (() => {

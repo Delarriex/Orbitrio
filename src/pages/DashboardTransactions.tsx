@@ -35,7 +35,7 @@ export const DashboardTransactions: React.FC = () => {
         <div className="flex flex-col divide-y divide-neutral-900">
           {user.transactions.map((tx) => {
             const cleanAmount = tx.amount.toString().replace("-", "");
-            const isDeposit = tx.type === "DEPOSIT" || tx.type === "deposit";
+            const isDeposit = tx.type === "deposit";
             const amountDisplay = isDeposit ? `+${cleanAmount}` : `-${cleanAmount}`;
             const amountColor = isDeposit ? "text-emerald-400" : "text-white";
 

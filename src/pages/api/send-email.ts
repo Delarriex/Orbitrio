@@ -1,23 +1,10 @@
 import { Request, Response } from "express";
 import { Resend } from "resend";
 
-export async function handleSendEmail(req: Request, res: Response) {
-  try {
+export async function sendTransactionalEmail(to: string, eventType: string, metadata: any) {
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
-      return res.status(400).json({
-        success: false,
-        error: "RESEND_API_KEY environment variable is not configured. Please add it via AI Studio Settings > Secrets.",
-      });
-    }
-
-    const { to, eventType, metadata = {} } = req.body;
-
-    if (!eventType) {
-      return res.status(400).json({
-        success: false,
-        error: "Missing required field: eventType",
-      });
+      throw new Error("RESEND_API_KEY environment variable is not configured.");
     }
 
     const resend = new Resend(apiKey);
@@ -234,13 +221,9 @@ export async function handleSendEmail(req: Request, res: Response) {
         break;
 
       default:
-        return res.status(400).json({
-          success: false,
-          error: `Unknown eventType: ${eventType}`,
-        });
+        throw new Error(`Unknown eventType: ${eventType}`);
     }
 
-    // Call Resend API
     const sender = apiKey.startsWith("re_") ? "Orbitrio Trades <onboarding@resend.dev>" : "Orbitrio Trades <support@orbitriotrades.com>";
 
     const emailResponse = await resend.emails.send({
@@ -249,6 +232,18 @@ export async function handleSendEmail(req: Request, res: Response) {
       subject: subject,
       html: htmlContent,
     });
+
+    return emailResponse;
+}
+
+export async function handleSendEmail(req: Request, res: Response) {
+  try {
+    const { to, eventType, metadata = {} } = req.body;
+    if (!eventType) {
+      return res.status(400).json({ success: false, error: "Missing required field: eventType" });
+    }
+
+    const emailResponse = await sendTransactionalEmail(to, eventType, metadata);
 
     return res.status(200).json({
       success: true,

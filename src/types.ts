@@ -30,6 +30,7 @@ export interface InvestmentPlan {
   maxDeposit: number;
   durationDays: number;
   roiPercent: number;
+  roiCapPercent?: number;
   description: string;
   status: "active" | "paused";
 }

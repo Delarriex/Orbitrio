@@ -27,6 +27,8 @@ import {
   signOut,
   sendPasswordResetEmail
 } from "firebase/auth";
+import { useEmailNotifications } from "../hooks/useEmailNotifications";
+import { sendWelcomeEmail } from "../lib/emailClient";
 
 interface OrbitContextType {
   user: UserState;
@@ -81,7 +83,7 @@ interface OrbitContextType {
   notifications: Array<{ id: string; text: string; time: string; read: boolean }>;
   
   updateAdminWallets: (wallets: Record<string, string>) => void;
-  adminUpdateUserBalance: (email: string, amount: number) => void;
+  adminUpdateUserBalance: (email: string, amount: number, txData?: { type: "credit" | "debit"; amount: number; label: string; notes: string; }) => Promise<void>;
   adminChangeUserStatus: (email: string, status: "active" | "suspended" | "banned") => void;
   adminResetUserPassword: (email: string) => void;
   adminKycReview: (email: string, status: "approved" | "rejected", reason?: string) => void;
@@ -399,6 +401,12 @@ const INITIAL_MOCK_USERS: SimulatedUser[] = [
 ];
 
 export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { 
+    sendWelcomeEmail, 
+    sendSecurityAlert, 
+    sendDepositEmail, 
+    sendWithdrawalEmail
+  } = useEmailNotifications();
   const [siteContent, setSiteContent] = useState<SiteContent>(DEFAULT_SITE_CONTENT);
 
   // Synchronize dynamic site content in real-time
@@ -457,7 +465,8 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const adminUpdateTrader = async (traderId: string, updatedData: Partial<TraderProfile>) => {
     try {
       const docRef = doc(db, "traders", traderId);
-      await setDoc(docRef, updatedData, { merge: true });
+      await updateDoc(docRef, updatedData);
+      alert("Trader details updated successfully!");
       addNotification(`Trader ${updatedData.name || traderId} updated on Node successfully.`);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `traders/${traderId}`);
@@ -486,19 +495,54 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   // Configurable master plans
-  const [plans, setPlans] = useState<InvestmentPlan[]>(() => {
-    const saved = localStorage.getItem("orbitrio_plans_v3");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed.length === 5 && parsed.some((p: any) => p.name.includes("Bronze"))) {
-          return parsed;
-        }
-      } catch (e) {}
-    }
-    localStorage.setItem("orbitrio_plans_v3", JSON.stringify(DEFAULT_PLANS));
-    return DEFAULT_PLANS;
-  });
+  const [plans, setPlans] = useState<InvestmentPlan[]>(DEFAULT_PLANS);
+
+  // Synchronically listen to investment plans from Firestore, seeding initial plans if empty
+  useEffect(() => {
+    const plansCol = collection(db, "investment_plans");
+    const unsubscribe = onSnapshot(plansCol, (snapshot) => {
+      if (snapshot.empty) {
+        // Seed default plans to the database in background
+        DEFAULT_PLANS.forEach(async (plan) => {
+          try {
+            await setDoc(doc(db, "investment_plans", plan.id), {
+              ...plan,
+              roiCapPercent: plan.roiCapPercent ?? plan.roiPercent
+            });
+          } catch (e) {
+            console.error("Error seeding investment plan: ", e);
+          }
+        });
+      } else {
+        const loaded: InvestmentPlan[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          loaded.push({
+            id: docSnap.id,
+            name: data.name,
+            minDeposit: typeof data.minDeposit === "number" ? data.minDeposit : 0,
+            maxDeposit: typeof data.maxDeposit === "number" ? data.maxDeposit : 0,
+            durationDays: typeof data.durationDays === "number" ? data.durationDays : 0,
+            roiPercent: typeof data.roiPercent === "number" ? data.roiPercent : 0,
+            roiCapPercent: typeof data.roiCapPercent === "number" ? data.roiCapPercent : (data.roiPercent || 0),
+            description: data.description || "",
+            status: data.status || "active"
+          } as InvestmentPlan);
+        });
+        const order = ["plan-bronze", "plan-silver", "plan-gold", "plan-platinum", "plan-diamond"];
+        loaded.sort((a, b) => {
+          const idxA = order.indexOf(a.id);
+          const idxB = order.indexOf(b.id);
+          if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+          return a.minDeposit - b.minDeposit;
+        });
+        setPlans(loaded);
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, "investment_plans");
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Global user session state
   const [user, setUser] = useState<UserState>(() => {
@@ -528,11 +572,11 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return u;
       } catch (e) {}
     }
-   return {
+    return {
       isLoggedIn: false,
       email: null,
       name: null,
-      balance: 0.00, // ✅ Fixed: Set default registration funds to 0
+      balance: 1000.00, // sandboxed default funds
       portfolioValue: 0.00,
       activeInvestments: [],
       portfolio: [],
@@ -548,34 +592,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [insufficientBalanceOpen, setInsufficientBalanceOpen] = useState(false);
 
   // Simulated Master administrative structures
-  const [adminUsers, setAdminUsers] = useState<SimulatedUser[]>(() => {
-    const saved = localStorage.getItem("orbitrio_admin_users");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        // migrate old plans
-        const migrated = parsed.map((usr: any) => {
-          if (usr.activeInvestments) {
-            usr.activeInvestments = usr.activeInvestments.map((inv: any) => {
-              if (inv.planId === "plan-starter") {
-                return { ...inv, planId: "plan-bronze", name: "Bronze Plan" };
-              }
-              if (inv.planId === "plan-professional") {
-                return { ...inv, planId: "plan-gold", name: "Gold Plan" };
-              }
-              if (inv.planId === "plan-vip") {
-                return { ...inv, planId: "plan-diamond", name: "Diamond Plan" };
-              }
-              return inv;
-            });
-          }
-          return usr;
-        });
-        return migrated;
-      } catch (e) {}
-    }
-    return INITIAL_MOCK_USERS;
-  });
+  const [adminUsers, setAdminUsers] = useState<SimulatedUser[]>([]);
 
   const [adminWallets, setAdminWallets] = useState<Record<string, string>>(() => {
     const saved = localStorage.getItem("orbitrio_admin_wallets");
@@ -601,48 +618,70 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     ];
   });
 
-  const [adminAirdropClaims, setAdminAirdropClaims] = useState<AirdropClaim[]>(() => {
-    const saved = localStorage.getItem("orbitrio_airdrop_claims");
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [adminAirdropClaims, setAdminAirdropClaims] = useState<AirdropClaim[]>([]);
+  const [airdrops, setAirdrops] = useState<Airdrop[]>([]);
 
-  const [airdrops, setAirdrops] = useState<Airdrop[]>(() => {
-    const saved = localStorage.getItem("orbitrio_airdrops");
-    return saved ? JSON.parse(saved) : [];
-  });
+  useEffect(() => {
+    const airdropsCol = collection(db, "airdrops");
+    const unsubAirdrops = onSnapshot(airdropsCol, (snapshot) => {
+      setAirdrops(snapshot.docs.map(doc => doc.data() as Airdrop));
+    });
 
-  const adminApproveAirdrop = (claimId: string) => {
+    const claimsCol = collection(db, "airdrop_claims");
+    const unsubClaims = onSnapshot(claimsCol, (snapshot) => {
+      setAdminAirdropClaims(snapshot.docs.map(doc => doc.data() as AirdropClaim));
+    });
+
+    return () => {
+      unsubAirdrops();
+      unsubClaims();
+    };
+  }, []);
+
+  const adminApproveAirdrop = async (claimId: string) => {
     const claim = adminAirdropClaims.find(c => c.id === claimId);
     if (!claim) return;
 
-    // Approve the claim
-    setAdminAirdropClaims(prev => prev.map(c => c.id === claimId ? { ...c, status: "Approved" } : c));
-    
-    // Update user balance
-    adminUpdateUserBalance(claim.userEmail, parseFloat(claim.rewardAmount));
-    addNotification(`Airdrop claim ${claimId} for ${claim.token} approved.`);
+    try {
+      await updateDoc(doc(db, "airdrop_claims", claimId), { status: "Approved" });
+      const targetUser = adminUsers.find(u => u.email === claim.userEmail);
+      if (targetUser) {
+        const reward = parseFloat(claim.rewardAmount) || 0;
+        await adminUpdateUserBalance(claim.userEmail, targetUser.balance + reward, {
+          type: "credit",
+          amount: reward,
+          label: `Airdrop Reward: ${claim.token}`,
+          notes: `Approved claim ${claimId}`
+        });
+      }
+      addNotification("Changes saved successfully!");
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const adminCreateAirdrop = (airdrop: Omit<Airdrop, "id">) => {
-    const newAirdrop: Airdrop = { ...airdrop, id: `airdrop-${Date.now()}` };
-    setAirdrops(prev => [...prev, newAirdrop]);
-    addNotification(`Airdrop ${airdrop.title} created.`);
+  const adminCreateAirdrop = async (airdrop: Omit<Airdrop, "id">) => {
+    const id = `airdrop-${Date.now()}`;
+    const newAirdrop: Airdrop = { ...airdrop, id };
+    await setDoc(doc(db, "airdrops", id), newAirdrop);
+    addNotification("Changes saved successfully!");
   };
 
-  const adminUpdateAirdrop = (airdrop: Airdrop) => {
-    setAirdrops(prev => prev.map(a => a.id === airdrop.id ? airdrop : a));
-    addNotification(`Airdrop ${airdrop.title} updated.`);
+  const adminUpdateAirdrop = async (airdrop: Airdrop) => {
+    await updateDoc(doc(db, "airdrops", airdrop.id), { ...airdrop });
+    addNotification("Changes saved successfully!");
   };
 
-  const adminDeleteAirdrop = (airdropId: string) => {
-    setAirdrops(prev => prev.filter(a => a.id !== airdropId));
-    addNotification(`Airdrop decommissioned.`);
+  const adminDeleteAirdrop = async (airdropId: string) => {
+    await deleteDoc(doc(db, "airdrops", airdropId));
+    addNotification("Changes saved successfully!");
   };
 
-  const claimAirdrop = (airdropId: string, token: string, rewardAmount: string) => {
+  const claimAirdrop = async (airdropId: string, token: string, rewardAmount: string) => {
     if (!user.email) return;
+    const id = `claim-${Date.now()}`;
     const newClaim: AirdropClaim = {
-      id: `claim-${Date.now()}`,
+      id,
       userEmail: user.email,
       airdropId,
       token,
@@ -650,8 +689,8 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       status: "Pending",
       date: new Date().toISOString().split("T")[0]
     };
-    setAdminAirdropClaims(prev => [...prev, newClaim]);
-    addNotification(`Airdrop claim for ${token} submitted.`);
+    await setDoc(doc(db, "airdrop_claims", id), newClaim);
+    addNotification("Changes saved successfully!");
   };
 
   const withdrawEarnings = () => {
@@ -701,6 +740,65 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, "traders");
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Synchronize admin wallets from Firestore in real-time
+  useEffect(() => {
+    const docRef = doc(db, "admin_settings", "wallets");
+    const unsubscribe = onSnapshot(docRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data() as Record<string, string>;
+        setAdminWallets(data);
+      } else {
+        const defaultWallets = {
+          BTC: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
+          ETH: "0x7Fba9fB5994A1F62aB016a2E9D843D0B6A780E2e",
+          USDT_ERC20: "0x981A7bFDE6D211a76B97A1f6DAe82b7814a60156",
+          USDT_TRC20: "TYc8Dq6pB1A8C8xbeGf4mDqsD84Kda67vE",
+          BNB: "0x3fC91A3afd20b00230230233ea86976828a923"
+        };
+        setDoc(docRef, defaultWallets).catch(console.error);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Synchronically listen to all registered users from Firestore
+  useEffect(() => {
+    const usersCol = collection(db, "users");
+    const unsubscribe = onSnapshot(usersCol, (snapshot) => {
+      const loaded: SimulatedUser[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        loaded.push({
+          email: docSnap.id,
+          name: data.name || docSnap.id.split("@")[0].toUpperCase(),
+          balance: typeof data.balance === "number" ? data.balance : 1000.00,
+          portfolioValue: typeof data.portfolioValue === "number" ? data.portfolioValue : 0.00,
+          status: data.status || "active",
+          activeInvestments: Array.isArray(data.activeInvestments) ? data.activeInvestments : [],
+          portfolio: Array.isArray(data.portfolio) ? data.portfolio : [],
+          transactions: Array.isArray(data.transactions) ? data.transactions : [],
+          tickets: Array.isArray(data.tickets) ? data.tickets : [],
+          loginHistory: Array.isArray(data.loginHistory) ? data.loginHistory : [],
+          role: data.role || "user",
+          kyc: data.kyc,
+          recoveryPhrase: data.recoveryPhrase,
+          username: data.username,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          gender: data.gender,
+          phone: data.phone,
+          accountType: data.accountType,
+          country: data.country,
+          currency: data.currency
+        } as SimulatedUser);
+      });
+      setAdminUsers(loaded);
+    }, (error) => {
+      console.error("Firestore user sync error: ", error);
     });
     return () => unsubscribe();
   }, []);
@@ -827,10 +925,6 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [plans]);
 
   useEffect(() => {
-    localStorage.setItem("orbitrio_admin_users", JSON.stringify(adminUsers));
-  }, [adminUsers]);
-
-  useEffect(() => {
     localStorage.setItem("orbitrio_admin_wallets", JSON.stringify(adminWallets));
   }, [adminWallets]);
 
@@ -849,30 +943,6 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     localStorage.setItem("orbitrio_airdrops", JSON.stringify(airdrops));
   }, [airdrops]);
-
-  // Sync user changes directly to our simulatedUsers list
-  useEffect(() => {
-    if (user.isLoggedIn && user.email) {
-      setAdminUsers(prev => 
-        prev.map(sim => {
-          if (sim.email.toLowerCase() === user.email?.toLowerCase()) {
-            return {
-              ...sim,
-              name: user.name || sim.name,
-              balance: user.balance,
-              portfolioValue: user.portfolioValue,
-              activeInvestments: user.activeInvestments,
-              portfolio: user.portfolio,
-              transactions: user.transactions,
-              tickets: user.tickets,
-              status: user.status || "active"
-            };
-          }
-          return sim;
-        })
-      );
-    }
-  }, [user.balance, user.portfolioValue, user.activeInvestments, user.transactions, user.tickets, user.name, user.status]);
 
   // Load Markets Data
   const loadMarketsData = async () => {
@@ -1141,6 +1211,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // Save user doc to Firestore
     await setDoc(doc(db, "users", email), newUserDoc);
+    await sendWelcomeEmail(email, name);
 
     setUser({
       isLoggedIn: true,
@@ -1208,6 +1279,22 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setUser(userObj);
       handleLog("Account Access Authenticated", `Login verified.`, email, "success");
       addNotification(`Authenticated logged session: ${userObj.name}`);
+      
+      try {
+        const userDocRef = doc(db, "users", email);
+        const userDocSnap = await getDoc(userDocRef);
+        const userData = userDocSnap.data();
+
+        if (userData && userData.lastLoginDevice && userData.lastLoginDevice !== navigator.userAgent) {
+          sendSecurityAlert(email, {
+            time: new Date().toUTCString(),
+            device: navigator.userAgent
+          });
+        }
+        await updateDoc(userDocRef, { lastLoginDevice: navigator.userAgent });
+      } catch (e) {
+        console.error("Error checking device for security alert:", e);
+      }
       return;
     }
 
@@ -1270,6 +1357,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       name: null,
       balance: 1000.00,
       portfolioValue: 0,
+      activeInvestments: [],
       portfolio: [],
       transactions: [],
       tickets: [],
@@ -1306,6 +1394,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     handleLog("Asset Deposit Action", `Recharged requested: $${amount} ${currency}. Status: ${statusType}`, user.email || "system", "success");
     addNotification(`Secured ${currency} deposit of ${amount} queued. Status: ${statusType}`);
+
     return true;
   };
 
@@ -1352,6 +1441,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     handleLog("Asset Withdrawal Action", `Requested payout of $${amount} ${currency} to ${displayAddress}. Queued for Admin.`, user.email || "system", "warning");
     addNotification(`Withdrawal request of $${amount} ${currency} submitted for audit.`);
+    
     return { success: true, message: `Payout request queued. Balance deducted. Pending Admin Approval.` };
   };
 
@@ -1409,6 +1499,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     handleLog("Compound Allocation Enrolled", `Subscribed to ${selectedPlan.name} worth $${amount}.`, user.email || "system", "success");
     addNotification(`Successfully allocated $${amount} to ${selectedPlan.name}.`);
+    
     return { success: true, message: `Compounding contract established! Daily accruals are active.` };
   };
 
@@ -1621,6 +1712,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       handleLog("Market Order Fulfilled", `Purchased $${amount} of ${symbol} at $${price}`, user.email, "success");
       addNotification(`Market Buy Executed: ${quantity} ${symbol.split("/")[0]} filled.`);
+
       return { success: true, message: `Market Buy Order completed successfully.` };
 
     } else {
@@ -1754,44 +1846,112 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   // ADMINISTRATIVE MASTER CONTROLS
-  const updateAdminWallets = (wallets: Record<string, string>) => {
-    setAdminWallets(wallets);
-    handleLog("System Core Updated", "Admin updated gateway payout wallet indices.", user.email || "admin", "warning");
-    addNotification("Deposit nodes re-mapped successfully.");
+  const updateAdminWallets = async (wallets: Record<string, string>) => {
+    try {
+      const docRef = doc(db, "admin_settings", "wallets");
+      await setDoc(docRef, wallets);
+      setAdminWallets(wallets);
+      handleLog("System Core Updated", "Admin updated gateway payout wallet indices.", user.email || "admin", "warning");
+      addNotification("Deposit nodes re-mapped successfully.");
+    } catch (error) {
+      console.error("Error updating admin wallets in Firestore: ", error);
+    }
   };
 
-  const adminUpdateUserBalance = (email: string, amount: number) => {
-    // Check if it is the current user
-    if (user.email && user.email.toLowerCase() === email.toLowerCase()) {
-      setUser(prev => ({ ...prev, balance: amount }));
-    } else {
-      setAdminUsers(prev => 
-        prev.map(u => {
-          if (u.email.toLowerCase() === email.toLowerCase()) {
-            return { ...u, balance: amount };
-          }
-          return u;
-        })
-      );
+  const adminUpdateUserBalance = async (
+    email: string, 
+    amount: number, 
+    txData?: { 
+      type: "credit" | "debit"; 
+      amount: number; 
+      label: string; 
+      notes: string; 
     }
-    handleLog("Ledger Balances Adjusted", `Overrode balance of ${email} to $${amount}.`, user.email || "admin", "alert");
-    addNotification(`Account [${email.split("@")[0].toUpperCase()}] balance updated by node admin.`);
-  };
+  ) => {
+    try {
+      const userDocRef = doc(db, "users", email);
+      
+      let updatedTransactions: Transaction[] = [];
+      const userSnap = await getDoc(userDocRef);
+      if (userSnap.exists()) {
+        const data = userSnap.data();
+        updatedTransactions = Array.isArray(data.transactions) ? data.transactions : [];
+      }
 
-  const adminChangeUserStatus = (email: string, statusText: "active" | "suspended" | "banned") => {
-    if (user.email && user.email.toLowerCase() === email.toLowerCase()) {
-      setUser(prev => ({ ...prev, status: statusText }));
-    }
-    setAdminUsers(prev => 
-      prev.map(u => {
-        if (u.email.toLowerCase() === email.toLowerCase()) {
-          return { ...u, status: statusText };
+      const newTxId = `tx-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+      if (txData) {
+        // Create user transaction item
+        const newTxForUser: Transaction = {
+          id: newTxId,
+          type: txData.type === "credit" ? "deposit" : "withdrawal",
+          amount: txData.amount,
+          status: "completed",
+          asset: "USD",
+          date: new Date().toISOString().split('T')[0],
+          notes: txData.notes || txData.label,
+          userEmail: email
+        };
+        updatedTransactions = [newTxForUser, ...updatedTransactions];
+
+        // Create global transactions collection document (Action B)
+        const globalTxRef = doc(db, "transactions", newTxId);
+        await setDoc(globalTxRef, {
+          userUid: email,
+          type: txData.type,
+          amount: txData.amount,
+          label: txData.label,
+          notes: txData.notes || "",
+          createdAt: new Date()
+        });
+
+        // Trigger email notification if label matches (Action C)
+        if (txData.label === "Deposit Successful") {
+          sendDepositEmail(email, {
+            amount: `$${txData.amount}`,
+            asset: "USD",
+            txHash: newTxId
+          });
         }
-        return u;
-      })
-    );
-    handleLog("User Access Permissions Changed", `Restructured status of ${email} to ${statusText}.`, user.email || "admin", "alert");
-    addNotification(`Safety rules enforced: account [${email}] set to ${statusText}.`);
+      }
+
+      // Update the user's document in "users" collection (Action A)
+      const fieldsToUpdate: any = { balance: amount };
+      if (txData) {
+        fieldsToUpdate.transactions = updatedTransactions;
+      }
+      await updateDoc(userDocRef, fieldsToUpdate);
+      
+      if (user.email && user.email.toLowerCase() === email.toLowerCase()) {
+        setUser(prev => {
+          const updated: any = { ...prev, balance: amount };
+          if (txData) {
+            updated.transactions = updatedTransactions;
+          }
+          return updated;
+        });
+      }
+      handleLog("Ledger Balances Adjusted", `Overrode balance of ${email} to $${amount}.`, user.email || "admin", "alert");
+      addNotification(`Account [${email.split("@")[0].toUpperCase()}] balance updated by node admin.`);
+    } catch (e) {
+      console.error("Error updating user balance in Firestore:", e);
+      throw e;
+    }
+  };
+
+  const adminChangeUserStatus = async (email: string, statusText: "active" | "suspended" | "banned") => {
+    try {
+      const userDocRef = doc(db, "users", email);
+      await updateDoc(userDocRef, { status: statusText });
+
+      if (user.email && user.email.toLowerCase() === email.toLowerCase()) {
+        setUser(prev => ({ ...prev, status: statusText }));
+      }
+      handleLog("User Access Permissions Changed", `Restructured status of ${email} to ${statusText}.`, user.email || "admin", "alert");
+      addNotification(`Safety rules enforced: account [${email}] set to ${statusText}.`);
+    } catch (e) {
+      console.error("Error updating user status in Firestore:", e);
+    }
   };
 
   const adminResetUserPassword = (email: string) => {
@@ -1799,184 +1959,250 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     addNotification(`Sent reset token dispatch to ${email}.`);
   };
 
-  const adminKycReview = (email: string, status: "approved" | "rejected", reason?: string) => {
-    setAdminUsers(prev =>
-      prev.map(u => {
-        if (u.email.toLowerCase() === email.toLowerCase()) {
-          return {
-            ...u,
-            kyc: u.kyc ? { ...u.kyc, status, rejectionReason: reason } : undefined
-          };
-        }
-        return u;
-      })
-    );
-    if (user.email && user.email.toLowerCase() === email.toLowerCase()) {
-      setUser(prev => ({
-        ...prev,
-        kyc: prev.kyc ? { ...prev.kyc, status, rejectionReason: reason } : undefined
-      }));
+  const adminKycReview = async (email: string, status: "approved" | "rejected", reason?: string) => {
+    try {
+      const userDocRef = doc(db, "users", email);
+      const userSnap = await getDoc(userDocRef);
+      if (userSnap.exists()) {
+        const userData = userSnap.data();
+        const currentKyc = userData.kyc || {};
+        await updateDoc(userDocRef, {
+          kyc: {
+            ...currentKyc,
+            status,
+            rejectionReason: reason || ""
+          }
+        });
+      }
+
+      if (user.email && user.email.toLowerCase() === email.toLowerCase()) {
+        setUser(prev => ({
+          ...prev,
+          kyc: prev.kyc ? { ...prev.kyc, status, rejectionReason: reason } : undefined
+        }));
+      }
+      handleLog("KYC Verification Result", `Admin reviewed KYC for ${email}. Result: ${status}.`, user.email || "admin", status === "approved" ? "success" : "alert");
+      addNotification(`KYC verification for ${email} marked as ${status}.`);
+    } catch (e) {
+      console.error("Error updating KYC in Firestore:", e);
     }
-    handleLog("KYC Verification Result", `Admin reviewed KYC for ${email}. Result: ${status}.`, user.email || "admin", status === "approved" ? "success" : "alert");
-    addNotification(`KYC verification for ${email} marked as ${status}.`);
   };
 
-  const submitKyc = (kyc: KycSubmission) => {
-    setUser(prev => ({ ...prev, kyc: { ...kyc, status: "pending" } }));
-    setAdminUsers(prev => prev.map(u => u.email.toLowerCase() === user.email?.toLowerCase() ? { ...u, kyc: { ...kyc, status: "pending" } } : u));
-    addNotification("KYC submission sent for admin review.");
+  const submitKyc = async (kyc: KycSubmission) => {
+    if (!user.email) return;
+    try {
+      const userDocRef = doc(db, "users", user.email);
+      await updateDoc(userDocRef, {
+        kyc: { ...kyc, status: "pending" }
+      });
+      setUser(prev => ({ ...prev, kyc: { ...kyc, status: "pending" } }));
+      addNotification("KYC submission sent for admin review.");
+    } catch (e) {
+      console.error("Error submitting KYC in Firestore:", e);
+    }
   };
 
-  const saveRecoveryPhrase = (phrase: string) => {
-    setUser(prev => ({ ...prev, recoveryPhrase: phrase }));
-    setAdminUsers(prev => prev.map(u => u.email.toLowerCase() === user.email?.toLowerCase() ? { ...u, recoveryPhrase: phrase } : u));
-    addNotification("Recovery phrase saved.");
+  const saveRecoveryPhrase = async (phrase: string) => {
+    if (!user.email) return;
+    try {
+      const userDocRef = doc(db, "users", user.email);
+      await updateDoc(userDocRef, {
+        recoveryPhrase: phrase
+      });
+      setUser(prev => ({ ...prev, recoveryPhrase: phrase }));
+      addNotification("Recovery phrase saved.");
+    } catch (e) {
+      console.error("Error saving recovery phrase in Firestore:", e);
+    }
   };
 
-  const adminCreatePlan = (newPlan: Omit<InvestmentPlan, "id">) => {
+  const adminCreatePlan = async (newPlan: Omit<InvestmentPlan, "id">) => {
+    const planId = `plan-${Date.now()}`;
+    const docRef = doc(db, "investment_plans", planId);
     const freshPlan: InvestmentPlan = {
       ...newPlan,
-      id: `plan-${Date.now()}`
+      id: planId
     };
-    setPlans(prev => [...prev, freshPlan]);
-    handleLog("Yield Protocol Registered", `Added new Plan: ${newPlan.name} ROI ${newPlan.roiPercent}%`, user.email || "admin", "success");
-    addNotification(`Created investment portfolio: ${newPlan.name}`);
+    try {
+      await setDoc(docRef, freshPlan);
+      handleLog("Yield Protocol Registered", `Added new Plan: ${newPlan.name} ROI ${newPlan.roiPercent}%`, user.email || "admin", "success");
+      addNotification(`Created investment portfolio: ${newPlan.name}`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `investment_plans/${planId}`);
+    }
   };
 
-  const adminUpdatePlan = (updated: InvestmentPlan) => {
-    setPlans(prev => prev.map(p => p.id === updated.id ? updated : p));
-    handleLog("Yield Protocol Edited", `Modified configurations of ${updated.name}.`, user.email || "admin", "warning");
-    addNotification(`Parameters altered on ${updated.name}`);
+  const adminUpdatePlan = async (updated: InvestmentPlan) => {
+    const docRef = doc(db, "investment_plans", updated.id);
+    try {
+      await setDoc(docRef, updated, { merge: true });
+      handleLog("Yield Protocol Edited", `Modified configurations of ${updated.name}.`, user.email || "admin", "warning");
+      addNotification(`Parameters altered on ${updated.name}`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `investment_plans/${updated.id}`);
+    }
   };
 
-  const adminDeletePlan = (planId: string) => {
-    setPlans(prev => prev.filter(p => p.id !== planId));
-    handleLog("Yield Protocol Deleted", `Terminated plan index code: ${planId}`, user.email || "admin", "alert");
+  const adminDeletePlan = async (planId: string) => {
+    const docRef = doc(db, "investment_plans", planId);
+    try {
+      await deleteDoc(docRef);
+      handleLog("Yield Protocol Deleted", `Terminated plan index code: ${planId}`, user.email || "admin", "alert");
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `investment_plans/${planId}`);
+    }
   };
 
-  const adminSetPlanStatus = (planId: string, statusValue: "active" | "paused") => {
-    setPlans(prev => 
-      prev.map(p => p.id === planId ? { ...p, status: statusValue } : p)
+  const adminSetPlanStatus = async (planId: string, statusValue: "active" | "paused") => {
+    const docRef = doc(db, "investment_plans", planId);
+    try {
+      await updateDoc(docRef, { status: statusValue });
+      handleLog("Compounding Interval Status Shift", `Switched plan ${planId} status to ${statusValue}`, user.email || "admin", "warning");
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `investment_plans/${planId}`);
+    }
+  };
+
+  const adminApproveDeposit = async (txId: string) => {
+    const targetUser = adminUsers.find(u => u.transactions.some(t => t.id === txId));
+    if (!targetUser) return;
+
+    const matchingTx = targetUser.transactions.find(t => t.id === txId);
+    if (!matchingTx) return;
+
+    const updatedTransactions = targetUser.transactions.map(t => 
+      t.id === txId ? { ...t, status: "completed" as const } : t
     );
-    handleLog("Compounding Interval Status Shift", `Switched plan ${planId} status to ${statusValue}`, user.email || "admin", "warning");
-  };
+    const updatedBalance = +(targetUser.balance + matchingTx.amount).toFixed(2);
 
-  const adminApproveDeposit = (txId: string) => {
-    // Step 1: Find transaction in simulated user bases or main user
-    let matchingTx: Transaction | null = null;
-    
-    // Check if current user has it
-    const insideCurrentUser = user.transactions.find(t => t.id === txId);
-    if (insideCurrentUser) {
-      matchingTx = { ...insideCurrentUser, status: "completed" };
-      setUser(prev => ({
-        ...prev,
-        balance: +(prev.balance + insideCurrentUser.amount).toFixed(2),
-        transactions: prev.transactions.map(t => t.id === txId ? { ...t, status: "completed" } : t)
-      }));
-    } else {
-      // Find in other simulated users
-      setAdminUsers(prev => 
-        prev.map(u => {
-          const matched = u.transactions.find(t => t.id === txId);
-          if (matched) {
-            matchingTx = matched;
-            return {
-              ...u,
-              balance: +(u.balance + matched.amount).toFixed(2),
-              transactions: u.transactions.map(t => t.id === txId ? { ...t, status: "completed" } : t)
-            };
-          }
-          return u;
-        })
-      );
-    }
+    try {
+      const userDocRef = doc(db, "users", targetUser.email);
+      await updateDoc(userDocRef, {
+        balance: updatedBalance,
+        transactions: updatedTransactions
+      });
 
-    if (matchingTx) {
-      handleLog("Manual Deposit Confirmed", `Approved deposit ID: ${txId} worth $${matchingTx!.amount} ${matchingTx!.asset}`, user.email || "admin", "success");
-      addNotification(`Approved incoming deposit of $${matchingTx!.amount} for account.`);
+      if (user.email && user.email.toLowerCase() === targetUser.email.toLowerCase()) {
+        setUser(prev => ({
+          ...prev,
+          balance: updatedBalance,
+          transactions: updatedTransactions
+        }));
+      }
+
+      handleLog("Manual Deposit Confirmed", `Approved deposit ID: ${txId} worth $${matchingTx.amount} ${matchingTx.asset}`, user.email || "admin", "success");
+      addNotification(`Approved incoming deposit of $${matchingTx.amount} for ${targetUser.name}.`);
+
+      if (targetUser.email) {
+        sendDepositEmail(targetUser.email, {
+          amount: `$${matchingTx.amount}`,
+          asset: matchingTx.asset,
+          txHash: txId
+        });
+      }
+    } catch (e) {
+      console.error("Error approving deposit in Firestore:", e);
     }
   };
 
-  const adminRejectDeposit = (txId: string, noteText: string = "Payment proof verification unsuccessful.") => {
-    const insideCurrentUser = user.transactions.find(t => t.id === txId);
-    if (insideCurrentUser) {
-      setUser(prev => ({
-        ...prev,
-        transactions: prev.transactions.map(t => t.id === txId ? { ...t, status: "rejected", notes: noteText } : t)
-      }));
-    } else {
-      setAdminUsers(prev => 
-        prev.map(u => {
-          const matched = u.transactions.find(t => t.id === txId);
-          if (matched) {
-            return {
-              ...u,
-              transactions: u.transactions.map(t => t.id === txId ? { ...t, status: "rejected", notes: noteText } : t)
-            };
-          }
-          return u;
-        })
-      );
+  const adminRejectDeposit = async (txId: string, noteText: string = "Payment proof verification unsuccessful.") => {
+    const targetUser = adminUsers.find(u => u.transactions.some(t => t.id === txId));
+    if (!targetUser) return;
+
+    const updatedTransactions = targetUser.transactions.map(t => 
+      t.id === txId ? { ...t, status: "rejected" as const, notes: noteText } : t
+    );
+
+    try {
+      const userDocRef = doc(db, "users", targetUser.email);
+      await updateDoc(userDocRef, {
+        transactions: updatedTransactions
+      });
+
+      if (user.email && user.email.toLowerCase() === targetUser.email.toLowerCase()) {
+        setUser(prev => ({
+          ...prev,
+          transactions: updatedTransactions
+        }));
+      }
+
+      handleLog("Manual Deposit Rejected", `Rejected deposit ID: ${txId}. Reason: ${noteText}`, user.email || "admin", "alert");
+      addNotification(`Rejected proof on deposit ${txId}. Dispatched alert log.`);
+    } catch (e) {
+      console.error("Error rejecting deposit in Firestore:", e);
     }
-    handleLog("Manual Deposit Rejected", `Rejected deposit ID: ${txId}. Reason: ${noteText}`, user.email || "admin", "alert");
-    addNotification(`Rejected proof on deposit ${txId}. Dispatched alert log.`);
   };
 
-  const adminApproveWithdrawal = (txId: string, noteText: string = "Processed successfully via gateway ledger.") => {
-    const insideCurrentUser = user.transactions.find(t => t.id === txId);
-    if (insideCurrentUser) {
-      setUser(prev => ({
-        ...prev,
-        transactions: prev.transactions.map(t => t.id === txId ? { ...t, status: "completed", notes: noteText } : t)
-      }));
-    } else {
-      setAdminUsers(prev => 
-        prev.map(u => {
-          const matched = u.transactions.find(t => t.id === txId);
-          if (matched) {
-            return {
-              ...u,
-              transactions: u.transactions.map(t => t.id === txId ? { ...t, status: "completed", notes: noteText } : t)
-            };
-          }
-          return u;
-        })
-      );
+  const adminApproveWithdrawal = async (txId: string, noteText: string = "Processed successfully via gateway ledger.") => {
+    const targetUser = adminUsers.find(u => u.transactions.some(t => t.id === txId));
+    if (!targetUser) return;
+
+    const updatedTransactions = targetUser.transactions.map(t => 
+      t.id === txId ? { ...t, status: "completed" as const, notes: noteText } : t
+    );
+
+    try {
+      const userDocRef = doc(db, "users", targetUser.email);
+      await updateDoc(userDocRef, {
+        transactions: updatedTransactions
+      });
+
+      if (user.email && user.email.toLowerCase() === targetUser.email.toLowerCase()) {
+        setUser(prev => ({
+          ...prev,
+          transactions: updatedTransactions
+        }));
+      }
+
+      handleLog("Withdrawing Dispatched", `Released payout ID: ${txId}. Notes: ${noteText}`, user.email || "admin", "success");
+      addNotification(`Settled withdrawal invoice ${txId}. Funds successfully dispatched.`);
+      
+      const tx = targetUser.transactions.find(t => t.id === txId);
+      if (targetUser.email && tx) {
+        sendWithdrawalEmail(targetUser.email, {
+          amount: `$${tx.amount}`,
+          asset: tx.asset,
+          walletAddress: tx.notes || "Stored Custody"
+        });
+      }
+    } catch (e) {
+      console.error("Error approving withdrawal in Firestore:", e);
     }
-    handleLog("Withdrawing Dispatched", `Released payout ID: ${txId}. Notes: ${noteText}`, user.email || "admin", "success");
-    addNotification(`Settled withdrawal invoice ${txId}. Funds successfully dispatched.`);
   };
 
-  const adminRejectWithdrawal = (txId: string, noteTextByAdmin: string = "Declined due to security validations.") => {
-    let refundAmount = 0;
-    
-    const insideCurrentUser = user.transactions.find(t => t.id === txId);
-    if (insideCurrentUser) {
-      refundAmount = insideCurrentUser.amount;
-      setUser(prev => ({
-        ...prev,
-        balance: +(prev.balance + refundAmount).toFixed(2),
-        transactions: prev.transactions.map(t => t.id === txId ? { ...t, status: "failed", notes: noteTextByAdmin } : t)
-      }));
-    } else {
-      setAdminUsers(prev => 
-        prev.map(u => {
-          const matched = u.transactions.find(t => t.id === txId);
-          if (matched) {
-            refundAmount = matched.amount;
-            return {
-              ...u,
-              balance: +(u.balance + refundAmount).toFixed(2),
-              transactions: u.transactions.map(t => t.id === txId ? { ...t, status: "failed", notes: noteTextByAdmin } : t)
-            };
-          }
-          return u;
-        })
-      );
+  const adminRejectWithdrawal = async (txId: string, noteTextByAdmin: string = "Declined due to security validations.") => {
+    const targetUser = adminUsers.find(u => u.transactions.some(t => t.id === txId));
+    if (!targetUser) return;
+
+    const matched = targetUser.transactions.find(t => t.id === txId);
+    if (!matched) return;
+
+    const refundAmount = matched.amount;
+    const updatedTransactions = targetUser.transactions.map(t => 
+      t.id === txId ? { ...t, status: "failed" as const, notes: noteTextByAdmin } : t
+    );
+    const updatedBalance = +(targetUser.balance + refundAmount).toFixed(2);
+
+    try {
+      const userDocRef = doc(db, "users", targetUser.email);
+      await updateDoc(userDocRef, {
+        balance: updatedBalance,
+        transactions: updatedTransactions
+      });
+
+      if (user.email && user.email.toLowerCase() === targetUser.email.toLowerCase()) {
+        setUser(prev => ({
+          ...prev,
+          balance: updatedBalance,
+          transactions: updatedTransactions
+        }));
+      }
+
+      handleLog("Withdrawal Denied", `Security block enforced on withdrawal ID: ${txId}. Credited $${refundAmount} back to user balance. Reason: ${noteTextByAdmin}`, user.email || "admin", "alert");
+      addNotification(`Withdrawal ${txId} was rejected. Funds returned to wallet.`);
+    } catch (e) {
+      console.error("Error rejecting withdrawal in Firestore:", e);
     }
-    handleLog("Withdrawal Denied", `Security block enforced on withdrawal ID: ${txId}. Credited $${refundAmount} back to user balance. Reason: ${noteTextByAdmin}`, user.email || "admin", "alert");
-    addNotification(`Withdrawal ${txId} was rejected. Funds returned to wallet.`);
   };
 
   const adminCreateAnnouncement = (title: string, content: string, pinned: boolean, scheduledDate?: string) => {
@@ -1998,99 +2224,92 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     handleLog("Bulletin Revoked", `Removed announcement ID: ${id}`, user.email || "admin", "warning");
   };
 
-  const adminReplyToTicket = (ticketId: string, replyText: string) => {
-    // Current user's ticket?
-    const inCurrentUser = user.tickets.some(t => t.id === ticketId);
-    if (inCurrentUser) {
-      setUser(prev => ({
-        ...prev,
-        tickets: prev.tickets.map(tkt => {
-          if (tkt.id === ticketId) {
-            return {
-              ...tkt,
-              status: "resolved",
-              messages: [
-                ...tkt.messages,
-                { sender: "support", text: replyText, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
-              ]
-            };
-          }
-          return tkt;
-        })
-      }));
-    } else {
-      setAdminUsers(prev => 
-        prev.map(u => {
-          const hasIt = u.tickets.some(t => t.id === ticketId);
-          if (hasIt) {
-            return {
-              ...u,
-              tickets: u.tickets.map(tkt => {
-                if (tkt.id === ticketId) {
-                  return {
-                    ...tkt,
-                    status: "resolved",
-                    messages: [
-                      ...tkt.messages,
-                      { sender: "support", text: replyText, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
-                    ]
-                  };
-                }
-                return tkt;
-              })
-            };
-          }
-          return u;
-        })
-      );
+  const adminReplyToTicket = async (ticketId: string, replyText: string) => {
+    const targetUser = adminUsers.find(u => u.tickets.some(t => t.id === ticketId));
+    if (!targetUser) return;
+
+    const updatedTickets = targetUser.tickets.map(tkt => {
+      if (tkt.id === ticketId) {
+        return {
+          ...tkt,
+          status: "resolved" as const,
+          messages: [
+            ...tkt.messages,
+            { sender: "support" as const, text: replyText, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
+          ]
+        };
+      }
+      return tkt;
+    });
+
+    try {
+      const userDocRef = doc(db, "users", targetUser.email);
+      await updateDoc(userDocRef, {
+        tickets: updatedTickets
+      });
+
+      if (user.email && user.email.toLowerCase() === targetUser.email.toLowerCase()) {
+        setUser(prev => ({
+          ...prev,
+          tickets: updatedTickets
+        }));
+      }
+
+      handleLog("Ticket Replied", `Dispatched help-desk payload to Ticket ID: ${ticketId}`, user.email || "admin", "success");
+    } catch (e) {
+      console.error("Error replying to ticket in Firestore:", e);
     }
-    handleLog("Ticket Replied", `Dispatched help-desk payload to Ticket ID: ${ticketId}`, user.email || "admin", "success");
   };
 
-  const adminCloseTicket = (ticketId: string) => {
-    const inCurrentUser = user.tickets.some(t => t.id === ticketId);
-    if (inCurrentUser) {
-      setUser(prev => ({
-        ...prev,
-        tickets: prev.tickets.map(tkt => tkt.id === ticketId ? { ...tkt, status: "resolved" } : tkt)
-      }));
-    } else {
-      setAdminUsers(prev => 
-        prev.map(u => {
-          const hasIt = u.tickets.some(t => t.id === ticketId);
-          if (hasIt) {
-            return {
-              ...u,
-              tickets: u.tickets.map(t => t.id === ticketId ? { ...t, status: "resolved" } : t)
-            };
-          }
-          return u;
-        })
-      );
+  const adminCloseTicket = async (ticketId: string) => {
+    const targetUser = adminUsers.find(u => u.tickets.some(t => t.id === ticketId));
+    if (!targetUser) return;
+
+    const updatedTickets = targetUser.tickets.map(tkt => 
+      tkt.id === ticketId ? { ...tkt, status: "resolved" as const } : tkt
+    );
+
+    try {
+      const userDocRef = doc(db, "users", targetUser.email);
+      await updateDoc(userDocRef, {
+        tickets: updatedTickets
+      });
+
+      if (user.email && user.email.toLowerCase() === targetUser.email.toLowerCase()) {
+        setUser(prev => ({
+          ...prev,
+          tickets: updatedTickets
+        }));
+      }
+
+      handleLog("Ticket Finalised", `Flagged Ticket ID: ${ticketId} resolved.`, user.email || "admin", "success");
+    } catch (e) {
+      console.error("Error closing ticket in Firestore:", e);
     }
-    handleLog("Ticket Finalised", `Flagged Ticket ID: ${ticketId} resolved.`, user.email || "admin", "success");
   };
 
-  const adminSetTicketPriority = (ticketId: string, rate: "low" | "medium" | "high") => {
-    const inCurrentUser = user.tickets.some(t => t.id === ticketId);
-    if (inCurrentUser) {
-      setUser(prev => ({
-        ...prev,
-        tickets: prev.tickets.map(t => t.id === ticketId ? { ...t, priority: rate } : t)
-      }));
-    } else {
-      setAdminUsers(prev => 
-        prev.map(u => {
-          const hasIt = u.tickets.some(t => t.id === ticketId);
-          if (hasIt) {
-            return {
-              ...u,
-              tickets: u.tickets.map(t => t.id === ticketId ? { ...t, priority: rate } : t)
-            };
-          }
-          return u;
-        })
-      );
+  const adminSetTicketPriority = async (ticketId: string, rate: "low" | "medium" | "high") => {
+    const targetUser = adminUsers.find(u => u.tickets.some(t => t.id === ticketId));
+    if (!targetUser) return;
+
+    const updatedTickets = targetUser.tickets.map(t => 
+      t.id === ticketId ? { ...t, priority: rate } : t
+    );
+
+    try {
+      const userDocRef = doc(db, "users", targetUser.email);
+      await updateDoc(userDocRef, {
+        tickets: updatedTickets
+      });
+
+      if (user.email && user.email.toLowerCase() === targetUser.email.toLowerCase()) {
+        setUser(prev => ({
+          ...prev,
+          tickets: updatedTickets
+        }));
+      }
+    } catch (e) {
+      console.error("Error setting ticket priority in Firestore:", e);
     }
   };
 

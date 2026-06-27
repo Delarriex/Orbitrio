@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useOrbit } from "../context/OrbitContext";
+import { InvestmentPlan } from "../types";
 import { 
   Users, 
   Layers, 
@@ -15,6 +16,7 @@ import {
   PenTool,
   Check,
   X,
+  Menu,
   CreditCard,
   Key,
   Database,
@@ -111,8 +113,9 @@ export const DashboardAdmin: React.FC = () => {
 
   // Navigations Setup
   const [activeTab, setActiveTab] = useState<
-    "overview" | "users" | "investments" | "deposits" | "withdrawals" | "bulletins" | "support" | "security" | "content" | "traders" | "airdrops" | "kyc"
+    "overview" | "users" | "investments" | "deposits" | "withdrawals" | "bulletins" | "support" | "security" | "content" | "traders" | "airdrops" | "kyc" | "wallets"
   >("overview");
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Trader form states
   const [editingTraderId, setEditingTraderId] = useState<string | null>(null);
@@ -133,6 +136,13 @@ export const DashboardAdmin: React.FC = () => {
   const [usersSearch, setUsersSearch] = useState("");
   const [selectedUserEmail, setSelectedUserEmail] = useState<string | null>(null);
   const [balanceOverrideVal, setBalanceOverrideVal] = useState("");
+  const [editingBalanceEmail, setEditingBalanceEmail] = useState<string | null>(null);
+  const [tempBalanceVal, setTempBalanceVal] = useState<string>("");
+
+  // Transaction adjustment states (Based on image_38159d.png and image_381a78.png)
+  const [adjustmentType, setAdjustmentType] = useState<"credit" | "debit">("credit");
+  const [transactionLabel, setTransactionLabel] = useState<string>("Credit Transaction");
+  const [internalProtocolNote, setInternalProtocolNote] = useState<string>("");
 
   // Selected ticket chat admin states
   const [activeTicketId, setActiveTicketId] = useState<string | null>(null);
@@ -145,6 +155,9 @@ export const DashboardAdmin: React.FC = () => {
   const [newPlanDays, setNewPlanDays] = useState("");
   const [newPlanReturns, setNewPlanReturns] = useState("");
   const [newPlanDesc, setNewPlanDesc] = useState("");
+
+  // Plan editing form state
+  const [editingPlan, setEditingPlan] = useState<InvestmentPlan | null>(null);
 
   // Announcement forms
   const [newAnnTitle, setNewAnnTitle] = useState("");
@@ -309,15 +322,26 @@ export const DashboardAdmin: React.FC = () => {
     }
   }, [siteContent]);
 
-  const applyWalletsOverride = (e: React.FormEvent) => {
+  useEffect(() => {
+    if (adminWallets) {
+      setBtcConf(adminWallets.BTC || "");
+      setEthConf(adminWallets.ETH || "");
+      setUsdtErcConf(adminWallets.USDT_ERC20 || "");
+      setUsdtTrcConf(adminWallets.USDT_TRC20 || "");
+      setBnbConf(adminWallets.BNB || "");
+    }
+  }, [adminWallets]);
+
+  const applyWalletsOverride = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateAdminWallets({
+    await updateAdminWallets({
       BTC: btcConf,
       ETH: ethConf,
       USDT_ERC20: usdtErcConf,
       USDT_TRC20: usdtTrcConf,
       BNB: bnbConf
     });
+    addNotification("Changes saved successfully!");
   };
 
   // Find detailed user info
@@ -422,10 +446,136 @@ export const DashboardAdmin: React.FC = () => {
   }
 
   return (
-    <div className="min-h-[90vh] grid grid-cols-1 lg:grid-cols-12 gap-8 pb-20 font-sans">
+    <div className="min-h-[90vh] w-full block lg:grid lg:grid-cols-12 gap-8 pb-20 font-sans px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
       
-      {/* 1. SEPARATE SECURE ADMIN SIDEBAR (col-span-3) */}
-      <div className="lg:col-span-3 bg-orbit-card border border-orbit-border rounded-2xl p-5 flex flex-col justify-between self-start">
+      {/* Mobile Top Header (hidden on large screens) */}
+      <div className="lg:hidden bg-orbit-card border border-orbit-border rounded-2xl p-4 flex items-center justify-between w-full mb-6">
+        <div className="flex items-center gap-2">
+          <span className="p-2 rounded-xl bg-gradient-to-tr from-[#FF7F00] to-orbit-accent text-orbit-bg shrink-0">
+            <Compass size={18} />
+          </span>
+          <div>
+            <h3 className="text-xs font-bold text-orbit-white uppercase font-heading">
+              <span className="lowercase text-orbit-white font-bold">orbit<span className="text-orbit-accent">rio</span></span> Node
+            </h3>
+            <span className="text-[8px] bg-red-500/10 border border-red-500/30 text-red-500 py-0.5 px-2 font-bold rounded-full block w-fit mt-0.5">
+              MASTER ADMIN
+            </span>
+          </div>
+        </div>
+        
+        <button
+          onClick={() => setIsMobileMenuOpen(true)}
+          className="p-2.5 rounded-xl bg-orbit-bg border border-orbit-border text-orbit-white hover:border-orbit-accent transition-colors cursor-pointer flex items-center gap-2 text-xs font-bold"
+          aria-label="Open Admin Menu"
+        >
+          <Menu size={16} className="text-orbit-accent" />
+          <span>Menu</span>
+        </button>
+      </div>
+
+      {/* Mobile Menu Drawer Slide-out (hidden on large screens) */}
+      {isMobileMenuOpen && (
+        <div className="fixed inset-0 z-50 flex lg:hidden">
+          {/* Backdrop overlay */}
+          <div 
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm transition-opacity duration-300"
+            onClick={() => setIsMobileMenuOpen(false)}
+          />
+          
+          {/* Drawer main panel */}
+          <div className="relative flex flex-col w-full max-w-[310px] h-full bg-[#0d0e12] border-r border-orbit-border p-6 overflow-y-auto space-y-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-orbit-border/50 pb-4">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-gradient-to-tr from-[#FF7F00] to-orbit-accent text-orbit-bg shrink-0">
+                  <Compass size={18} />
+                </span>
+                <div>
+                  <h3 className="text-xs font-bold text-orbit-white uppercase font-heading">
+                    <span className="lowercase text-orbit-white font-bold">orbit<span className="text-orbit-accent">rio</span></span> Node
+                  </h3>
+                  <span className="text-[8px] bg-red-500/10 border border-red-500/30 text-red-500 py-0.5 px-2 font-bold rounded-full block w-fit mt-0.5">
+                    MASTER ADMIN
+                  </span>
+                </div>
+              </div>
+              
+              <button
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="p-2 rounded-lg bg-orbit-card border border-orbit-border text-orbit-white hover:border-orbit-accent transition-colors cursor-pointer"
+                aria-label="Close menu"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <span className="text-[9px] uppercase font-bold text-orbit-accent block tracking-wider px-1 font-mono">Navigation Terminals</span>
+            
+            <nav className="flex-grow space-y-1.5 overflow-y-auto pr-1">
+              {[
+                { id: "overview", label: "All Users", icon: Activity },
+                { id: "users", label: "Add or Take Money", icon: Users },
+                { id: "investments", label: "Investment Plans", icon: Layers },
+                { id: "content", label: "Content Editor", icon: PenTool },
+                { id: "traders", label: "Traders List", icon: Award },
+                { id: "airdrops", label: "Free Coin Claims (Airdrops)", icon: Gift },
+                { id: "wallets", label: "Wallet Gateways", icon: CreditCard },
+                { id: "kyc", label: "ID Verifications", icon: UserCheck },
+                { id: "deposits", label: "Incoming Payments (Deposits)", icon: ArrowDownLeft, alert: sortedDeposits.filter(t=>t.status==='pending').length },
+                { id: "withdrawals", label: "Payout Requests (Withdrawals)", icon: ArrowUpRight, alert: pendingPayoutCount },
+                { id: "bulletins", label: "Announcements Panel", icon: Volume2 },
+                { id: "support", label: "Ticket Helpdesk", icon: MessageSquare, alert: sortedTickets.filter(t=>t.status==='open').length },
+                { id: "security", label: "Security & Audit Logs", icon: ShieldAlert }
+              ].map(item => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setActiveTab(item.id as any);
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between text-left py-3 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer min-h-[44px] ${
+                      isActive 
+                        ? "bg-orbit-accent text-orbit-bg shadow" 
+                        : "text-orbit-gray-text hover:text-orbit-white hover:bg-orbit-border/30 bg-orbit-bg/50 border border-orbit-border/30"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <Icon size={14} className={isActive ? "text-orbit-bg" : "text-orbit-accent"} />
+                      {item.label}
+                    </span>
+                    
+                    {!!item.alert && (
+                      <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${
+                        isActive ? "bg-orbit-bg text-orbit-accent" : "bg-red-500/15 text-red-400 border border-red-500/30"
+                      }`}>
+                        {item.alert}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </nav>
+
+            <div className="pt-4 border-t border-orbit-border/50 text-center">
+              <button
+                onClick={() => {
+                  setIsAdminAuthenticated(false);
+                  setIsMobileMenuOpen(false);
+                }}
+                className="w-full py-2.5 bg-orbit-border/80 text-orbit-red font-bold text-xs uppercase rounded-xl hover:bg-orbit-border transition-all cursor-pointer min-h-[44px]"
+              >
+                Lock Admin Terminal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 1. SEPARATE SECURE ADMIN SIDEBAR (col-span-3) - (hidden on mobile, visible on desktop) */}
+      <div className="hidden lg:flex lg:col-span-3 bg-orbit-card border border-orbit-border rounded-2xl p-5 flex-col justify-between self-start">
         <div className="space-y-6">
           
           {/* Admin Tag */}
@@ -450,6 +600,7 @@ export const DashboardAdmin: React.FC = () => {
               { id: "content", label: "Content Editor", icon: PenTool },
               { id: "traders", label: "Traders List", icon: Award },
               { id: "airdrops", label: "Free Coin Claims (Airdrops)", icon: Gift },
+              { id: "wallets", label: "Wallet Gateways", icon: CreditCard },
               { id: "kyc", label: "ID Verifications", icon: UserCheck },
               { id: "deposits", label: "Incoming Payments (Deposits)", icon: ArrowDownLeft, alert: sortedDeposits.filter(t=>t.status==='pending').length },
               { id: "withdrawals", label: "Payout Requests (Withdrawals)", icon: ArrowUpRight, alert: pendingPayoutCount },
@@ -501,187 +652,17 @@ export const DashboardAdmin: React.FC = () => {
       </div>
 
       {/* 2. MAIN ACTIVE WINDOW CANVAS (col-span-9) */}
-      <div className="lg:col-span-9 space-y-6">
+      <div className="col-span-1 lg:col-span-9 space-y-6 w-full">
         
-        {/* TAB A: OVERVIEW PERFORMANCE CHARTS */}
+        {/* TAB A: ALL USERS (View and modify real user databases) */}
         {activeTab === "overview" && (
           <div className="space-y-6">
-            
-            {/* Real Stats Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {[
-                { label: "Total Asset Users", val: aggregateUsers, change: `+${activeUserCount} Active Node` },
-                { label: "Aggregate Deposits", val: `$${totalDepositVolume.toLocaleString()}`, change: "System Net 1:1" },
-                { label: "Aggregate Withdrawals", val: `$${totalWithdrawalVolume.toLocaleString()}`, change: `${sortedWithdrawals.length} Settled Invoices` },
-                { label: "Hedged Yield Revenue", val: `$${platformHedgedRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, change: "Stable Treasury" }
-              ].map((card, idx) => (
-                <div key={idx} className="bg-orbit-card border border-orbit-border p-4 rounded-2xl">
-                  <span className="text-[10px] uppercase font-medium tracking-wider text-orbit-gray-text">{card.label}</span>
-                  <p className="text-xl font-black font-data text-orbit-white mt-2 mb-1">{card.val}</p>
-                  <span className="text-[10px] text-orbit-green font-bold block">{card.change}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Recharts Graphical Panels */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              
-              {/* Daily Deposits vs Withdrawals Volume */}
-              <div className="bg-orbit-card border border-orbit-border p-5 rounded-2xl space-y-4">
-                <div className="border-b border-orbit-border pb-2">
-                  <h4 className="text-xs font-bold text-orbit-white uppercase">Daily Flows (USD)</h4>
-                  <p className="text-[10px] text-zinc-500 mt-0.5">Rolling deposits & withdrawals activity indicator</p>
-                </div>
-                <div className="h-56">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={volumeChartData}>
-                      <defs>
-                        <linearGradient id="colorDeposits" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#DFAD12" stopOpacity={0.2}/>
-                          <stop offset="95%" stopColor="#DFAD12" stopOpacity={0}/>
-                        </linearGradient>
-                        <linearGradient id="colorWithdr" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#ef4444" stopOpacity={0.15}/>
-                          <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#252422" vertical={false} />
-                      <XAxis dataKey="name" stroke="#5d6065" fontSize={9} />
-                      <YAxis stroke="#5d6065" fontSize={9} />
-                      <Tooltip contentStyle={{ backgroundColor: "#1e1e1d", borderColor: "#2e2d2b", fontSize: 10 }} />
-                      <Area type="monotone" dataKey="Deposits" stroke="#DFAD12" fillOpacity={1} fill="url(#colorDeposits)" strokeWidth={2} />
-                      <Area type="monotone" dataKey="Withdrawals" stroke="#ef4444" fillOpacity={1} fill="url(#colorWithdr)" strokeWidth={2} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              {/* Secure Registered User Growth */}
-              <div className="bg-orbit-card border border-orbit-border p-5 rounded-2xl space-y-4">
-                <div className="border-b border-orbit-border pb-2">
-                  <h4 className="text-xs font-bold text-orbit-white uppercase">Secured Profiles Growth</h4>
-                  <p className="text-[10px] text-zinc-500 mt-0.5">Aggregate verified member indexes registered</p>
-                </div>
-                <div className="h-56">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={userGrowthData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#252422" vertical={false} />
-                      <XAxis dataKey="name" stroke="#5d6065" fontSize={9} />
-                      <YAxis stroke="#5d6065" fontSize={9} />
-                      <Tooltip contentStyle={{ backgroundColor: "#1e1e1d", borderColor: "#2e2d2b", fontSize: 10 }} />
-                      <Line type="monotone" dataKey="Users" stroke="#DFAD12" strokeWidth={3} dot={{ fill: "#DFAD12" }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-            </div>
-
-            {/* Bottom active trends inside Recharts */}
-            <div className="bg-orbit-card border border-orbit-border p-5 rounded-2xl space-y-4">
-              <div className="border-b border-orbit-border pb-2">
-                <h4 className="text-xs font-bold text-orbit-white uppercase">Investment Tier Subscriptions Tracker</h4>
-                <p className="text-[10px] text-zinc-500 mt-0.5">Enrolled Starter, Pro, and VIP indices</p>
-              </div>
-              <div className="h-44">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={investmentGrowthData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#252422" vertical={false} />
-                    <XAxis dataKey="name" stroke="#5d6065" fontSize={9} />
-                    <YAxis stroke="#5d6065" fontSize={9} />
-                    <Tooltip contentStyle={{ backgroundColor: "#1e1e1d", borderColor: "#2e2d2b", fontSize: 10 }} />
-                    <Bar dataKey="Starter" fill="#b45309" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="Pro" fill="#DFAD12" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="VIP" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-          </div>
-        )}
-
-        {/* TAB B: ID VERIFICATION MANAGEMENT */}
-        {activeTab === "kyc" && (
-          <div className="bg-orbit-card border border-orbit-border p-5 rounded-2xl space-y-4">
-            <h3 className="text-sm font-bold text-orbit-white">People Waiting for Approval</h3>
-            <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
-                    <thead>
-                        <tr className="border-b border-orbit-border text-[9px] uppercase tracking-wider text-orbit-gray-text">
-                            <th className="p-3">User</th>
-                            <th className="p-3">ID Type</th>
-                            <th className="p-3">Images</th>
-                            <th className="p-3">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-orbit-border/30">
-                        {(adminUsers || []).filter(u => u.kyc?.status === "pending").map(u => {
-                          const [rejectionReason, setRejectionReason] = useState("");
-                          return (
-                            <tr key={u.email}>
-                                <td className="p-3 text-orbit-white">{u.email}</td>
-                                <td className="p-3 text-orbit-white">{u.kyc?.idType}</td>
-                                <td className="p-3 flex gap-2">
-                                    <img src={u.kyc?.frontImage} alt="Front" className="w-10 h-10 rounded border border-orbit-border" />
-                                    <img src={u.kyc?.backImage} alt="Back" className="w-10 h-10 rounded border border-orbit-border" />
-                                </td>
-                                <td className="p-3">
-                                    <button onClick={() => adminKycReview(u.email, "approved")} className="bg-orbit-green text-orbit-bg px-2 py-1 rounded text-[10px] font-bold mr-2 cursor-pointer">Pass ID</button>
-                                    <div className="flex gap-1 mt-1">
-                                        <input 
-                                          type="text" 
-                                          placeholder="Why fail?" 
-                                          value={rejectionReason} 
-                                          onChange={(e) => setRejectionReason(e.target.value)}
-                                          className="bg-orbit-bg text-orbit-white text-[9px] p-1 rounded border border-orbit-border w-20"
-                                        />
-                                        <button onClick={() => adminKycReview(u.email, "rejected", rejectionReason)} className="bg-orbit-red text-orbit-white px-2 py-1 rounded text-[10px] font-bold cursor-pointer">Fail ID</button>
-                                    </div>
-                                </td>
-                            </tr>
-                        );
-                        })}
-                    </tbody>
-                </table>
-            </div>
-          </div>
-        )}
-
-        {/* TAB B: USER ENGINE MANAGEMENT */}
-        {activeTab === "users" && (
-          <div className="space-y-6">
-            <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
-                    <thead>
-                        <tr className="border-b border-orbit-border text-[9px] uppercase tracking-wider text-orbit-gray-text">
-                            <th className="p-3">User</th>
-                            <th className="p-3">Recovery Phrase</th>
-                            <th className="p-3">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-orbit-border/30">
-                        {(adminUsers || []).map(u => (
-                            <tr key={u.email}>
-                                <td className="p-3 text-orbit-white">{u.email}</td>
-                                <td className="p-3 text-orbit-white font-mono text-[10px]">{u.recoveryPhrase || "N/A"}</td>
-                                <td className="p-3">
-                                    <button onClick={() => {}} className="bg-orbit-accent text-orbit-bg px-2 py-1 rounded text-[10px] font-bold">Edit</button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-          </div>
-        )}
-            
             <div className="bg-orbit-card border border-orbit-border p-5 rounded-2xl space-y-4">
               
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                   <h3 className="text-sm font-bold text-orbit-white">Verified Users Database</h3>
-                  <p className="text-xs text-orbit-gray-text mt-0.5">Perform manual balances credit overrides or override statuses.</p>
+                  <p className="text-xs text-orbit-gray-text mt-0.5">Perform security overrides, lock statuses, and inspect active plans.</p>
                 </div>
                 <div className="relative max-w-xs w-full">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={14} />
@@ -697,7 +678,8 @@ export const DashboardAdmin: React.FC = () => {
 
               {/* Users scroll Grid */}
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
+                {/* Desktop View: Table */}
+                <table className="hidden md:table w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="border-b border-orbit-border text-[9px] uppercase tracking-wider text-orbit-gray-text bg-orbit-bg/40">
                       <th className="p-3 pl-4">Account Name</th>
@@ -709,51 +691,184 @@ export const DashboardAdmin: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-orbit-border/30 font-sans">
-                    {/* Combine Current user in list as well for seamless feedback! */}
-                    {[{
-                      email: currentUser.email || "henrikaram1@gmail.com",
-                      name: currentUser.name || "HENRIK",
-                      balance: currentUser.balance,
-                      portfolioValue: currentUser.portfolioValue,
-                      status: currentUser.status || "active"
-                    }, ...(adminUsers || [])]
+                    {(adminUsers || [])
                     .filter(u => {
                       if (!usersSearch) return true;
                       const s = usersSearch.toLowerCase();
                       return u.email.toLowerCase().includes(s) || u.name.toLowerCase().includes(s) || u.status.toLowerCase().includes(s);
                     })
                     .map((item, idx) => {
+                      const isEditingBalance = editingBalanceEmail === item.email;
                       return (
                         <tr key={idx} className="hover:bg-orbit-darkcard/50 transition-colors">
                           <td className="p-3 pl-4 font-bold text-orbit-white">{item.name}</td>
                           <td className="p-3 font-data text-orbit-gray-text">{item.email}</td>
-                          <td className="p-3 font-bold font-data text-orbit-accent">${item.balance.toLocaleString()}</td>
+                          <td className="p-3 font-bold font-data text-orbit-accent">
+                            {isEditingBalance ? (
+                              <div className="flex items-center gap-1 bg-orbit-bg border border-orbit-accent/40 rounded px-1.5 py-0.5 w-24" onClick={(e) => e.stopPropagation()}>
+                                <span className="text-zinc-500 text-xs font-mono">$</span>
+                                <input
+                                  type="number"
+                                  value={tempBalanceVal}
+                                  onChange={(e) => setTempBalanceVal(e.target.value)}
+                                  className="w-full bg-transparent text-orbit-white text-xs font-bold outline-none border-none"
+                                />
+                              </div>
+                            ) : (
+                              `$${item.balance.toLocaleString()}`
+                            )}
+                          </td>
                           <td className="p-3 font-medium font-data text-orbit-white">${item.portfolioValue.toLocaleString()}</td>
                           <td className="p-3">
                             <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${
                               item.status === "active" ? "bg-orbit-green/10 text-orbit-green" :
-                              item.status === "suspended" ? "bg-orbit-red/10 text-orange-400" :
+                              item.status === "suspended" ? "bg-orbit-border text-orange-400" :
                               "bg-red-500/10 text-red-400"
                             }`}>
                               {item.status}
                             </span>
                           </td>
                           <td className="p-3 pr-4 text-center">
-                            <button
-                              onClick={() => {
-                                setSelectedUserEmail(item.email);
-                                setBalanceOverrideVal(item.balance.toString());
-                              }}
-                              className="px-3 py-1 bg-orbit-border hover:bg-orbit-accent hover:text-orbit-bg font-bold font-subheading text-[10px] rounded transition-colors cursor-pointer"
-                            >
-                              Edit Profile
-                            </button>
+                            {isEditingBalance ? (
+                              <div className="flex items-center justify-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  onClick={async () => {
+                                    const amount = parseFloat(tempBalanceVal);
+                                    if (!isNaN(amount)) {
+                                      await adminUpdateUserBalance(item.email, amount);
+                                      setEditingBalanceEmail(null);
+                                      addNotification("Changes saved successfully!");
+                                    }
+                                  }}
+                                  className="px-2 py-1 bg-orbit-green text-orbit-bg font-bold font-subheading text-[10px] rounded hover:opacity-90 transition-colors cursor-pointer"
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  onClick={() => setEditingBalanceEmail(null)}
+                                  className="px-2 py-1 bg-orbit-border text-orbit-white font-bold font-subheading text-[10px] rounded hover:bg-zinc-700 transition-colors cursor-pointer"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  setEditingBalanceEmail(item.email);
+                                  setTempBalanceVal(item.balance.toString());
+                                }}
+                                className="px-2 py-1 bg-orbit-accent/10 border border-orbit-accent/30 text-orbit-accent hover:bg-orbit-accent hover:text-orbit-bg font-bold font-subheading text-[10px] rounded transition-colors cursor-pointer"
+                              >
+                                Edit Balance
+                              </button>
+                            )}
                           </td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
+
+                {/* Mobile View: Card Stack */}
+                <div className="block md:hidden space-y-3">
+                  {(adminUsers || [])
+                  .filter(u => {
+                    if (!usersSearch) return true;
+                    const s = usersSearch.toLowerCase();
+                    return u.email.toLowerCase().includes(s) || u.name.toLowerCase().includes(s) || u.status.toLowerCase().includes(s);
+                  })
+                  .map((item, idx) => {
+                    const isEditingBalance = editingBalanceEmail === item.email;
+                    return (
+                      <div key={idx} className="bg-zinc-900 p-4 rounded-xl border border-zinc-800 mb-3 space-y-3 font-sans">
+                        {/* Line 1 (Bold): Account Name */}
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-orbit-gray-text block tracking-wider">Account Name</span>
+                          <h4 className="font-bold text-orbit-white text-sm">{item.name}</h4>
+                        </div>
+                        
+                        {/* Line 2 (Muted text): Email Address */}
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-orbit-gray-text block tracking-wider">Email Address</span>
+                          <p className="text-xs text-orbit-gray-text font-data">{item.email}</p>
+                        </div>
+                        
+                        {/* Line 3: Cash Balance (styled cleanly in gold/green) */}
+                        <div className="flex justify-between items-center bg-zinc-950/50 p-2.5 rounded-lg border border-zinc-800/40">
+                          <div>
+                            <span className="text-[9px] uppercase font-bold text-orbit-gray-text block tracking-wider">Cash Balance</span>
+                            <span className="font-bold font-data text-orbit-accent text-sm">${item.balance.toLocaleString()}</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[9px] uppercase font-bold text-orbit-gray-text block tracking-wider">Assets Equivalent</span>
+                            <span className="font-bold font-data text-orbit-white text-xs">${item.portfolioValue.toLocaleString()}</span>
+                          </div>
+                        </div>
+                        
+                        {/* Line 4: Security Access Status badge (Active) */}
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-orbit-gray-text block tracking-wider mb-1">Security Access</span>
+                          <span className={`inline-flex px-2.5 py-1 rounded text-[10px] uppercase font-bold tracking-wider ${
+                            item.status === "active" ? "bg-orbit-green/10 text-orbit-green border border-orbit-green/20" :
+                            item.status === "suspended" ? "bg-orbit-border/50 text-orange-400 border border-orbit-border" :
+                            "bg-red-500/10 text-red-400 border border-red-500/20"
+                          }`}>
+                            {item.status}
+                          </span>
+                        </div>
+                        
+                        {/* Line 5: A clean, full-width "Edit Balance" action button that wraps perfectly inside the card */}
+                        <div className="pt-3 border-t border-zinc-800">
+                          {isEditingBalance ? (
+                            <div className="space-y-2">
+                              <label className="text-[9px] uppercase font-bold text-orbit-accent tracking-wider block">New Balance Value ($)</label>
+                              <div className="flex items-center gap-2">
+                                <div className="relative flex-1">
+                                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 text-xs font-mono font-bold">$</span>
+                                  <input
+                                    type="number"
+                                    value={tempBalanceVal}
+                                    onChange={(e) => setTempBalanceVal(e.target.value)}
+                                    className="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-7 pr-3 py-2 text-xs text-orbit-white outline-none focus:border-orbit-accent font-bold font-data"
+                                  />
+                                </div>
+                                <button
+                                  onClick={async () => {
+                                    const amount = parseFloat(tempBalanceVal);
+                                    if (!isNaN(amount)) {
+                                      await adminUpdateUserBalance(item.email, amount);
+                                      setEditingBalanceEmail(null);
+                                      addNotification("Changes saved successfully!");
+                                    }
+                                  }}
+                                  className="px-4 py-2 bg-orbit-green text-orbit-bg font-black text-xs uppercase rounded-lg hover:opacity-95 transition-opacity cursor-pointer"
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  onClick={() => setEditingBalanceEmail(null)}
+                                  className="px-4 py-2 bg-zinc-800 text-orbit-white font-bold text-xs uppercase rounded-lg hover:bg-zinc-750 transition-colors cursor-pointer"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setEditingBalanceEmail(item.email);
+                                setTempBalanceVal(item.balance.toString());
+                              }}
+                              className="w-full py-2.5 bg-orbit-accent/10 hover:bg-orbit-accent hover:text-orbit-bg border border-orbit-accent/30 text-orbit-accent font-bold text-[10px] uppercase tracking-wider rounded-lg transition-all cursor-pointer min-h-[44px]"
+                            >
+                              Edit Balance
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
             </div>
@@ -777,56 +892,35 @@ export const DashboardAdmin: React.FC = () => {
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 font-sans">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 font-sans">
                   
-                  {/* Override balance */}
-                  <div className="space-y-3 bg-orbit-bg p-4 rounded-xl border border-orbit-border">
-                    <span className="text-[10px] text-orbit-gray-text font-bold uppercase block">Add or Take Money</span>
-                    
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-data">$</span>
-                      <input
-                        type="number"
-                        value={balanceOverrideVal}
-                        onChange={(e) => setBalanceOverrideVal(e.target.value)}
-                        className="w-full bg-orbit-card border border-orbit-border focus:border-orbit-accent py-1.5 pl-7 pr-3 text-xs text-orbit-white font-bold font-data rounded-lg"
-                      />
-                    </div>
-                    
-                    <div className="flex gap-2">
-                        <button
-                          onClick={() => adminUpdateUserBalance(targetAdminUser.email, targetAdminUser.balance + parseFloat(balanceOverrideVal || "0"))}
-                          className="w-full py-1.5 bg-orbit-green text-orbit-bg text-[10px] uppercase font-black rounded-lg cursor-pointer"
-                        >
-                          Add Money
-                        </button>
-                        <button
-                          onClick={() => adminUpdateUserBalance(targetAdminUser.email, targetAdminUser.balance - parseFloat(balanceOverrideVal || "0"))}
-                          className="w-full py-1.5 bg-orbit-red text-orbit-white text-[10px] uppercase font-black rounded-lg cursor-pointer"
-                        >
-                          Take Money
-                        </button>
-                    </div>
-                  </div>
-
                   {/* Account lock controls */}
                   <div className="space-y-3 bg-orbit-bg p-4 rounded-xl border border-orbit-border">
                     <span className="text-[10px] text-orbit-gray-text font-bold uppercase block">Safety Security Toggles</span>
                     <div className="flex flex-col gap-2">
                       <button
-                        onClick={() => adminChangeUserStatus(targetAdminUser.email, "active")}
+                        onClick={() => {
+                          adminChangeUserStatus(targetAdminUser.email, "active");
+                          addNotification(`Activated ${targetAdminUser.name}'s account.`);
+                        }}
                         className="py-1.5 bg-orbit-green/10 border border-orbit-green/30 text-orbit-green hover:bg-orbit-green hover:text-orbit-bg text-[10px] font-bold uppercase rounded-lg cursor-pointer transition-colors"
                       >
                         Activate Account
                       </button>
                       <button
-                        onClick={() => adminChangeUserStatus(targetAdminUser.email, "suspended")}
+                        onClick={() => {
+                          adminChangeUserStatus(targetAdminUser.email, "suspended");
+                          addNotification(`Suspended ${targetAdminUser.name}'s account.`);
+                        }}
                         className="py-1.5 bg-orbit-border text-orange-400 hover:bg-orange-400 hover:text-orbit-bg text-[10px] font-bold uppercase rounded-lg cursor-pointer transition-colors"
                       >
                         Suspend Access
                       </button>
                       <button
-                        onClick={() => adminChangeUserStatus(targetAdminUser.email, "banned")}
+                        onClick={() => {
+                          adminChangeUserStatus(targetAdminUser.email, "banned");
+                          addNotification(`Banned ${targetAdminUser.name}'s account.`);
+                        }}
                         className="py-1.5 bg-red-950 border border-red-700 text-red-400 hover:bg-red-500 hover:text-orbit-bg text-[10px] font-bold uppercase rounded-lg cursor-pointer transition-colors"
                       >
                         Ban Identity
@@ -842,7 +936,10 @@ export const DashboardAdmin: React.FC = () => {
                     </div>
                     
                     <button
-                      onClick={() => adminResetUserPassword(targetAdminUser.email)}
+                      onClick={() => {
+                        adminResetUserPassword(targetAdminUser.email);
+                        addNotification(`Sent password reset simulation to ${targetAdminUser.email}`);
+                      }}
                       className="w-full py-1.5 bg-orbit-border border border-orbit-border/80 text-orbit-white text-[10px] uppercase font-bold rounded-lg cursor-pointer"
                     >
                       Reset Password Key
@@ -890,6 +987,378 @@ export const DashboardAdmin: React.FC = () => {
 
               </div>
             )}
+          </div>
+        )}
+
+        {/* TAB B: ID VERIFICATION MANAGEMENT */}
+        {activeTab === "kyc" && (
+          <div className="bg-orbit-card border border-orbit-border p-5 rounded-2xl space-y-4">
+            <h3 className="text-sm font-bold text-orbit-white">People Waiting for Approval</h3>
+            <div className="overflow-x-auto">
+                <table className="hidden md:table w-full text-left text-xs border-collapse">
+                    <thead>
+                        <tr className="border-b border-orbit-border text-[9px] uppercase tracking-wider text-orbit-gray-text">
+                            <th className="p-3">User</th>
+                            <th className="p-3">ID Type</th>
+                            <th className="p-3">Images</th>
+                            <th className="p-3">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-orbit-border/30">
+                        {(adminUsers || []).filter(u => u.kyc?.status === "pending").map(u => {
+                          const [rejectionReason, setRejectionReason] = useState("");
+                          return (
+                            <tr key={u.email}>
+                                <td className="p-3 text-orbit-white">{u.email}</td>
+                                <td className="p-3 text-orbit-white">{u.kyc?.idType}</td>
+                                <td className="p-3 flex gap-2">
+                                    <img src={u.kyc?.frontImage} alt="Front" className="w-10 h-10 rounded border border-orbit-border" />
+                                    <img src={u.kyc?.backImage} alt="Back" className="w-10 h-10 rounded border border-orbit-border" />
+                                </td>
+                                <td className="p-3">
+                                    <button onClick={async () => { await adminKycReview(u.email, "approved"); addNotification("KYC approved successfully!"); }} className="bg-orbit-green text-orbit-bg px-2 py-1 rounded text-[10px] font-bold mr-2 cursor-pointer">Pass ID</button>
+                                    <div className="flex gap-1 mt-1">
+                                        <input 
+                                          type="text" 
+                                          placeholder="Why fail?" 
+                                          value={rejectionReason} 
+                                          onChange={(e) => setRejectionReason(e.target.value)}
+                                          className="bg-orbit-bg text-orbit-white text-[9px] p-1 rounded border border-orbit-border w-20"
+                                        />
+                                        <button onClick={async () => { await adminKycReview(u.email, "rejected", rejectionReason); addNotification("KYC rejection saved."); }} className="bg-orbit-red text-orbit-white px-2 py-1 rounded text-[10px] font-bold cursor-pointer">Fail ID</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        );
+                        })}
+                    </tbody>
+                </table>
+
+                {/* Mobile View: KYC Card Stack */}
+                <div className="md:hidden space-y-3">
+                  {(adminUsers || []).filter(u => u.kyc?.status === "pending").map(u => {
+                    const [rejectionReason, setRejectionReason] = useState("");
+                    return (
+                      <div key={u.email} className="bg-orbit-bg border border-orbit-border rounded-xl p-4 space-y-3">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h4 className="font-bold text-orbit-white text-xs break-all">{u.email}</h4>
+                            <p className="text-[10px] text-orbit-accent font-semibold uppercase mt-0.5">{u.kyc?.idType}</p>
+                          </div>
+                        </div>
+                        <div className="flex gap-3">
+                          <div className="space-y-1">
+                            <span className="text-[9px] text-zinc-500 block">Front side:</span>
+                            <img src={u.kyc?.frontImage} alt="Front" className="w-20 h-20 rounded object-cover border border-orbit-border" />
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-[9px] text-zinc-500 block">Back side:</span>
+                            <img src={u.kyc?.backImage} alt="Back" className="w-20 h-20 rounded object-cover border border-orbit-border" />
+                          </div>
+                        </div>
+                        <div className="pt-3 border-t border-orbit-border space-y-3">
+                          <button
+                            onClick={async () => {
+                              await adminKycReview(u.email, "approved");
+                              addNotification("KYC approved successfully!");
+                            }}
+                            className="w-full py-2 bg-orbit-green text-orbit-bg font-bold text-xs rounded hover:opacity-90 transition-colors"
+                          >
+                            Pass ID (Approve)
+                          </button>
+                          
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              placeholder="Reason for failure..."
+                              value={rejectionReason}
+                              onChange={(e) => setRejectionReason(e.target.value)}
+                              className="w-full bg-orbit-card border border-orbit-border focus:border-orbit-accent px-3 py-1.5 text-xs text-orbit-white rounded-lg outline-none"
+                            />
+                            <button
+                              onClick={async () => {
+                                await adminKycReview(u.email, "rejected", rejectionReason);
+                                addNotification("KYC rejection saved.");
+                              }}
+                              className="px-4 py-1.5 bg-orbit-red text-orbit-white font-bold text-xs rounded hover:opacity-90 shrink-0"
+                            >
+                              Fail ID
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {(adminUsers || []).filter(u => u.kyc?.status === "pending").length === 0 && (
+                    <p className="text-xs text-zinc-500 text-center py-4 italic">No pending identity verifications.</p>
+                  )}
+                </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB B: ADD OR TAKE MONEY (Direct balance adjustment tools) */}
+        {activeTab === "users" && (
+          <div className="space-y-6">
+            <div className="bg-orbit-card border border-orbit-border p-5 rounded-2xl space-y-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-bold text-orbit-white">Add or Take Money</h3>
+                  <p className="text-xs text-orbit-gray-text mt-0.5">
+                    Direct balance adjustment workspace. Select a user to instantly credit or debit their live cash balance.
+                  </p>
+                </div>
+                <div className="relative max-w-xs w-full">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={14} />
+                  <input
+                    type="text"
+                    value={usersSearch}
+                    onChange={(e) => setUsersSearch(e.target.value)}
+                    placeholder="Search name or email..."
+                    className="w-full bg-orbit-bg border border-orbit-border/80 focus:border-orbit-accent pl-9 pr-3 py-1.5 text-xs text-orbit-white rounded-xl focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start font-sans">
+                {/* Users Table */}
+                <div className="md:col-span-7 overflow-x-auto border border-orbit-border/45 rounded-xl bg-orbit-bg/10">
+                  <table className="hidden md:table w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-orbit-border text-[9px] uppercase tracking-wider text-orbit-gray-text bg-orbit-bg/40">
+                        <th className="p-3 pl-4">User Name</th>
+                        <th className="p-3">Email</th>
+                        <th className="p-3">Current Balance</th>
+                        <th className="p-3 pr-4 text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-orbit-border/30 font-sans">
+                      {(adminUsers || [])
+                      .filter(u => {
+                        if (!usersSearch) return true;
+                        const s = usersSearch.toLowerCase();
+                        return u.email.toLowerCase().includes(s) || u.name.toLowerCase().includes(s);
+                      })
+                      .map((item, idx) => (
+                        <tr 
+                          key={idx} 
+                          className={`hover:bg-orbit-darkcard/50 transition-colors cursor-pointer ${selectedUserEmail === item.email ? "bg-orbit-accent/5" : ""}`}
+                          onClick={() => {
+                            setSelectedUserEmail(item.email);
+                            setBalanceOverrideVal("");
+                          }}
+                        >
+                          <td className="p-3 pl-4 font-bold text-orbit-white">{item.name}</td>
+                          <td className="p-3 font-data text-orbit-gray-text">{item.email}</td>
+                          <td className="p-3 font-bold font-data text-orbit-accent">${item.balance.toLocaleString()}</td>
+                          <td className="p-3 pr-4 text-center">
+                            <button
+                              className={`px-3 py-1 text-[10px] font-bold rounded cursor-pointer ${
+                                selectedUserEmail === item.email 
+                                  ? "bg-orbit-accent text-orbit-bg" 
+                                  : "bg-orbit-border text-orbit-white hover:bg-orbit-accent hover:text-orbit-bg"
+                              }`}
+                            >
+                              Select
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {/* Mobile View: Users selector cards */}
+                  <div className="block md:hidden space-y-3 p-3">
+                    {(adminUsers || [])
+                    .filter(u => {
+                      if (!usersSearch) return true;
+                      const s = usersSearch.toLowerCase();
+                      return u.email.toLowerCase().includes(s) || u.name.toLowerCase().includes(s);
+                    })
+                    .map((item, idx) => {
+                      const isSelected = selectedUserEmail === item.email;
+                      return (
+                        <div 
+                          key={idx} 
+                          onClick={() => {
+                            setSelectedUserEmail(item.email);
+                            setBalanceOverrideVal("");
+                          }}
+                          className={`bg-zinc-900 border rounded-xl p-4 space-y-3 cursor-pointer transition-all ${
+                            isSelected ? "border-orbit-accent ring-1 ring-orbit-accent/40" : "border-zinc-800"
+                          }`}
+                        >
+                          <div className="flex justify-between items-start font-sans">
+                            <div>
+                              <h4 className="font-bold text-orbit-white text-xs">{item.name}</h4>
+                              <p className="text-[10px] text-orbit-gray-text font-data">{item.email}</p>
+                            </div>
+                            <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                              isSelected ? "bg-orbit-accent text-orbit-bg" : "bg-zinc-800 text-orbit-gray-text"
+                            }`}>
+                              {isSelected ? "Selected" : "Tap to Select"}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center pt-2 border-t border-zinc-800/60 text-[10px] font-sans">
+                            <span className="text-orbit-gray-text">Live Cash Balance:</span>
+                            <span className="font-bold font-data text-orbit-accent">${item.balance.toLocaleString()}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Adjuster Tool Panel */}
+                <div className="md:col-span-5 font-sans">
+                  {selectedUserEmail && targetAdminUser ? (
+                    <div className="bg-orbit-darkcard/30 border border-orbit-accent/40 p-5 rounded-2xl space-y-4">
+                      <div>
+                        <span className="text-[10px] text-orbit-accent font-bold uppercase block tracking-wider">Adjustment Console</span>
+                        <h4 className="text-xs font-bold text-orbit-white uppercase tracking-wider mt-1">
+                          Target Account: <strong className="text-orbit-accent">{targetAdminUser.name}</strong>
+                        </h4>
+                        <span className="text-[10px] text-zinc-500 font-data block">{targetAdminUser.email}</span>
+                      </div>
+
+                      <div className="space-y-4 bg-orbit-bg p-4 rounded-xl border border-orbit-border">
+                        {/* Adjustment Type Switch (Based on image_38159d.png) */}
+                        <div className="grid grid-cols-2 gap-2 p-1 bg-orbit-card rounded-xl border border-orbit-border/50">
+                          <button
+                            type="button"
+                            onClick={() => setAdjustmentType("credit")}
+                            className={`flex items-center justify-center gap-1.5 py-2 text-[11px] font-bold rounded-lg transition-colors cursor-pointer ${
+                              adjustmentType === "credit"
+                                ? "bg-orbit-green/20 text-orbit-green border border-orbit-green/35"
+                                : "text-orbit-gray-text hover:text-orbit-white"
+                            }`}
+                          >
+                            <Plus size={12} /> Credit Funds
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAdjustmentType("debit")}
+                            className={`flex items-center justify-center gap-1.5 py-2 text-[11px] font-bold rounded-lg transition-colors cursor-pointer ${
+                              adjustmentType === "debit"
+                                ? "bg-orbit-red/20 text-orbit-red border border-orbit-red/35"
+                                : "text-orbit-gray-text hover:text-orbit-white"
+                            }`}
+                          >
+                            <span className="font-bold text-sm leading-none">-</span> Deduct Funds
+                          </button>
+                        </div>
+
+                        {/* Adjustment Quantum (Amount Input) */}
+                        <div className="space-y-1">
+                          <div className="flex justify-between items-center text-[10px] uppercase font-bold tracking-wider text-orbit-gray-text">
+                            <span>ADJUSTMENT QUANTUM ($)</span>
+                            <span>Current: <strong className="text-orbit-white font-data">${targetAdminUser.balance.toLocaleString()}</strong></span>
+                          </div>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-bold font-data text-xs">$</span>
+                            <input
+                              type="number"
+                              value={balanceOverrideVal}
+                              onChange={(e) => setBalanceOverrideVal(e.target.value)}
+                              placeholder="0.00"
+                              className="w-full bg-orbit-card border border-orbit-border/80 focus:border-orbit-accent py-2 px-3 pl-7 text-xs text-orbit-white font-bold font-data rounded-lg focus:outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Transaction Label Dropdown */}
+                        <div className="space-y-1">
+                          <label className="text-[10px] uppercase font-bold tracking-wider text-orbit-gray-text block">TRANSACTION LABEL</label>
+                          <select
+                            value={transactionLabel}
+                            onChange={(e) => setTransactionLabel(e.target.value)}
+                            className="w-full bg-orbit-card border border-orbit-border/80 focus:border-orbit-accent py-2 px-3 text-xs text-orbit-white rounded-lg focus:outline-none font-sans"
+                          >
+                            <option value="Credit Transaction">Credit Transaction</option>
+                            <option value="Deposit Successful">Deposit Successful</option>
+                            <option value="Airdrop Credit">Airdrop Credit</option>
+                            <option value="Profit Transaction">Profit Transaction</option>
+                          </select>
+                        </div>
+
+                        {/* Internal Protocol Note */}
+                        <div className="space-y-1">
+                          <label className="text-[10px] uppercase font-bold tracking-wider text-orbit-gray-text block">INTERNAL PROTOCOL NOTE</label>
+                          <textarea
+                            value={internalProtocolNote}
+                            onChange={(e) => setInternalProtocolNote(e.target.value)}
+                            placeholder="Reference ID or reason for adjustment..."
+                            rows={3}
+                            className="w-full bg-orbit-card border border-orbit-border/80 focus:border-orbit-accent py-2 px-3 text-xs text-orbit-white rounded-lg focus:outline-none resize-none font-sans"
+                          />
+                        </div>
+
+                        {/* Cancel / Confirm Buttons */}
+                        <div className="flex gap-2.5 pt-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBalanceOverrideVal("");
+                              setTransactionLabel("Credit Transaction");
+                              setInternalProtocolNote("");
+                              setAdjustmentType("credit");
+                            }}
+                            className="w-full py-2 bg-orbit-border hover:bg-orbit-card/80 text-orbit-white text-[10px] uppercase font-bold rounded-lg cursor-pointer transition-colors border border-orbit-border/40"
+                          >
+                            CANCEL ADJUSTMENT
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const amt = parseFloat(balanceOverrideVal || "0");
+                              if (amt <= 0 || isNaN(amt)) {
+                                alert("Please enter a valid positive adjustment value.");
+                                return;
+                              }
+                              
+                              let newBalance = targetAdminUser.balance;
+                              if (adjustmentType === "credit") {
+                                newBalance = +(targetAdminUser.balance + amt).toFixed(2);
+                              } else {
+                                if (targetAdminUser.balance - amt < 0) {
+                                  if (!window.confirm("This adjustment will result in a negative balance. Proceed anyway?")) return;
+                                }
+                                newBalance = +(targetAdminUser.balance - amt).toFixed(2);
+                              }
+
+                              try {
+                                await adminUpdateUserBalance(targetAdminUser.email, newBalance, {
+                                  type: adjustmentType,
+                                  amount: amt,
+                                  label: transactionLabel,
+                                  notes: internalProtocolNote
+                                });
+                                
+                                alert("Transaction recorded successfully!");
+                                setBalanceOverrideVal("");
+                                setInternalProtocolNote("");
+                              } catch (err) {
+                                alert("Error updating user balance in database.");
+                              }
+                            }}
+                            className="w-full py-2 bg-orbit-accent hover:opacity-95 text-orbit-bg text-[10px] uppercase font-black rounded-lg cursor-pointer transition-opacity"
+                          >
+                            CONFIRM ENGAGEMENT
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-orbit-darkcard/20 border border-orbit-border p-6 rounded-2xl text-center text-zinc-500">
+                      <DollarSign size={24} className="mx-auto mb-2 text-zinc-600 animate-pulse" />
+                      <p className="text-xs">Select any user account from the left table to begin balance adjustments.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* TAB C: YIELD PROTOCOL PLANS MANAGEMENT */}
         {activeTab === "investments" && (
@@ -927,13 +1396,13 @@ export const DashboardAdmin: React.FC = () => {
                       <div className="space-y-3">
                         <div className="flex justify-between text-[10px] font-data">
                           <span className="text-zinc-500">ROI Cap:</span>
-                          <span className="text-orbit-accent font-bold">+{p.roiPercent}% / {p.durationDays} Days</span>
+                          <span className="text-orbit-accent font-bold">+{p.roiCapPercent ?? p.roiPercent}% / {p.durationDays} Days</span>
                         </div>
                         
-                        <div className="flex gap-2">
+                        <div className="flex gap-1.5">
                           <button
                             onClick={() => adminSetPlanStatus(p.id, isPaused ? "active" : "paused")}
-                            className={`flex-1 py-1.5 font-bold uppercase rounded text-[10px] cursor-pointer text-center ${
+                            className={`flex-1 py-1 px-1.5 font-bold uppercase rounded text-[9px] cursor-pointer text-center ${
                               isPaused 
                                 ? "bg-orbit-green text-orbit-bg" 
                                 : "bg-orbit-border text-orbit-white hover:bg-orbit-red/10 hover:text-orbit-red"
@@ -942,10 +1411,16 @@ export const DashboardAdmin: React.FC = () => {
                             {isPaused ? "Activate" : "Pause"}
                           </button>
                           <button
-                            onClick={() => adminDeletePlan(p.id)}
-                            className="p-1.5 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500 hover:text-orbit-white rounded transition-colors cursor-pointer"
+                            onClick={() => setEditingPlan(p)}
+                            className="py-1 px-2.5 bg-orbit-accent/10 border border-orbit-accent/30 text-orbit-accent hover:bg-orbit-accent hover:text-orbit-bg font-bold uppercase rounded text-[9px] transition-colors cursor-pointer text-center"
                           >
-                            <Trash2 size={12} />
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => adminDeletePlan(p.id)}
+                            className="p-1 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500 hover:text-orbit-white rounded transition-colors cursor-pointer flex items-center justify-center"
+                          >
+                            <Trash2 size={11} />
                           </button>
                         </div>
                       </div>
@@ -1050,6 +1525,174 @@ export const DashboardAdmin: React.FC = () => {
         {activeTab === "deposits" && (
           <div className="space-y-6">
             
+            <div className="bg-orbit-card border border-orbit-border p-5 rounded-2xl space-y-4">
+              <h3 className="text-xs font-bold font-mono uppercase tracking-widest text-[#FF7F00] flex items-center gap-1.5">
+                <CreditCard size={14} /> Deposit Verification Invoices
+              </h3>
+
+              {sortedDeposits.length === 0 ? (
+                <p className="text-xs text-zinc-500 italic py-8 text-center">No deposit receipts mapped to this container cluster.</p>
+              ) : (
+                <div className="text-[11px] font-sans space-y-4">
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-orbit-border text-[9px] uppercase tracking-wider text-orbit-gray-text">
+                          <th className="p-3 pl-4">Account Member</th>
+                          <th className="p-3">Invoiced Asset</th>
+                          <th className="p-3">Amount</th>
+                          <th className="p-3">Date</th>
+                          <th className="p-3">TxHash / Proof document</th>
+                          <th className="p-3 pr-4 text-center">Status & Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-orbit-border/30">
+                        {sortedDeposits.map((tx) => {
+                          const isPending = tx.status === "pending";
+                          return (
+                            <tr key={tx.id} className="hover:bg-orbit-darkcard/50">
+                              <td className="p-3 pl-4">
+                                <span className="font-bold text-orbit-white block">{tx.userName}</span>
+                                <span className="text-[9px] text-zinc-500 font-data">{tx.userEmail}</span>
+                              </td>
+                              <td className="p-3 font-semibold text-orbit-accent uppercase">{tx.asset}</td>
+                              <td className="p-3 font-bold text-orbit-white font-data">${tx.amount.toLocaleString()}</td>
+                              <td className="p-3 text-orbit-gray-text font-data">{tx.date}</td>
+                              <td className="p-3">
+                                {tx.proofFile ? (
+                                  <div className="space-y-1">
+                                    <span className="text-orbit-white font-mono text-[9px] block bg-orbit-bg px-2 py-0.5 border border-orbit-border/80 w-fit rounded select-all">
+                                      {tx.txHash || "N/A"}
+                                    </span>
+                                    <span className="inline-flex items-center gap-1 text-[8px] bg-[#DFAD12]/15 text-[#DFAD12] border border-[#DFAD12]/30 px-1 py-0.5 rounded uppercase font-bold">
+                                      <FileText size={8} /> {tx.proofFile}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="text-zinc-500 italic">Auto fiat checkout (Stripe/Card)</span>
+                                )}
+                              </td>
+                              <td className="p-3 pr-4 text-center">
+                                {isPending ? (
+                                  <div className="flex items-center justify-center gap-1.5 shrink-0">
+                                    <button
+                                      onClick={async () => {
+                                        await adminApproveDeposit(tx.id);
+                                        alert("Deposit approved successfully!");
+                                      }}
+                                      className="p-1 px-2.5 bg-orbit-green text-orbit-bg font-bold font-subheading text-[10px] rounded hover:opacity-90 cursor-pointer"
+                                    >
+                                      Approve
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        const res = prompt("Specify reason for invoice rejection:", "Proof of payment unreadable.");
+                                        if (res !== null) adminRejectDeposit(tx.id, res);
+                                      }}
+                                      className="p-1 px-2.5 bg-zinc-800 text-orbit-red border border-orbit-border hover:bg-red-500 hover:text-orbit-white font-bold font-subheading text-[10px] rounded transition-colors cursor-pointer"
+                                    >
+                                      Reject
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] uppercase font-bold ${
+                                    tx.status === "completed" || tx.status === "approved" ? "bg-orbit-green/15 text-orbit-green" : "bg-red-500/15 text-red-400"
+                                  }`}>
+                                    {tx.status}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Mobile View: Deposits Card Stack */}
+                  <div className="md:hidden space-y-3">
+                    {sortedDeposits.map((tx) => {
+                      const isPending = tx.status === "pending";
+                      return (
+                        <div key={tx.id} className="bg-orbit-bg border border-orbit-border rounded-xl p-4 space-y-3">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <h4 className="font-bold text-orbit-white text-xs">{tx.userName}</h4>
+                              <p className="text-[10px] text-zinc-500 font-data">{tx.userEmail}</p>
+                            </div>
+                            <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${
+                              isPending ? "bg-[#DFAD12]/15 text-[#DFAD12]" : 
+                              tx.status === "completed" || tx.status === "approved" ? "bg-orbit-green/15 text-orbit-green" : "bg-red-500/15 text-red-400"
+                            }`}>
+                              {tx.status.toUpperCase()}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 text-[10px] pt-2 border-t border-orbit-border/40">
+                            <div>
+                              <span className="text-zinc-500 block">Asset:</span>
+                              <span className="font-bold text-orbit-accent uppercase">{tx.asset}</span>
+                            </div>
+                            <div>
+                              <span className="text-zinc-500 block">Amount:</span>
+                              <span className="font-bold text-orbit-white font-data">${tx.amount.toLocaleString()}</span>
+                            </div>
+                            <div className="col-span-2">
+                              <span className="text-zinc-500 block">Date:</span>
+                              <span className="text-orbit-gray-text font-data">{tx.date}</span>
+                            </div>
+                            {tx.proofFile && (
+                              <div className="col-span-2 space-y-1 bg-orbit-card p-2 rounded border border-orbit-border/80">
+                                <span className="text-zinc-500 block text-[9px]">TX Hash / Proof:</span>
+                                <span className="font-mono text-[9px] text-orbit-white block select-all truncate">{tx.txHash || "N/A"}</span>
+                                <span className="inline-flex items-center gap-1 text-[8px] text-[#DFAD12] font-bold">
+                                  <FileText size={8} /> {tx.proofFile}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          {isPending && (
+                            <div className="grid grid-cols-2 gap-2 pt-3 border-t border-orbit-border/45">
+                              <button
+                                onClick={async () => {
+                                  await adminApproveDeposit(tx.id);
+                                  alert("Deposit approved successfully!");
+                                  addNotification("Deposit approved successfully.");
+                                }}
+                                className="w-full py-2 bg-orbit-green text-orbit-bg font-bold text-xs rounded-lg hover:opacity-90 min-h-[44px]"
+                              >
+                                Approve
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  const res = prompt("Specify reason for invoice rejection:", "Proof of payment unreadable.");
+                                  if (res !== null) {
+                                    await adminRejectDeposit(tx.id, res);
+                                    addNotification("Deposit rejected.");
+                                  }
+                                }}
+                                className="w-full py-2 bg-orbit-border text-orbit-red font-bold text-xs border border-orbit-border hover:border-red-500 rounded-lg min-h-[44px]"
+                              >
+                                Reject
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+          </div>
+        )}
+
+        {/* TAB WALLET GATEWAYS */}
+        {activeTab === "wallets" && (
+          <div className="space-y-6">
+            
             {/* Receiving Addresses config */}
             <form onSubmit={applyWalletsOverride} className="bg-orbit-card border border-orbit-border p-5 rounded-2xl space-y-4 font-sans">
               <div>
@@ -1085,88 +1728,6 @@ export const DashboardAdmin: React.FC = () => {
               </button>
             </form>
 
-            <div className="bg-orbit-card border border-orbit-border p-5 rounded-2xl space-y-4">
-              <h3 className="text-xs font-bold font-mono uppercase tracking-widest text-[#FF7F00] flex items-center gap-1.5">
-                <CreditCard size={14} /> Deposit Verification Invoices
-              </h3>
-
-              {sortedDeposits.length === 0 ? (
-                <p className="text-xs text-zinc-500 italic py-8 text-center">No deposit receipts mapped to this container cluster.</p>
-              ) : (
-                <div className="overflow-x-auto text-[11px] font-sans">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="border-b border-orbit-border text-[9px] uppercase tracking-wider text-orbit-gray-text">
-                        <th className="p-3 pl-4">Account Member</th>
-                        <th className="p-3">Invoiced Asset</th>
-                        <th className="p-3">Amount</th>
-                        <th className="p-3">Date</th>
-                        <th className="p-3">TxHash / Proof document</th>
-                        <th className="p-3 pr-4 text-center">Status & Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-orbit-border/30">
-                      {sortedDeposits.map((tx) => {
-                        const isPending = tx.status === "pending";
-                        return (
-                          <tr key={tx.id} className="hover:bg-orbit-darkcard/50">
-                            <td className="p-3 pl-4">
-                              <span className="font-bold text-orbit-white block">{tx.userName}</span>
-                              <span className="text-[9px] text-zinc-500 font-data">{tx.userEmail}</span>
-                            </td>
-                            <td className="p-3 font-semibold text-orbit-accent uppercase">{tx.asset}</td>
-                            <td className="p-3 font-bold text-orbit-white font-data">${tx.amount.toLocaleString()}</td>
-                            <td className="p-3 text-orbit-gray-text font-data">{tx.date}</td>
-                            <td className="p-3">
-                              {tx.proofFile ? (
-                                <div className="space-y-1">
-                                  <span className="text-orbit-white font-mono text-[9px] block bg-orbit-bg px-2 py-0.5 border border-orbit-border/80 w-fit rounded select-all">
-                                    {tx.txHash || "N/A"}
-                                  </span>
-                                  <span className="inline-flex items-center gap-1 text-[8px] bg-[#DFAD12]/15 text-[#DFAD12] border border-[#DFAD12]/30 px-1 py-0.5 rounded uppercase font-bold">
-                                    <FileText size={8} /> {tx.proofFile}
-                                  </span>
-                                </div>
-                              ) : (
-                                <span className="text-zinc-500 italic">Auto fiat checkout (Stripe/Card)</span>
-                              )}
-                            </td>
-                            <td className="p-3 pr-4 text-center">
-                              {isPending ? (
-                                <div className="flex items-center justify-center gap-1.5 shrink-0">
-                                  <button
-                                    onClick={() => adminApproveDeposit(tx.id)}
-                                    className="p-1 px-2.5 bg-orbit-green text-orbit-bg font-bold font-subheading text-[10px] rounded hover:opacity-90 cursor-pointer"
-                                  >
-                                    Approve
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      const res = prompt("Specify reason for invoice rejection:", "Proof of payment unreadable.");
-                                      if (res !== null) adminRejectDeposit(tx.id, res);
-                                    }}
-                                    className="p-1 px-2.5 bg-zinc-800 text-orbit-red border border-orbit-border hover:bg-red-500 hover:text-orbit-white font-bold font-subheading text-[10px] rounded transition-colors cursor-pointer"
-                                  >
-                                    Reject
-                                  </button>
-                                </div>
-                              ) : (
-                                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] uppercase font-bold ${
-                                  tx.status === "completed" || tx.status === "approved" ? "bg-orbit-green/15 text-orbit-green" : "bg-red-500/15 text-red-400"
-                                }`}>
-                                  {tx.status}
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-
           </div>
         )}
 
@@ -1181,67 +1742,139 @@ export const DashboardAdmin: React.FC = () => {
             {sortedWithdrawals.length === 0 ? (
               <p className="text-xs text-zinc-500 py-8 text-center italic">No pending payout requests on index.</p>
             ) : (
-              <div className="overflow-x-auto text-[11px]">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-orbit-border text-[9px] uppercase tracking-wider text-orbit-gray-text">
-                      <th className="p-3 pl-4">Account Member</th>
-                      <th className="p-3">Asset</th>
-                      <th className="p-3">Volume Value</th>
-                      <th className="p-3">Dispatch Address</th>
-                      <th className="p-3">Ref Code</th>
-                      <th className="p-3 pr-4 text-center">Settlement</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-orbit-border/30">
-                    {sortedWithdrawals.map((w) => {
-                      const isPending = w.status === "pending";
-                      return (
-                        <tr key={w.id} className="hover:bg-orbit-darkcard/50">
-                          <td className="p-3 pl-4">
-                            <span className="font-bold text-orbit-white block">{w.userName}</span>
-                            <span className="text-[9px] text-zinc-500 block font-data">{w.userEmail}</span>
-                          </td>
-                          <td className="p-3 font-semibold text-orbit-accent uppercase">{w.asset}</td>
-                          <td className="p-3 font-bold text-orbit-white font-data">${w.amount.toLocaleString()}</td>
-                          <td className="p-3">
-                            <span className="font-mono text-[9px] text-orbit-gray-text block select-all break-all max-w-[180px]">
+              <div className="text-[11px] space-y-4">
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-orbit-border text-[9px] uppercase tracking-wider text-orbit-gray-text">
+                        <th className="p-3 pl-4">Account Member</th>
+                        <th className="p-3">Asset</th>
+                        <th className="p-3">Volume Value</th>
+                        <th className="p-3">Dispatch Address</th>
+                        <th className="p-3">Ref Code</th>
+                        <th className="p-3 pr-4 text-center">Settlement</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-orbit-border/30">
+                      {sortedWithdrawals.map((w) => {
+                        const isPending = w.status === "pending";
+                        return (
+                          <tr key={w.id} className="hover:bg-orbit-darkcard/50">
+                            <td className="p-3 pl-4">
+                              <span className="font-bold text-orbit-white block">{w.userName}</span>
+                              <span className="text-[9px] text-zinc-500 block font-data">{w.userEmail}</span>
+                            </td>
+                            <td className="p-3 font-semibold text-orbit-accent uppercase">{w.asset}</td>
+                            <td className="p-3 font-bold text-orbit-white font-data">${w.amount.toLocaleString()}</td>
+                            <td className="p-3">
+                              <span className="font-mono text-[9px] text-orbit-gray-text block select-all break-all max-w-[180px]">
+                                {w.address}
+                              </span>
+                            </td>
+                            <td className="p-3 text-zinc-500 font-data font-semibold">{w.id}</td>
+                            <td className="p-1.5 pr-4 text-center">
+                              {isPending ? (
+                                <div className="flex items-center justify-center gap-1.5 shrink-0">
+                                  <button
+                                    onClick={() => adminApproveWithdrawal(w.id)}
+                                    className="p-1 px-2.5 bg-orbit-green text-orbit-bg font-bold text-[10px] rounded hover:opacity-95 cursor-pointer"
+                                  >
+                                    Release
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      const reason = prompt("Specify refusal details for refund:", "Security audit failed.");
+                                      if (reason !== null) adminRejectWithdrawal(w.id, reason);
+                                    }}
+                                    className="p-1 px-2.5 bg-zinc-800 text-orbit-red border border-orbit-border hover:bg-red-500 hover:text-orbit-white font-bold text-[10px] rounded transition-colors cursor-pointer"
+                                  >
+                                    Refuse
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] uppercase font-bold ${
+                                  w.status === "completed" || w.status === "approved" ? "bg-orbit-green/15 text-orbit-green" : "bg-red-500/15 text-red-500"
+                                }}`}>
+                                  {w.status === "completed" ? "RELEASED" : "BLOCKED"}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile View: Withdrawals Card Stack */}
+                <div className="md:hidden space-y-3">
+                  {sortedWithdrawals.map((w) => {
+                    const isPending = w.status === "pending";
+                    return (
+                      <div key={w.id} className="bg-orbit-bg border border-orbit-border rounded-xl p-4 space-y-3">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h4 className="font-bold text-orbit-white text-xs">{w.userName}</h4>
+                            <p className="text-[10px] text-zinc-500 font-data">{w.userEmail}</p>
+                          </div>
+                          <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${
+                            isPending ? "bg-[#DFAD12]/15 text-[#DFAD12]" : 
+                            w.status === "completed" || w.status === "approved" ? "bg-orbit-green/15 text-orbit-green" : "bg-red-500/15 text-red-500"
+                          }`}>
+                            {w.status === "completed" ? "RELEASED" : isPending ? "PENDING" : "BLOCKED"}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-[10px] pt-2 border-t border-orbit-border/40">
+                          <div>
+                            <span className="text-zinc-500 block">Asset:</span>
+                            <span className="font-bold text-orbit-accent uppercase">{w.asset}</span>
+                          </div>
+                          <div>
+                            <span className="text-zinc-500 block">Amount:</span>
+                            <span className="font-bold text-orbit-white font-data">${w.amount.toLocaleString()}</span>
+                          </div>
+                          <div className="col-span-2">
+                            <span className="text-zinc-500 block">Dispatch Address:</span>
+                            <span className="font-mono text-[9px] text-orbit-gray-text block select-all break-all bg-orbit-card p-2 rounded border border-orbit-border/50">
                               {w.address}
                             </span>
-                          </td>
-                          <td className="p-3 text-zinc-500 font-data font-semibold">{w.id}</td>
-                          <td className="p-1.5 pr-4 text-center">
-                            {isPending ? (
-                              <div className="flex items-center justify-center gap-1.5 shrink-0">
-                                <button
-                                  onClick={() => adminApproveWithdrawal(w.id)}
-                                  className="p-1 px-2.5 bg-orbit-green text-orbit-bg font-bold text-[10px] rounded hover:opacity-95 cursor-pointer"
-                                >
-                                  Release
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    const reason = prompt("Specify refusal details for refund:", "Security audit failed.");
-                                    if (reason !== null) adminRejectWithdrawal(w.id, reason);
-                                  }}
-                                  className="p-1 px-2.5 bg-zinc-800 text-orbit-red border border-orbit-border hover:bg-red-500 hover:text-orbit-white font-bold text-[10px] rounded transition-colors cursor-pointer"
-                                >
-                                  Refuse
-                                </button>
-                              </div>
-                            ) : (
-                              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded text-[10px] uppercase font-bold ${
-                                w.status === "completed" || w.status === "approved" ? "bg-orbit-green/15 text-orbit-green" : "bg-red-500/15 text-red-500"
-                              }`}>
-                                {w.status === "completed" ? "RELEASED" : "BLOCKED"}
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                          </div>
+                          <div className="col-span-2">
+                            <span className="text-zinc-500 block">Reference Code:</span>
+                            <span className="text-zinc-400 font-mono text-[9px]">{w.id}</span>
+                          </div>
+                        </div>
+
+                        {isPending && (
+                          <div className="grid grid-cols-2 gap-2 pt-3 border-t border-orbit-border/45">
+                            <button
+                              onClick={async () => {
+                                await adminApproveWithdrawal(w.id);
+                                addNotification("Withdrawal completed.");
+                              }}
+                              className="w-full py-2 bg-orbit-green text-orbit-bg font-bold text-xs rounded-lg hover:opacity-90 min-h-[44px]"
+                            >
+                              Release (Approve)
+                            </button>
+                            <button
+                              onClick={async () => {
+                                const reason = prompt("Specify refusal details for refund:", "Security audit failed.");
+                                if (reason !== null) {
+                                  await adminRejectWithdrawal(w.id, reason);
+                                  addNotification("Withdrawal refused.");
+                                }
+                              }}
+                              className="w-full py-2 bg-orbit-border text-orbit-red font-bold text-xs border border-orbit-border hover:border-red-500 rounded-lg min-h-[44px]"
+                            >
+                              Refuse (Deny)
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
@@ -1863,21 +2496,30 @@ export const DashboardAdmin: React.FC = () => {
                   </div>
                   <div>
                     <label className="block text-orbit-gray-text mb-1 uppercase tracking-wider text-[10px]">Profile Picture</label>
-                    <input 
-                      type="file" 
-                      accept="image/*"
-                      className="w-full bg-orbit-bg border border-orbit-border/50 text-orbit-white rounded p-1.5 focus:border-orbit-accent focus:outline-none text-[10px]"
-                      onChange={e => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onloadend = () => {
-                            setTraderForm({...traderForm, avatar: reader.result as string});
-                          };
-                          reader.readAsDataURL(file);
-                        }
-                      }}
-                    />
+                    <div className="flex items-center gap-2">
+                      {traderForm.avatar && (
+                        <img 
+                          src={traderForm.avatar} 
+                          alt="Preview" 
+                          className="w-9 h-9 rounded-full object-cover border border-orbit-border/80 shrink-0" 
+                        />
+                      )}
+                      <input 
+                        type="file" 
+                        accept="image/*"
+                        className="w-full bg-orbit-bg border border-orbit-border/50 text-orbit-white rounded p-1.5 focus:border-orbit-accent focus:outline-none text-[10px]"
+                        onChange={e => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setTraderForm({...traderForm, avatar: reader.result as string});
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </div>
                   </div>
                   <div>
                     <label className="block text-orbit-gray-text mb-1 uppercase tracking-wider text-[10px]">Assets Under Management (AUM)</label>
@@ -1999,7 +2641,7 @@ export const DashboardAdmin: React.FC = () => {
             )}
 
             <div className="bg-orbit-card border border-orbit-border/40 rounded-2xl overflow-hidden shadow-none">
-              <div className="overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs font-sans">
                   <thead>
                     <tr className="border-b border-orbit-border/30 bg-orbit-bg/50 text-orbit-gray-text font-subheading uppercase text-[10px] tracking-wider">
@@ -2081,6 +2723,94 @@ export const DashboardAdmin: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+
+              {/* Mobile View: Traders Card Stack */}
+              <div className="md:hidden space-y-3 p-4 bg-orbit-bg/20">
+                {traders.map((trader) => (
+                  <div key={trader.id} className="bg-orbit-bg border border-orbit-border rounded-xl p-4 space-y-3">
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-center gap-3">
+                        <img src={trader.avatar} alt={trader.name} className="w-10 h-10 rounded-full object-cover border border-orbit-border" />
+                        <div>
+                          <h4 className="font-bold text-orbit-white text-xs flex items-center gap-1.5">
+                            {trader.name}
+                            {(trader.winRate >= 90 || trader.roi >= 150) && (
+                              <span className="text-[8px] bg-orbit-green/10 text-orbit-green px-1.5 py-0.5 rounded-full font-bold">ELITE</span>
+                            )}
+                          </h4>
+                          <p className="text-[10px] text-orbit-gray-text font-mono">ID: {trader.id} | {trader.profitDays}d Active</p>
+                        </div>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold font-mono border ${
+                        trader.riskScore <= 2 
+                          ? "bg-green-500/10 border-green-500/20 text-green-400" 
+                          : trader.riskScore === 3 
+                            ? "bg-amber-500/10 border-amber-500/20 text-amber-400" 
+                            : "bg-red-500/10 border-red-500/20 text-red-500"
+                      }`}>
+                        Risk {trader.riskScore}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-[10px] pt-2 border-t border-orbit-border/40">
+                      <div>
+                        <span className="text-zinc-500 block">Total ROI:</span>
+                        <span className="font-bold text-orbit-green font-mono">+{trader.roi}%</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block">Win Rate:</span>
+                        <span className="font-bold text-orbit-white font-mono">{trader.winRate}%</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block">AUM:</span>
+                        <span className="font-bold text-orbit-accent font-mono">{trader.assetsUnderManagement}</span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-500 block">Followers:</span>
+                        <span className="font-bold text-orbit-white font-mono">{trader.followers} / {trader.maxFollowers}</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-3 border-t border-orbit-border/45">
+                      <button
+                        onClick={() => {
+                          setEditingTraderId(trader.id);
+                          setTraderForm({
+                            name: trader.name,
+                            avatar: trader.avatar,
+                            roi: trader.roi,
+                            winRate: trader.winRate,
+                            followers: trader.followers,
+                            maxFollowers: trader.maxFollowers,
+                            assetsUnderManagement: trader.assetsUnderManagement,
+                            riskScore: trader.riskScore,
+                            profitDays: trader.profitDays,
+                            chartDataString: (trader.chartData || []).join(",")
+                          });
+                          window.scrollTo({ top: 0, behavior: "smooth" });
+                        }}
+                        className="w-full py-2 bg-orbit-border text-orbit-white font-bold text-xs rounded-lg hover:bg-orbit-accent hover:text-orbit-bg transition-colors min-h-[44px]"
+                      >
+                        Edit Profile
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (window.confirm(`Are you sure you want to decommission copy trader portfolio node ${trader.name}?`)) {
+                            await adminDeleteTrader(trader.id);
+                            addNotification("Trader profile decommissioned.");
+                          }
+                        }}
+                        className="w-full py-2 bg-orbit-red/10 text-orbit-red border border-orbit-red/30 hover:bg-orbit-red hover:text-orbit-white transition-colors rounded-lg min-h-[44px]"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {traders.length === 0 && (
+                  <p className="text-xs text-zinc-500 text-center py-4 italic">No copy traders indexed.</p>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -2105,6 +2835,7 @@ export const DashboardAdmin: React.FC = () => {
                       const rewardAmount = (document.getElementById("airdrop-amount") as HTMLInputElement).value;
                       if (title && token && rewardAmount) {
                           adminCreateAirdrop({ title, token, rewardAmount, status: "Live" });
+                          addNotification(`Airdrop "${title}" created successfully!`);
                           (document.getElementById("airdrop-title") as HTMLInputElement).value = "";
                           (document.getElementById("airdrop-token") as HTMLInputElement).value = "";
                           (document.getElementById("airdrop-amount") as HTMLInputElement).value = "";
@@ -2157,6 +2888,135 @@ export const DashboardAdmin: React.FC = () => {
         )}
 
       </div>
+
+      {/* EDIT INVESTMENT PLAN MODAL */}
+      {editingPlan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-orbit-card border border-orbit-accent/40 w-full max-w-lg rounded-2xl overflow-hidden relative shadow-2xl">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-orbit-accent to-yellow-500 animate-pulse" />
+            
+            {/* Header */}
+            <div className="flex justify-between items-center p-5 border-b border-orbit-border/60">
+              <div>
+                <h4 className="text-xs font-bold text-orbit-white uppercase tracking-wider">
+                  Modifying Yield Plan: <span className="text-orbit-accent">{editingPlan.name}</span>
+                </h4>
+                <p className="text-[10px] text-zinc-500 font-sans mt-0.5">Adjust tier criteria, durations, and compounding return factors.</p>
+              </div>
+              <button 
+                onClick={() => setEditingPlan(null)}
+                className="p-1.5 rounded-lg border border-orbit-border hover:border-red-400 hover:text-red-400 transition-all cursor-pointer text-orbit-gray-text"
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            {/* Form Content */}
+            <div className="p-6 space-y-4 font-sans text-xs">
+              
+              {/* Plan name (editable) */}
+              <div className="space-y-1">
+                <label className="text-[10px] text-orbit-gray-text uppercase font-bold">Plan Tier Name</label>
+                <input
+                  type="text"
+                  value={editingPlan.name}
+                  onChange={(e) => setEditingPlan({ ...editingPlan, name: e.target.value })}
+                  className="w-full bg-orbit-bg border border-orbit-border focus:border-orbit-accent py-2 px-3 text-orbit-white rounded-lg outline-none"
+                />
+              </div>
+
+              {/* Min / Max Deposits */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-orbit-gray-text uppercase font-bold">Minimum Investment (USD)</label>
+                  <input
+                    type="number"
+                    value={editingPlan.minDeposit}
+                    onChange={(e) => setEditingPlan({ ...editingPlan, minDeposit: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-orbit-bg border border-orbit-border focus:border-orbit-accent py-2 px-3 text-orbit-white rounded-lg outline-none font-mono"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-orbit-gray-text uppercase font-bold">Maximum Investment (USD)</label>
+                  <input
+                    type="number"
+                    value={editingPlan.maxDeposit}
+                    onChange={(e) => setEditingPlan({ ...editingPlan, maxDeposit: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-orbit-bg border border-orbit-border focus:border-orbit-accent py-2 px-3 text-orbit-white rounded-lg outline-none font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* ROI % and ROI Cap % */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-orbit-gray-text uppercase font-bold">Return on Investment (ROI %)</label>
+                  <input
+                    type="number"
+                    value={editingPlan.roiPercent}
+                    onChange={(e) => setEditingPlan({ ...editingPlan, roiPercent: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-orbit-bg border border-orbit-border focus:border-orbit-accent py-2 px-3 text-orbit-white rounded-lg outline-none font-mono"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-orbit-gray-text uppercase font-bold">ROI Cap Percentage (%)</label>
+                  <input
+                    type="number"
+                    value={editingPlan.roiCapPercent ?? editingPlan.roiPercent}
+                    onChange={(e) => setEditingPlan({ ...editingPlan, roiCapPercent: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-orbit-bg border border-orbit-border focus:border-orbit-accent py-2 px-3 text-orbit-white rounded-lg outline-none font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Duration */}
+              <div className="space-y-1">
+                <label className="text-[10px] text-orbit-gray-text uppercase font-bold">Duration (Number of Days)</label>
+                <input
+                  type="number"
+                  value={editingPlan.durationDays}
+                  onChange={(e) => setEditingPlan({ ...editingPlan, durationDays: parseInt(e.target.value) || 0 })}
+                  className="w-full bg-orbit-bg border border-orbit-border focus:border-orbit-accent py-2 px-3 text-orbit-white rounded-lg outline-none font-mono"
+                />
+              </div>
+
+              {/* Description */}
+              <div className="space-y-1">
+                <label className="text-[10px] text-orbit-gray-text uppercase font-bold">Tier Description / Text Content</label>
+                <textarea
+                  rows={3}
+                  value={editingPlan.description}
+                  onChange={(e) => setEditingPlan({ ...editingPlan, description: e.target.value })}
+                  className="w-full bg-orbit-bg border border-orbit-border focus:border-orbit-accent py-2 px-3 text-orbit-white rounded-lg outline-none leading-relaxed"
+                />
+              </div>
+
+            </div>
+
+            {/* Actions Footer */}
+            <div className="p-5 bg-orbit-bg border-t border-orbit-border/60 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setEditingPlan(null)}
+                className="px-4 py-2 bg-orbit-border text-orbit-white hover:bg-zinc-700 font-bold uppercase text-[10px] rounded-lg transition-colors cursor-pointer"
+              >
+                Discard
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await adminUpdatePlan(editingPlan);
+                  setEditingPlan(null);
+                }}
+                className="px-5 py-2 bg-orbit-accent text-orbit-bg hover:opacity-90 font-black uppercase text-[10px] rounded-lg transition-all cursor-pointer"
+              >
+                Save Tier Changes
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );

@@ -7,7 +7,7 @@ import { handleSendEmail } from "./src/pages/api/send-email";
 
 dotenv.config();
 
-const PORT = 3000;
+const PORT = 5000;
 
 // Lazy initialize Gemini client to prevent startup crash if key is missing
 let aiClient: GoogleGenAI | null = null;
