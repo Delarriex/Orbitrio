@@ -8,7 +8,6 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 
 // Import admin tabs
-import { AdminOverviewTab } from "../components/admin/tabs/AdminOverviewTab";
 import { AdminUsersTab } from "../components/admin/tabs/AdminUsersTab";
 import { AdminInvestmentsTab } from "../components/admin/tabs/AdminInvestmentsTab";
 import { AdminDepositsTab } from "../components/admin/tabs/AdminDepositsTab";
@@ -29,8 +28,8 @@ export const DashboardAdmin: React.FC = () => {
   const isAdminAuthenticated = currentUser.isLoggedIn && (currentUser.role === "admin" || (currentUser as any).isAdmin === true);
 
   const [activeTab, setActiveTab] = useState<
-    "overview" | "users" | "investments" | "deposits" | "withdrawals" | "bulletins" | "support" | "security" | "content" | "traders" | "airdrops" | "kyc" | "wallets"
-  >("overview");
+    "users" | "investments" | "deposits" | "withdrawals" | "bulletins" | "support" | "security" | "content" | "traders" | "airdrops" | "kyc" | "wallets"
+  >("users");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Compute stats for sidebar badges
@@ -73,25 +72,23 @@ export const DashboardAdmin: React.FC = () => {
 
   const renderActiveTab = () => {
     switch (activeTab) {
-      case "overview": return <AdminOverviewTab />;
       case "users": return <AdminUsersTab />;
       case "investments": return <AdminInvestmentsTab />;
-      case "deposits": return <AdminDepositsTab />;
-      case "withdrawals": return <AdminWithdrawalsTab />;
-      case "bulletins": return <AdminBulletinsTab />;
-      case "support": return <AdminSupportTab />;
-      case "security": return <AdminSecurityTab />;
       case "content": return <AdminContentTab />;
       case "traders": return <AdminTradersTab />;
       case "airdrops": return <AdminAirdropsTab />;
       case "wallets": return <AdminWalletsTab />;
       case "kyc": return <AdminKycTab />;
-      default: return <AdminOverviewTab />;
+      case "deposits": return <AdminDepositsTab />;
+      case "withdrawals": return <AdminWithdrawalsTab />;
+      case "bulletins": return <AdminBulletinsTab />;
+      case "support": return <AdminSupportTab />;
+      case "security": return <AdminSecurityTab />;
+      default: return <AdminUsersTab />;
     }
   };
 
   const navItems = [
-    { id: "overview", label: "Platform Overview", icon: Activity },
     { id: "users", label: "All Users & Balances", icon: Users },
     { id: "investments", label: "Investment Plans", icon: Layers },
     { id: "content", label: "Content Editor", icon: PenTool },

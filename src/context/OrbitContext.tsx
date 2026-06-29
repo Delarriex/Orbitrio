@@ -576,7 +576,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       isLoggedIn: false,
       email: null,
       name: null,
-      balance: 1000.00, // sandboxed default funds
+      balance: 0.00,
       portfolioValue: 0.00,
       activeInvestments: [],
       portfolio: [],
@@ -805,7 +805,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         loaded.push({
           email: docSnap.id,
           name: data.name || docSnap.id.split("@")[0].toUpperCase(),
-          balance: typeof data.balance === "number" ? data.balance : 1000.0,
+          balance: typeof data.balance === "number" ? data.balance : 0.0,
           portfolioValue: typeof data.portfolioValue === "number" ? data.portfolioValue : 0.0,
           status: data.status || "active",
           activeInvestments: Array.isArray(data.activeInvestments) ? data.activeInvestments : [],
@@ -883,7 +883,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 isLoggedIn: true,
                 email: userEmail,
                 name: data.name || (firebaseUser.displayName || userEmail.split("@")[0]).toUpperCase(),
-                balance: typeof data.balance === "number" ? data.balance : 1000.00,
+                balance: typeof data.balance === "number" ? data.balance : 0.00,
                 portfolioValue: typeof data.portfolioValue === "number" ? data.portfolioValue : 0.00,
                 activeInvestments: Array.isArray(data.activeInvestments) ? data.activeInvestments : [],
                 portfolio: Array.isArray(data.portfolio) ? data.portfolio : [],
@@ -891,7 +891,6 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 tickets: Array.isArray(data.tickets) ? data.tickets : [],
                 status: data.status || "active",
                 role: data.isAdmin === true ? "admin" : (data.role || "user"),
-                isAdmin: data.isAdmin === true,
                 username: data.username || userEmail.split("@")[0],
                 firstName: data.firstName || firebaseUser.displayName?.split(" ")[0] || "Trader",
                 lastName: data.lastName || firebaseUser.displayName?.split(" ").slice(1).join(" ") || "Admin",
@@ -907,21 +906,12 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               const initialUser = {
                 email: userEmail,
                 name: initialName,
-                balance: 1000.00,
+                balance: 0.00,
                 portfolioValue: 0.00,
               status: "active" as const,
               activeInvestments: [],
               portfolio: [],
-              transactions: [
-                {
-                  id: `tx-welcome-${Date.now()}`,
-                  type: "deposit" as const,
-                  amount: 1000.00,
-                  status: "completed" as const,
-                  asset: "USD",
-                  date: new Date().toISOString().split("T")[0]
-                }
-              ],
+              transactions: [],
               tickets: [],
               loginHistory: [{ date: new Date().toISOString().replace("T", " ").substring(0, 19), ip: "127.0.0.1", device: "Google Auth Session" }],
               role: userEmail.toLowerCase() === "henrikaram1@gmail.com" ? ("admin" as const) : ("user" as const),
@@ -1214,21 +1204,12 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const newUserDoc = {
       email,
       name: name.toUpperCase(),
-      balance: 1000.00,
+      balance: 0.00,
       portfolioValue: 0.00,
       status: "active" as const,
       activeInvestments: [],
       portfolio: [],
-      transactions: [
-        {
-          id: `tx-welcome-${Date.now()}`,
-          type: "deposit" as const,
-          amount: 1000.00,
-          status: "completed" as const,
-          asset: "USD",
-          date: new Date().toISOString().split("T")[0]
-        }
-      ],
+      transactions: [],
       tickets: [],
       loginHistory: [{ date: new Date().toISOString().replace("T", " ").substring(0, 19), ip: "127.0.0.1", device: "Browser Registration" }],
       role: isOwner ? ("admin" as const) : ("user" as const),
@@ -1257,7 +1238,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return [...prev, {
         email,
         name: name.toUpperCase(),
-        balance: 1000.00,
+        balance: 0.00,
         portfolioValue: 0,
         status: "active" as const,
         activeInvestments: [],
@@ -1343,7 +1324,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           isLoggedIn: true,
           email,
           name: data.name || email.split("@")[0].toUpperCase(),
-          balance: data.balance ?? 1000.00,
+          balance: data.balance ?? 0.00,
           portfolioValue: data.portfolioValue ?? 0.00,
           activeInvestments: data.activeInvestments ?? [],
           portfolio: data.portfolio ?? [],
@@ -1388,7 +1369,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       isLoggedIn: false,
       email: null,
       name: null,
-      balance: 1000.00,
+      balance: 0.00,
       portfolioValue: 0,
       activeInvestments: [],
       portfolio: [],

@@ -237,11 +237,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
         {/* Success screen loader */}
         {isSuccess ? (
           <div className="text-center py-16 space-y-4 animate-medium flex flex-col items-center justify-center">
-            <span className="inline-flex w-12 h-12 items-center justify-center rounded-full mx-auto border bg-orbit-green/10 border-orbit-green/30 text-orbit-green">
+            <span className="inline-flex w-12 h-12 items-center justify-center rounded-full mx-auto border bg-orbit-accent/10 border-orbit-accent/30 text-orbit-accent">
               <CheckCircle2 size={24} className="animate-bounce" />
             </span>
-            <p className="text-sm font-subheading font-bold text-orbit-green">
-              {activeTab === "register" ? "Provisioning Sandbox Accounts..." : "Authorizing secure link..."}
+            <p className="text-sm font-subheading font-bold text-orbit-accent">
+              {activeTab === "register" ? "Creating account..." : "Signing in..."}
             </p>
           </div>
         ) : (

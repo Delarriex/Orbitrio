@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { useOrbit } from "../../../context/OrbitContext";
 import { motion } from "motion/react";
-import { Award, Edit3, Plus, Trash2, Save, X, Check } from "lucide-react";
+import { Award, Edit3, Plus, Trash2, Save, X, Check, Upload, ImagePlus } from "lucide-react";
 import type { TraderProfile } from "../../../types";
 
 export const AdminTradersTab: React.FC = () => {
@@ -15,10 +15,50 @@ export const AdminTradersTab: React.FC = () => {
     assetsUnderManagement: "", riskScore: "", profitDays: ""
   });
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const resetForm = () => {
     setForm({ name: "", avatar: "", roi: "", winRate: "", followers: "", maxFollowers: "", assetsUnderManagement: "", riskScore: "", profitDays: "" });
     setIsCreating(false);
     setEditingId(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      alert("Please select an image file (PNG, JPG, WEBP, etc.)");
+      return;
+    }
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert("Image must be smaller than 5MB.");
+      return;
+    }
+    // Read file and resize to 256px for optimized storage
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX = 256;
+        let w = img.width, h = img.height;
+        if (w > h) { h = (h / w) * MAX; w = MAX; }
+        else { w = (w / h) * MAX; h = MAX; }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, w, h);
+          const dataUrl = canvas.toDataURL("image/webp", 0.85);
+          setForm(f => ({ ...f, avatar: dataUrl }));
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
   };
 
   const startEdit = (t: TraderProfile) => {
@@ -33,9 +73,13 @@ export const AdminTradersTab: React.FC = () => {
 
   const handleCreate = async () => {
     if (!form.name) return;
+    if (!form.avatar) {
+      alert("Please upload a profile photo for the trader.");
+      return;
+    }
     await adminCreateTrader({
       name: form.name,
-      avatar: form.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=256",
+      avatar: form.avatar,
       roi: parseFloat(form.roi) || 0,
       winRate: parseFloat(form.winRate) || 0,
       followers: parseInt(form.followers) || 0,
@@ -101,8 +145,32 @@ export const AdminTradersTab: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <input placeholder="Name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
               className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
-            <input placeholder="Avatar URL" value={form.avatar} onChange={e => setForm(f => ({ ...f, avatar: e.target.value }))}
-              className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
+            {/* Avatar File Upload */}
+            <div className="flex items-center gap-3 px-3 py-1.5 bg-orbit-bg border border-orbit-border rounded-lg relative">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarFileChange}
+                className="hidden"
+                id="trader-avatar-upload"
+              />
+              {form.avatar ? (
+                <img src={form.avatar} alt="Avatar preview" className="w-8 h-8 rounded-full object-cover border-2 border-orbit-accent/40 flex-shrink-0" />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-orbit-border/50 flex items-center justify-center flex-shrink-0">
+                  <ImagePlus size={14} className="text-orbit-gray-text" />
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-1.5 text-xs text-orbit-accent font-semibold hover:text-orbit-white transition-colors cursor-pointer truncate"
+              >
+                <Upload size={12} />
+                {form.avatar ? "Change Photo" : "Upload Photo"}
+              </button>
+            </div>
             <input type="number" placeholder="ROI (%)" value={form.roi} onChange={e => setForm(f => ({ ...f, roi: e.target.value }))}
               className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
             <input type="number" placeholder="Win Rate (%)" value={form.winRate} onChange={e => setForm(f => ({ ...f, winRate: e.target.value }))}
