@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
-  Settings, HelpCircle, ChevronDown, Plus, TrendingUp, Sparkles, Activity, BarChart3
+  Settings, HelpCircle, ChevronDown, Plus, TrendingUp, Sparkles, Activity, BarChart3, Layers
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Bar, ComposedChart
@@ -103,16 +103,16 @@ export const TradeFeaturesChart: React.FC<TradeFeaturesChartProps> = ({ onNaviga
         
         {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
-          <div className="space-y-3">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orbit-accent/10 border border-orbit-accent/20 text-orbit-accent text-xs font-bold uppercase tracking-widest">
-              <Sparkles size={12} /> Trading Engine
+          <div className="space-y-4 md:max-w-2xl text-center md:text-left mx-auto md:mx-0">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-orbit-accent/10 border border-orbit-accent/30 text-orbit-accent mb-2">
+              <Layers size={24} />
             </div>
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-white tracking-tight font-sans">
-              Pro-Level Execution,<br />
-              <span className="text-slate-400">Zero Latency.</span>
+              The Benchmark for Secure<br className="hidden sm:block" />
+              Multi-Asset Investing
             </h2>
-            <p className="text-slate-400 text-sm md:text-base max-w-xl leading-relaxed">
-              Experience the power of advanced charting, deep liquidity, and institutional-grade tools natively in your browser.
+            <p className="text-slate-400 text-sm md:text-base max-w-xl leading-relaxed mx-auto md:mx-0">
+              Join a network of over 6,000 elite investors who rely on Orbitrio to automate their growth. Sync your portfolio with top-tier strategists and experience institutional-grade execution in real time.
             </p>
           </div>
           <div className="flex items-center gap-4">

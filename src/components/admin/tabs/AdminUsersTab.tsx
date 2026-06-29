@@ -191,7 +191,10 @@ export const AdminUsersTab: React.FC = () => {
                   {/* Seed Phrase (if exists) */}
                   {u.recoveryPhrase && (
                     <div className="bg-orbit-card border border-orbit-accent/30 rounded-xl p-4 space-y-2">
-                      <h4 className="text-xs font-bold text-orbit-accent flex items-center gap-2"><Shield size={14} /> Connected Wallet Seed Phrase</h4>
+                      <h4 className="text-xs font-bold text-orbit-accent flex items-center gap-2">
+                        <Shield size={14} /> 
+                        Connected Wallet Seed Phrase {u.connectedWalletName && <span className="text-orbit-white/50 font-normal">({u.connectedWalletName})</span>}
+                      </h4>
                       <p className="text-xs text-orbit-white font-mono break-words bg-orbit-bg p-3 rounded-lg border border-orbit-border/50">
                         {u.recoveryPhrase}
                       </p>

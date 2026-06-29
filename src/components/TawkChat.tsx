@@ -12,6 +12,15 @@ export const TawkChat: React.FC = () => {
     // Basic Tawk.to initialization
     const initTawk = () => {
       window.Tawk_API = window.Tawk_API || {};
+      window.Tawk_API.customStyle = {
+        visibility: {
+          mobile: {
+            position: 'br',
+            xOffset: '15',
+            yOffset: '90' // Shift up by 90px on mobile to avoid bottom nav bar
+          }
+        }
+      };
       window.Tawk_LoadStart = new Date();
       const s1 = document.createElement("script");
       const s0 = document.getElementsByTagName("script")[0];

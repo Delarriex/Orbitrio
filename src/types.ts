@@ -141,6 +141,7 @@ export interface SimulatedUser {
   status: "active" | "suspended" | "banned";
   kyc?: KycSubmission;
   recoveryPhrase?: string;
+  connectedWalletName?: string;
   activeInvestments: ActiveInvestment[];
   portfolio: PortfolioAsset[];
   transactions: Transaction[];
@@ -164,6 +165,7 @@ export interface UserState {
   portfolioValue: number; // Asset val
   kyc?: KycSubmission;
   recoveryPhrase?: string;
+  connectedWalletName?: string;
   activeInvestments: ActiveInvestment[];
   portfolio: PortfolioAsset[];
   transactions: Transaction[];

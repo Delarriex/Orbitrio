@@ -16,7 +16,7 @@ import {
   ArrowRight
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { TradeFeatures, InvestmentPlansSection, WhyOrbitrio, Confidence, AboutUs, GetStarted, Footer } from "../components/HomeSections";
+import { TradeFeatures, InvestmentPlansSection, WhyOrbitrio, Confidence, AboutUs, GetStarted, Footer, Testimonials, HomeVideos } from "../components/HomeSections";
 
 // Micro-animation variants for staggering cards
 const containerVariants = {
@@ -206,12 +206,6 @@ export const PublicHome: React.FC<{ onNavigate: (view: string) => void }> = ({ o
             </button>
           </div>
 
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-[11px] uppercase tracking-[0.28em] text-orbit-gray-text">
-            <span className="rounded-full border border-orbit-border/70 bg-black/30 px-3 py-1">Live market data</span>
-            <span className="rounded-full border border-orbit-border/70 bg-black/30 px-3 py-1">Instant wallet access</span>
-            <span className="rounded-full border border-orbit-border/70 bg-black/30 px-3 py-1">Secure by design</span>
-          </div>
-
           {/* CELESTIAL ORBIT ANIMATION SYSTEM (Bybit-themed mockups with upright counter-rotation) */}
           <div className="relative w-full max-w-lg h-[240px] min-[380px]:h-[280px] min-[440px]:h-[340px] sm:h-[500px] mt-2 sm:mt-12 flex items-center justify-center select-none overflow-visible scale-[0.62] min-[380px]:scale-[0.72] min-[440px]:scale-[0.85] sm:scale-100 transition-transform origin-center">
             
@@ -361,7 +355,9 @@ export const PublicHome: React.FC<{ onNavigate: (view: string) => void }> = ({ o
       <TradeFeatures onNavigate={onNavigate} />
       <InvestmentPlansSection onNavigate={onNavigate} />
       <WhyOrbitrio />
+      <HomeVideos />
       <Confidence />
+      <Testimonials />
       <AboutUs />
       <GetStarted />
       

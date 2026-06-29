@@ -5,7 +5,7 @@ import { Gift, Plus, Trash2, Edit3, Save, X, Check, CheckCircle } from "lucide-r
 import type { Airdrop } from "../../../types";
 
 export const AdminAirdropsTab: React.FC = () => {
-  const { airdrops, adminAirdropClaims, adminCreateAirdrop, adminUpdateAirdrop, adminDeleteAirdrop, adminApproveAirdrop } = useOrbit();
+  const { airdrops, adminAirdropClaims, adminCreateAirdrop, adminUpdateAirdrop, adminDeleteAirdrop, adminApproveAirdrop, adminRejectAirdrop } = useOrbit();
 
   const [isCreating, setIsCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -123,10 +123,16 @@ export const AdminAirdropsTab: React.FC = () => {
                 <p className="text-xs font-bold text-orbit-white">{claim.userEmail}</p>
                 <p className="text-[10px] text-orbit-gray-text">Token: {claim.token} • Reward: {claim.rewardAmount} • {claim.date}</p>
               </div>
-              <button onClick={() => { adminApproveAirdrop(claim.id); setFeedback(`Approved claim for ${claim.userEmail}`); setTimeout(() => setFeedback(null), 3000); }}
-                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 text-white font-bold text-xs uppercase rounded-lg hover:bg-emerald-600 cursor-pointer">
-                <Check size={14} /> Approve
-              </button>
+              <div className="flex items-center gap-2">
+                <button onClick={() => { adminApproveAirdrop(claim.id); setFeedback(`Approved claim for ${claim.userEmail}`); setTimeout(() => setFeedback(null), 3000); }}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 text-white font-bold text-xs uppercase rounded-lg hover:bg-emerald-600 cursor-pointer">
+                  <Check size={14} /> Approve
+                </button>
+                <button onClick={() => { adminRejectAirdrop(claim.id); setFeedback(`Declined claim for ${claim.userEmail}`); setTimeout(() => setFeedback(null), 3000); }}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-red-500 text-white font-bold text-xs uppercase rounded-lg hover:bg-red-600 cursor-pointer">
+                  <X size={14} /> Decline
+                </button>
+              </div>
             </div>
           ))}
         </div>

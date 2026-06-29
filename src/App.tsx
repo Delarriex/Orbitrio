@@ -43,9 +43,9 @@ function MainAppContent() {
     window.scrollTo({ top: 0, left: 0, behavior: "instant" as ScrollBehavior });
   }, [currentView]);
 
-  // Auto-redirect logged-in users to dashboard if they are on the auth page
+  // Auto-redirect logged-in users to dashboard if they are on auth or home pages
   useEffect(() => {
-    if (user.isLoggedIn && currentView === "auth") {
+    if (user.isLoggedIn && (currentView === "auth" || currentView === "home")) {
       setCurrentView("dashboard");
     }
   }, [user.isLoggedIn, currentView]);
@@ -76,6 +76,11 @@ function MainAppContent() {
   }, [user.isLoggedIn, user.role]);
 
   const handleNavigate = (view: string, assetSymbol?: string) => {
+    // If the user tries to go home but they are logged in, send them to dashboard
+    if (view === "home" && user.isLoggedIn) {
+      view = "dashboard";
+    }
+
     if (view.startsWith("dashboard") && !user.isLoggedIn) {
       setCurrentView("auth");
       return;

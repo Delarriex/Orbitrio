@@ -224,7 +224,8 @@ export async function sendTransactionalEmail(to: string, eventType: string, meta
         throw new Error(`Unknown eventType: ${eventType}`);
     }
 
-    const sender = apiKey.startsWith("re_") ? "Orbitrio Trades <onboarding@resend.dev>" : "Orbitrio Trades <support@orbitriotrades.com>";
+    // Use the custom domain email if configured, otherwise fallback to Resend's testing domain
+    const sender = process.env.RESEND_FROM_EMAIL || "Orbitrio Trades <onboarding@resend.dev>";
 
     const emailResponse = await resend.emails.send({
       from: sender,

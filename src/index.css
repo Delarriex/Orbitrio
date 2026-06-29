@@ -115,3 +115,14 @@
   @apply inline-flex items-center justify-center gap-2 rounded-2xl border border-orbit-border/70 bg-[#11151B]/80 px-5 py-3 font-semibold text-orbit-white transition-all duration-200 hover:border-orbit-accent/60 hover:text-orbit-accent;
 }
 
+/* Push Tawk.to chat bubble above mobile bottom nav */
+@media (max-width: 1023px) {
+  iframe[title="chat widget"],
+  .widget-visible iframe,
+  #tawk-bubble-container,
+  .tawk-min-container {
+    bottom: 80px !important;
+    margin-bottom: 0 !important;
+  }
+}
+
