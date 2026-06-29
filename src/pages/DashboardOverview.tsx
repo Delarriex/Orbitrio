@@ -413,8 +413,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                     <td className="p-3 font-bold text-orbit-white">{tx.asset}</td>
                     <td className="p-3 font-bold text-orbit-white">${tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                     <td className="p-3 pr-4 text-right">
-                      <span className="inline-flex items-center gap-1 text-[11px] text-orbit-green font-semibold font-subheading">
-                        <CheckCircle2 size={12} /> COMPLETED
+                      <span className={`inline-flex items-center gap-1 text-[11px] font-semibold font-subheading ${
+                        tx.status === "completed" || tx.status === "approved" ? "text-orbit-green" :
+                        tx.status === "pending" ? "text-yellow-400" :
+                        tx.status === "rejected" || tx.status === "failed" ? "text-orbit-red" :
+                        "text-orbit-gray-text"
+                      }`}>
+                        {tx.status === "pending" ? <AlertTriangle size={12} /> : tx.status === "rejected" || tx.status === "failed" ? <AlertTriangle size={12} /> : <CheckCircle2 size={12} />}
+                        {tx.status.toUpperCase()}
                       </span>
                     </td>
                   </tr>

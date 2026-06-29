@@ -715,11 +715,20 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const withdrawEarnings = () => {
     if (!user.points || user.points < 100) return;
     const usdAmount = user.points * 1; 
+    const newBalance = user.balance + usdAmount;
     setUser(prev => ({
       ...prev,
-      balance: prev.balance + usdAmount,
+      balance: newBalance,
       points: 0
     }));
+    
+    if (user.email) {
+      updateDoc(doc(db, "users", user.email), {
+        balance: newBalance,
+        points: 0
+      }).catch(console.error);
+    }
+    
     addNotification(`Withdrew $${usdAmount.toFixed(2)} to wallet.`);
   };
 
@@ -1914,10 +1923,18 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ]
     };
 
+    const newTickets = [newTkt, ...user.tickets];
+
     setUser(prev => ({
       ...prev,
-      tickets: [newTkt, ...prev.tickets]
+      tickets: newTickets
     }));
+
+    if (user.email) {
+      updateDoc(doc(db, "users", user.email), {
+        tickets: newTickets
+      }).catch(console.error);
+    }
 
     handleLog("Support Ticket Created", `Submitted ticket regarding topic: ${subject}`, user.email || "guest@gmail.com", "success");
     
@@ -1928,26 +1945,34 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const replyToTicket = (ticketId: string, text: string) => {
+    const updatedTickets = user.tickets.map(tkt => {
+      if (tkt.id === ticketId) {
+        return {
+          ...tkt,
+          status: "pending" as const,
+          messages: [
+            ...tkt.messages,
+            {
+              sender: "user" as const,
+              text,
+              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            }
+          ]
+        };
+      }
+      return tkt;
+    });
+
     setUser(prev => ({
       ...prev,
-      tickets: prev.tickets.map(tkt => {
-        if (tkt.id === ticketId) {
-          return {
-            ...tkt,
-            status: "pending",
-            messages: [
-              ...tkt.messages,
-              {
-                sender: "user",
-                text,
-                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-              }
-            ]
-          };
-        }
-        return tkt;
-      })
+      tickets: updatedTickets
     }));
+
+    if (user.email) {
+      updateDoc(doc(db, "users", user.email), {
+        tickets: updatedTickets
+      }).catch(console.error);
+    }
   };
 
   // Helper logger
