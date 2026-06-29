@@ -50,6 +50,13 @@ function MainAppContent() {
     }
   }, [user.isLoggedIn, currentView]);
 
+  // Auto-redirect logged-out users to home if they are on a dashboard page
+  useEffect(() => {
+    if (!user.isLoggedIn && currentView.startsWith("dashboard")) {
+      setCurrentView("home");
+    }
+  }, [user.isLoggedIn, currentView]);
+
   // Listen to path changes or initial page load for direct path routing (e.g. /admin)
   useEffect(() => {
     const handleUrlRouting = () => {
