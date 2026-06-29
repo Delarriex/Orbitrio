@@ -183,7 +183,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
   const currenciesList = ["USD", "EUR", "GBP", "BTC", "USDT"];
 
   return (
-    <div className="max-w-xl mx-auto my-12 px-4 sm:px-6 font-sans">
+    <div className="mx-auto my-8 w-full max-w-2xl px-4 sm:px-6 lg:px-8 font-sans">
+      <div className="relative overflow-hidden rounded-[30px] border border-orbit-border/70 bg-gradient-to-br from-[#12161D] via-[#0D1014] to-[#090B10] p-5 shadow-[0_30px_120px_rgba(0,0,0,0.45)] sm:p-8">
+        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-orbit-accent via-amber-500 to-[#FF7F00]" />
+        <div className="mb-6 flex flex-wrap items-center justify-center gap-2 text-[10px] font-semibold uppercase tracking-[0.28em] text-orbit-gray-text">
+          <span className="rounded-full border border-orbit-border/70 bg-black/30 px-3 py-1">Secure</span>
+          <span className="rounded-full border border-orbit-border/70 bg-black/30 px-3 py-1">Responsive</span>
+          <span className="rounded-full border border-orbit-border/70 bg-black/30 px-3 py-1">Fast onboarding</span>
+        </div>
       
       {/* Pills switcher - completely borderless/containerless */}
       <div className="flex justify-center gap-3 mb-10">
@@ -519,7 +526,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
                 {/* Register Button block */}
                 <button
                   type="submit"
-                  className="w-full py-4 mt-4 rounded-xl bg-gradient-to-r from-orbit-accent to-amber-500 hover:from-orbit-accent-hover hover:to-amber-600 text-orbit-bg font-extrabold font-subheading text-xs uppercase shadow-md shadow-orbit-accent/15 hover:shadow-orbit-accent/25 transition-all text-center cursor-pointer tracking-wider"
+                  className="orb-button mt-4 w-full py-4"
                 >
                   Register Account
                 </button>
@@ -608,7 +615,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
                   type="button"
                   disabled={forgotLoading}
                   onClick={handleForgotPasswordSubmit}
-                  className="w-full py-4 mt-2 rounded-xl bg-gradient-to-r from-orbit-accent to-amber-500 hover:from-orbit-accent-hover hover:to-amber-600 text-orbit-bg font-extrabold font-subheading text-xs uppercase shadow-md shadow-orbit-accent/15 transition-all text-center cursor-pointer tracking-wider disabled:opacity-50 flex justify-center items-center gap-2"
+                  className="orb-button mt-2 w-full py-4 disabled:opacity-50"
                 >
                   {forgotLoading ? (
                     <>
@@ -688,7 +695,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
 
                 <button
                   type="submit"
-                  className="w-full py-4 mt-6 rounded-xl bg-gradient-to-r from-orbit-accent to-amber-500 hover:from-orbit-accent-hover hover:to-amber-600 text-orbit-bg font-extrabold font-subheading text-xs uppercase shadow-md shadow-orbit-accent/15 hover:shadow-orbit-accent/25 transition-all text-center cursor-pointer tracking-wider"
+                  className="orb-button mt-6 w-full py-4"
                 >
                   Login
                 </button>
@@ -759,6 +766,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
           </div>
         </div>
 
+      </div>
       </div>
     </div>
   );

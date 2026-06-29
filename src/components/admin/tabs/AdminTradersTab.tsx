@@ -1,0 +1,161 @@
+import React, { useState } from "react";
+import { useOrbit } from "../../../context/OrbitContext";
+import { motion } from "motion/react";
+import { Award, Edit3, Plus, Trash2, Save, X, Check } from "lucide-react";
+import type { TraderProfile } from "../../../types";
+
+export const AdminTradersTab: React.FC = () => {
+  const { traders, adminUpdateTrader, adminCreateTrader, adminDeleteTrader } = useOrbit();
+
+  const [isCreating, setIsCreating] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    name: "", avatar: "", roi: "", winRate: "", followers: "", maxFollowers: "",
+    assetsUnderManagement: "", riskScore: "", profitDays: ""
+  });
+
+  const resetForm = () => {
+    setForm({ name: "", avatar: "", roi: "", winRate: "", followers: "", maxFollowers: "", assetsUnderManagement: "", riskScore: "", profitDays: "" });
+    setIsCreating(false);
+    setEditingId(null);
+  };
+
+  const startEdit = (t: TraderProfile) => {
+    setEditingId(t.id);
+    setIsCreating(false);
+    setForm({
+      name: t.name, avatar: t.avatar, roi: t.roi.toString(), winRate: t.winRate.toString(),
+      followers: t.followers.toString(), maxFollowers: t.maxFollowers.toString(),
+      assetsUnderManagement: t.assetsUnderManagement, riskScore: t.riskScore.toString(), profitDays: t.profitDays.toString()
+    });
+  };
+
+  const handleCreate = async () => {
+    if (!form.name) return;
+    await adminCreateTrader({
+      name: form.name,
+      avatar: form.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=256",
+      roi: parseFloat(form.roi) || 0,
+      winRate: parseFloat(form.winRate) || 0,
+      followers: parseInt(form.followers) || 0,
+      maxFollowers: parseInt(form.maxFollowers) || 500,
+      assetsUnderManagement: form.assetsUnderManagement || "$0",
+      riskScore: parseInt(form.riskScore) || 2,
+      profitDays: parseInt(form.profitDays) || 0,
+      chartData: Array.from({ length: 10 }, () => Math.random() * 100)
+    });
+    setFeedback(`Created trader: ${form.name}`);
+    resetForm();
+    setTimeout(() => setFeedback(null), 3000);
+  };
+
+  const handleUpdate = async () => {
+    if (!editingId) return;
+    await adminUpdateTrader(editingId, {
+      name: form.name,
+      avatar: form.avatar,
+      roi: parseFloat(form.roi) || 0,
+      winRate: parseFloat(form.winRate) || 0,
+      followers: parseInt(form.followers) || 0,
+      maxFollowers: parseInt(form.maxFollowers) || 500,
+      assetsUnderManagement: form.assetsUnderManagement,
+      riskScore: parseInt(form.riskScore) || 2,
+      profitDays: parseInt(form.profitDays) || 0,
+    });
+    setFeedback(`Updated trader: ${form.name}`);
+    resetForm();
+    setTimeout(() => setFeedback(null), 3000);
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.3 }} className="space-y-6">
+      {/* Header */}
+      <div className="bg-orbit-card border border-orbit-border rounded-2xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-orbit-white flex items-center gap-2">
+            <Award size={20} className="text-orbit-accent" /> Traders List
+          </h1>
+          <p className="text-xs text-orbit-gray-text mt-1">Manage copy trading master traders displayed on the platform.</p>
+        </div>
+        <button onClick={() => { setIsCreating(true); setEditingId(null); resetForm(); setIsCreating(true); }}
+          className="flex items-center gap-2 px-4 py-2 bg-orbit-accent text-orbit-bg font-bold text-xs uppercase rounded-lg hover:opacity-90 cursor-pointer">
+          <Plus size={14} /> Add Trader
+        </button>
+      </div>
+
+      {/* Feedback */}
+      {feedback && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-2">
+          <Check size={14} /> {feedback}
+        </motion.div>
+      )}
+
+      {/* Create / Edit Form */}
+      {(isCreating || editingId) && (
+        <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="bg-orbit-card border border-orbit-accent/30 rounded-2xl p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-orbit-white">{isCreating ? "Add New Trader" : "Edit Trader"}</h3>
+            <button onClick={resetForm} className="p-1.5 rounded-lg bg-orbit-border/50 text-orbit-gray-text hover:text-orbit-white cursor-pointer"><X size={14} /></button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <input placeholder="Name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
+            <input placeholder="Avatar URL" value={form.avatar} onChange={e => setForm(f => ({ ...f, avatar: e.target.value }))}
+              className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
+            <input type="number" placeholder="ROI (%)" value={form.roi} onChange={e => setForm(f => ({ ...f, roi: e.target.value }))}
+              className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
+            <input type="number" placeholder="Win Rate (%)" value={form.winRate} onChange={e => setForm(f => ({ ...f, winRate: e.target.value }))}
+              className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
+            <input type="number" placeholder="Followers" value={form.followers} onChange={e => setForm(f => ({ ...f, followers: e.target.value }))}
+              className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
+            <input type="number" placeholder="Max Followers" value={form.maxFollowers} onChange={e => setForm(f => ({ ...f, maxFollowers: e.target.value }))}
+              className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
+            <input placeholder="AUM (e.g. $1.4M)" value={form.assetsUnderManagement} onChange={e => setForm(f => ({ ...f, assetsUnderManagement: e.target.value }))}
+              className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
+            <input type="number" placeholder="Risk Score (1-5)" value={form.riskScore} onChange={e => setForm(f => ({ ...f, riskScore: e.target.value }))}
+              className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
+            <input type="number" placeholder="Profit Days" value={form.profitDays} onChange={e => setForm(f => ({ ...f, profitDays: e.target.value }))}
+              className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
+          </div>
+          <button onClick={isCreating ? handleCreate : handleUpdate}
+            className="flex items-center gap-2 px-6 py-2 bg-orbit-accent text-orbit-bg font-bold text-xs uppercase rounded-lg hover:opacity-90 cursor-pointer">
+            <Save size={14} /> {isCreating ? "Create Trader" : "Save Changes"}
+          </button>
+        </motion.div>
+      )}
+
+      {/* Traders Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {traders.map(t => (
+          <div key={t.id} className="bg-orbit-card border border-orbit-border rounded-2xl p-5 space-y-3">
+            <div className="flex items-center gap-3">
+              <img src={t.avatar} alt={t.name} className="w-10 h-10 rounded-full object-cover border-2 border-orbit-accent/30" />
+              <div>
+                <h3 className="text-sm font-bold text-orbit-white">{t.name}</h3>
+                <p className="text-[10px] text-orbit-gray-text">{t.assetsUnderManagement} AUM</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-[10px]">
+              <div><span className="text-orbit-gray-text">ROI:</span> <span className="text-emerald-400 font-bold ml-1">{t.roi}%</span></div>
+              <div><span className="text-orbit-gray-text">Win:</span> <span className="text-orbit-white font-bold ml-1">{t.winRate}%</span></div>
+              <div><span className="text-orbit-gray-text">Risk:</span> <span className="text-orbit-accent font-bold ml-1">{t.riskScore}/5</span></div>
+              <div><span className="text-orbit-gray-text">Followers:</span> <span className="text-orbit-white font-bold ml-1">{t.followers}/{t.maxFollowers}</span></div>
+              <div><span className="text-orbit-gray-text">Profit Days:</span> <span className="text-orbit-white font-bold ml-1">{t.profitDays}</span></div>
+            </div>
+            <div className="flex gap-2 pt-2 border-t border-orbit-border/50">
+              <button onClick={() => startEdit(t)}
+                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-orbit-accent/10 border border-orbit-accent/30 text-orbit-accent text-[10px] font-bold rounded-lg hover:bg-orbit-accent/20 cursor-pointer">
+                <Edit3 size={10} /> Edit
+              </button>
+              <button onClick={() => { if (window.confirm(`Delete "${t.name}"?`)) adminDeleteTrader(t.id); }}
+                className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-red-500/10 border border-red-500/30 text-red-400 text-[10px] font-bold rounded-lg hover:bg-red-500/20 cursor-pointer">
+                <Trash2 size={10} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </motion.div>
+  );
+};

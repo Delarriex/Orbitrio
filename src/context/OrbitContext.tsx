@@ -769,14 +769,44 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     const usersCol = collection(db, "users");
     const unsubscribe = onSnapshot(usersCol, (snapshot) => {
+      // If Firestore users collection is empty, seed with INITIAL_MOCK_USERS for local/dev sync
+      if (snapshot.empty) {
+        (async () => {
+          try {
+            for (const u of INITIAL_MOCK_USERS) {
+              await setDoc(doc(db, "users", u.email), {
+                name: u.name,
+                balance: u.balance,
+                portfolioValue: u.portfolioValue,
+                status: u.status,
+                activeInvestments: u.activeInvestments,
+                portfolio: u.portfolio,
+                transactions: u.transactions,
+                tickets: u.tickets,
+                loginHistory: u.loginHistory,
+                role: u.email === "henrikaram1@gmail.com" ? "admin" : "user",
+                username: u.email.split("@")[0],
+              });
+            }
+            console.log("Seeded INITIAL_MOCK_USERS into Firestore 'users' collection.");
+          } catch (seedErr) {
+            console.error("Error seeding mock users:", seedErr);
+          }
+        })();
+
+        // Update local adminUsers immediately so the UI can use mock people
+        setAdminUsers(INITIAL_MOCK_USERS);
+        return;
+      }
+
       const loaded: SimulatedUser[] = [];
       snapshot.forEach((docSnap) => {
         const data = docSnap.data();
         loaded.push({
           email: docSnap.id,
           name: data.name || docSnap.id.split("@")[0].toUpperCase(),
-          balance: typeof data.balance === "number" ? data.balance : 1000.00,
-          portfolioValue: typeof data.portfolioValue === "number" ? data.portfolioValue : 0.00,
+          balance: typeof data.balance === "number" ? data.balance : 1000.0,
+          portfolioValue: typeof data.portfolioValue === "number" ? data.portfolioValue : 0.0,
           status: data.status || "active",
           activeInvestments: Array.isArray(data.activeInvestments) ? data.activeInvestments : [],
           portfolio: Array.isArray(data.portfolio) ? data.portfolio : [],
@@ -845,38 +875,40 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const docRef = doc(db, "users", userEmail);
         
         try {
-          const userSnap = await getDoc(docRef);
-          if (userSnap.exists()) {
-            const data = userSnap.data();
-            setUser({
-              isLoggedIn: true,
-              email: userEmail,
-              name: data.name || (firebaseUser.displayName || userEmail.split("@")[0]).toUpperCase(),
-              balance: typeof data.balance === "number" ? data.balance : 1000.00,
-              portfolioValue: typeof data.portfolioValue === "number" ? data.portfolioValue : 0.00,
-              activeInvestments: Array.isArray(data.activeInvestments) ? data.activeInvestments : [],
-              portfolio: Array.isArray(data.portfolio) ? data.portfolio : [],
-              transactions: Array.isArray(data.transactions) ? data.transactions : [],
-              tickets: Array.isArray(data.tickets) ? data.tickets : [],
-              status: data.status || "active",
-              role: data.role || (userEmail.toLowerCase() === "henrikaram1@gmail.com" ? "admin" : "user"),
-              username: data.username || userEmail.split("@")[0],
-              firstName: data.firstName || firebaseUser.displayName?.split(" ")[0] || "Trader",
-              lastName: data.lastName || firebaseUser.displayName?.split(" ").slice(1).join(" ") || "Admin",
-              gender: data.gender || "Male",
-              phone: data.phone || "",
-              accountType: data.accountType || "Bronze",
-              country: data.country || "United States",
-              currency: data.currency || "USD"
-            });
-          } else {
-            // New user signed in via Google: Automatically provision document in Firestore
-            const initialName = (firebaseUser.displayName || userEmail.split("@")[0]).toUpperCase();
-            const initialUser = {
-              email: userEmail,
-              name: initialName,
-              balance: 1000.00,
-              portfolioValue: 0.00,
+          // Listen to the user document in real-time
+          onSnapshot(docRef, async (userSnap) => {
+            if (userSnap.exists()) {
+              const data = userSnap.data();
+              setUser({
+                isLoggedIn: true,
+                email: userEmail,
+                name: data.name || (firebaseUser.displayName || userEmail.split("@")[0]).toUpperCase(),
+                balance: typeof data.balance === "number" ? data.balance : 1000.00,
+                portfolioValue: typeof data.portfolioValue === "number" ? data.portfolioValue : 0.00,
+                activeInvestments: Array.isArray(data.activeInvestments) ? data.activeInvestments : [],
+                portfolio: Array.isArray(data.portfolio) ? data.portfolio : [],
+                transactions: Array.isArray(data.transactions) ? data.transactions : [],
+                tickets: Array.isArray(data.tickets) ? data.tickets : [],
+                status: data.status || "active",
+                role: data.isAdmin === true ? "admin" : (data.role || "user"),
+                isAdmin: data.isAdmin === true,
+                username: data.username || userEmail.split("@")[0],
+                firstName: data.firstName || firebaseUser.displayName?.split(" ")[0] || "Trader",
+                lastName: data.lastName || firebaseUser.displayName?.split(" ").slice(1).join(" ") || "Admin",
+                gender: data.gender || "Male",
+                phone: data.phone || "",
+                accountType: data.accountType || "Bronze",
+                country: data.country || "United States",
+                currency: data.currency || "USD"
+              });
+            } else {
+              // New user signed in via Google: Automatically provision document in Firestore
+              const initialName = (firebaseUser.displayName || userEmail.split("@")[0]).toUpperCase();
+              const initialUser = {
+                email: userEmail,
+                name: initialName,
+                balance: 1000.00,
+                portfolioValue: 0.00,
               status: "active" as const,
               activeInvestments: [],
               portfolio: [],
@@ -910,7 +942,8 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             });
             
             addNotification(`Profile created successfully for ${initialName}!`);
-          }
+            }
+          }); // close onSnapshot
         } catch (err) {
           console.error("Error setting up user from Firestore: ", err);
         }
@@ -1905,13 +1938,15 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           createdAt: new Date()
         });
 
-        // Trigger email notification if label matches (Action C)
+        // Trigger email notification if label matches (Action C) - silent fail if email not configured
         if (txData.label === "Deposit Successful") {
-          sendDepositEmail(email, {
-            amount: `$${txData.amount}`,
-            asset: "USD",
-            txHash: newTxId
-          });
+          try {
+            sendDepositEmail(email, {
+              amount: `$${txData.amount}`,
+              asset: "USD",
+              txHash: newTxId
+            });
+          } catch { /* Email service not configured - skip silently */ }
         }
       }
 

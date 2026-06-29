@@ -191,19 +191,25 @@ export const PublicHome: React.FC<{ onNavigate: (view: string) => void }> = ({ o
           </div>
 
           {/* Golden Highlight Actions */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mt-8 w-full max-w-sm">
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mt-8 w-full max-w-lg">
             <button 
               onClick={() => onNavigate(user.isLoggedIn ? "dashboard-trading" : "auth")}
-              className="w-full sm:w-auto px-8 py-3.5 rounded-lg bg-[#F7931A] hover:bg-[#FFBA3B] text-black font-semibold text-sm transition-all duration-200 transform active:scale-95 shadow-[0_4px_20px_rgba(247,147,26,0.3)] flex items-center justify-center gap-2"
+              className="orb-button w-full sm:w-auto px-8 py-3.5"
             >
               Start Trading <ArrowUpRight size={16} />
             </button>
             <button 
               onClick={() => onNavigate("markets")}
-              className="w-full sm:w-auto px-8 py-3.5 rounded-lg bg-[#161A1E] hover:bg-[#1E2329] border border-[#2B3139] text-white font-medium text-sm transition-all duration-200"
+              className="orb-button-secondary w-full sm:w-auto px-8 py-3.5"
             >
               Explore Markets
             </button>
+          </div>
+
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-[11px] uppercase tracking-[0.28em] text-orbit-gray-text">
+            <span className="rounded-full border border-orbit-border/70 bg-black/30 px-3 py-1">Live market data</span>
+            <span className="rounded-full border border-orbit-border/70 bg-black/30 px-3 py-1">Instant wallet access</span>
+            <span className="rounded-full border border-orbit-border/70 bg-black/30 px-3 py-1">Secure by design</span>
           </div>
 
           {/* CELESTIAL ORBIT ANIMATION SYSTEM (Bybit-themed mockups with upright counter-rotation) */}

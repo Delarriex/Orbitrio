@@ -18,6 +18,8 @@ import {
   Copy,
   Check
 } from "lucide-react";
+import { motion } from "motion/react";
+import { DashboardEquityChart } from "../components/charts/DashboardEquityChart";
 
 interface DashboardOverviewProps {
   onNavigate: (view: string) => void;
@@ -46,11 +48,29 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   const netPnL = totalCostBasis > 0 ? +(portfolioAssetsValue - totalCostBasis).toFixed(2) : 0;
   const netPnLPercent = totalCostBasis > 0 ? +((netPnL / totalCostBasis) * 100).toFixed(2) : 0;
 
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: { staggerChildren: 0.1 }
+    }
+  };
+
+  const itemVariants: any = {
+    hidden: { opacity: 0, y: 20 },
+    show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
+  };
+
   return (
-    <div className="space-y-8 pb-20">
+    <motion.div 
+      variants={containerVariants}
+      initial="hidden"
+      animate="show"
+      className="space-y-8 pb-20"
+    >
       
       {/* 1. Header welcome */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-orbit-border/50 pb-6">
+      <motion.div variants={itemVariants} className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-orbit-border/50 pb-6">
         <div>
           <div className="flex items-center gap-2.5">
             <Wallet size={24} className="text-orbit-accent shrink-0" />
@@ -101,27 +121,27 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={onOpenDeposit}
-            className="flex items-center gap-1.5 px-4 py-2 bg-orbit-accent text-orbit-bg font-bold font-subheading text-xs rounded-xl hover:opacity-95 shadow transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-4 py-2 bg-orbit-accent text-orbit-bg font-bold font-subheading text-xs rounded-xl hover:opacity-95 shadow shadow-orbit-accent/20 hover:-translate-y-0.5 transition-all cursor-pointer"
           >
             <PlusCircle size={14} /> Deposit
           </button>
           <button
             onClick={onOpenWithdraw}
-            className="flex items-center gap-1.5 px-4 py-2 bg-orbit-card border border-orbit-border hover:border-orbit-accent/60 text-orbit-white font-semibold font-subheading text-xs rounded-xl transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-4 py-2 bg-orbit-card border border-orbit-border hover:bg-orbit-card/80 text-orbit-white font-semibold font-subheading text-xs rounded-xl hover:-translate-y-0.5 transition-all cursor-pointer"
           >
             <MinusCircle size={14} /> Withdraw
           </button>
         </div>
-      </div>
+      </motion.div>
  
       {/* 2. Core balances cards row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 font-sans">
+      <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 font-sans">
         
         {/* Net Worth */}
-        <div className="bg-orbit-card border border-orbit-border rounded-xl p-5 hover:border-orbit-accent/40 transition-all">
+        <div className="bg-gradient-to-br from-orbit-card to-orbit-card/50 border border-orbit-border rounded-xl p-5 hover:border-orbit-accent/40 hover:-translate-y-1 hover:shadow-lg hover:shadow-orbit-accent/5 transition-all duration-300 group">
           <div className="flex justify-between items-start text-orbit-gray-text">
-            <span className="text-[10px] uppercase font-sans font-medium tracking-wider text-slate-400">Total Equity</span>
-            <span className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500">
+            <span className="text-[10px] uppercase font-sans font-medium tracking-wider text-slate-400 group-hover:text-orbit-white transition-colors">Total Equity</span>
+            <span className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500 group-hover:bg-blue-500 group-hover:text-white transition-colors">
               <Briefcase size={16} />
             </span>
           </div>
@@ -135,7 +155,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               </span>
             </div>
             <div className="flex items-center gap-1 text-[11px]">
-              <span className={`flex items-center font-data font-bold ${netPnL >= 0 ? "text-orbit-green" : "text-orbit-red"}`}>
+              <span className={`flex items-center font-data font-bold ${netPnL >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
                 {netPnL >= 0 ? "+" : ""}{netPnL.toLocaleString()} ({netPnLPercent}%)
               </span>
               <span className="text-slate-400 font-medium font-sans">Today's P&L</span>
@@ -144,10 +164,10 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         </div>
  
         {/* Available Cash balance */}
-        <div className="bg-orbit-card border border-orbit-border rounded-xl p-5 hover:border-orbit-accent/40 transition-all">
+        <div className="bg-gradient-to-br from-orbit-card to-orbit-card/50 border border-orbit-border rounded-xl p-5 hover:border-orbit-accent/40 hover:-translate-y-1 hover:shadow-lg hover:shadow-orbit-accent/5 transition-all duration-300 group">
           <div className="flex justify-between items-start text-orbit-gray-text">
-            <span className="text-[10px] uppercase font-sans font-medium tracking-wider text-slate-400">Available Balance</span>
-            <span className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500">
+            <span className="text-[10px] uppercase font-sans font-medium tracking-wider text-slate-400 group-hover:text-orbit-white transition-colors">Available Balance</span>
+            <span className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500 group-hover:bg-emerald-500 group-hover:text-white transition-colors">
               <DollarSign size={16} />
             </span>
           </div>
@@ -162,10 +182,10 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         </div>
  
         {/* Portfolio Assets value */}
-        <div className="bg-orbit-card border border-orbit-border rounded-xl p-5 hover:border-orbit-accent/40 transition-all">
+        <div className="bg-gradient-to-br from-orbit-card to-orbit-card/50 border border-orbit-border rounded-xl p-5 hover:border-orbit-accent/40 hover:-translate-y-1 hover:shadow-lg hover:shadow-orbit-accent/5 transition-all duration-300 group">
           <div className="flex justify-between items-start text-orbit-gray-text">
-            <span className="text-[10px] uppercase font-sans font-medium tracking-wider text-slate-400">Derivatives Account</span>
-            <span className="p-1.5 rounded-lg bg-rose-500/10 text-rose-500">
+            <span className="text-[10px] uppercase font-sans font-medium tracking-wider text-slate-400 group-hover:text-orbit-white transition-colors">Derivatives Account</span>
+            <span className="p-1.5 rounded-lg bg-rose-500/10 text-rose-500 group-hover:bg-rose-500 group-hover:text-white transition-colors">
               <Activity size={16} />
             </span>
           </div>
@@ -180,27 +200,41 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         </div>
  
         {/* Dynamic active plan totals */}
-        <div className="bg-orbit-card border border-orbit-border rounded-xl p-5 hover:border-orbit-accent/40 transition-all">
-          <div className="flex justify-between items-start text-orbit-gray-text">
-            <span className="text-[10px] uppercase font-sans font-medium tracking-wider text-slate-400">Plan Yield Capital</span>
-            <span className="p-1.5 rounded-lg bg-amber-500/10 text-amber-500">
+        <div className="bg-gradient-to-br from-orbit-card to-orbit-card/50 border border-orbit-border rounded-xl p-5 hover:border-orbit-accent/40 hover:-translate-y-1 hover:shadow-lg hover:shadow-orbit-accent/5 transition-all duration-300 group relative overflow-hidden">
+          {/* Subtle gold flare for yield */}
+          <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 blur-3xl rounded-full" />
+          <div className="flex justify-between items-start text-orbit-gray-text relative z-10">
+            <span className="text-[10px] uppercase font-sans font-medium tracking-wider text-slate-400 group-hover:text-orbit-white transition-colors">Plan Yield Capital</span>
+            <span className="p-1.5 rounded-lg bg-amber-500/10 text-amber-500 group-hover:bg-amber-500 group-hover:text-white transition-colors">
               <Layers size={16} />
             </span>
           </div>
-          <div className="mt-4 space-y-1">
+          <div className="mt-4 space-y-1 relative z-10">
             <span className="text-2xl font-black font-data text-orbit-accent">
               ${(activePlanCapital + activePlanProfits).toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </span>
-            <p className="text-[11px] text-orbit-green font-data">
+            <p className="text-[11px] text-emerald-400 font-data">
               +{activePlanProfits > 0 ? `$${activePlanProfits.toFixed(2)} accrued` : "0.00 accruals"}
             </p>
           </div>
         </div>
  
-      </div>
+      </motion.div>
+
+      {/* 2.5 Portfolio Performance Chart */}
+      <motion.div variants={itemVariants} className="bg-orbit-card border border-orbit-border rounded-xl p-6 hover:shadow-lg hover:shadow-orbit-accent/5 transition-all duration-300">
+        <div className="flex justify-between items-center border-b border-orbit-border/60 pb-4">
+          <div className="flex items-center gap-2">
+            <Activity className="text-orbit-accent" size={18} />
+            <h3 className="text-sm font-bold font-heading text-orbit-white">30-Day Equity Trend</h3>
+          </div>
+          <span className="text-xs text-orbit-gray-text font-data">Live Updates</span>
+        </div>
+        <DashboardEquityChart currentEquity={aggregateNetWorth} />
+      </motion.div>
 
       {/* 3. Middle split grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 font-sans">
+      <motion.div variants={itemVariants} className="grid grid-cols-1 lg:grid-cols-12 gap-8 font-sans">
         
         {/* Left column: Active Investment plans */}
         <div className="lg:col-span-7 bg-orbit-card border border-orbit-border rounded-xl p-6 space-y-6">
@@ -329,10 +363,10 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           )}
         </div>
 
-      </div>
+      </motion.div>
 
       {/* 4. Bottom Paginated Ledger Transactions */}
-      <section className="bg-orbit-card border border-orbit-border rounded-xl p-6 space-y-6 font-sans">
+      <motion.section variants={itemVariants} className="bg-orbit-card border border-orbit-border rounded-xl p-6 space-y-6 font-sans hover:shadow-lg hover:shadow-orbit-accent/5 transition-all duration-300">
         <div className="flex items-center justify-between border-b border-orbit-border/60 pb-4">
           <div className="flex items-center gap-2">
             <History className="text-orbit-accent animate-pulse" size={16} />
@@ -389,8 +423,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             </table>
           </div>
         )}
-      </section>
+      </motion.section>
 
-    </div>
+    </motion.div>
   );
 };

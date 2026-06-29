@@ -738,8 +738,12 @@ export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab
                         <td className="p-3 font-semibold text-orbit-white font-data">{t.asset}</td>
                         <td className="p-3 text-orbit-white font-bold">${t.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                         <td className="p-3 pr-4 text-right">
-                          <span className="text-[11px] text-orbit-green font-bold flex items-center justify-end gap-1 font-subheading">
-                            <CheckCircle2 size={12} /> SUCCESS
+                          <span className={`text-[11px] font-bold flex items-center justify-end gap-1 font-subheading ${
+                            t.status === "completed" || t.status === "approved" ? "text-orbit-green" :
+                            t.status === "pending" ? "text-yellow-400" :
+                            "text-orbit-red"
+                          }`}>
+                            <CheckCircle2 size={12} /> {t.status.toUpperCase()}
                           </span>
                         </td>
                       </tr>

@@ -1,0 +1,564 @@
+import React, { useState, useEffect, useRef } from "react";
+import { useOrbit } from "../context/OrbitContext";
+import { X, Check, Copy, ArrowUpRight, Loader2, Info, AlertTriangle } from "lucide-react";
+
+interface GlobalModalsProps {
+  depositModalOpen: boolean;
+  setDepositModalOpen: (open: boolean) => void;
+  withdrawModalOpen: boolean;
+  setWithdrawModalOpen: (open: boolean) => void;
+  setCurrentView: (view: string) => void;
+}
+
+export function GlobalModals({
+  depositModalOpen, setDepositModalOpen,
+  withdrawModalOpen, setWithdrawModalOpen,
+  setCurrentView
+}: GlobalModalsProps) {
+  const { user, deposit, withdraw, adminWallets, insufficientBalanceOpen, setInsufficientBalanceOpen } = useOrbit();
+
+  // Form states inside Quick Modals
+  const quickFileRef = useRef<HTMLInputElement>(null);
+  const [depAmt, setDepAmt] = useState("");
+  const [depCoin, setDepCoin] = useState("USDT");
+  const [depNetwork, setDepNetwork] = useState("TRC20");
+  const [copied, setCopied] = useState(false);
+  const [depTxHash, setDepTxHash] = useState("");
+  const [depProofName, setDepProofName] = useState("");
+  const [wdrAmt, setWdrAmt] = useState("");
+  const [wdrCoin, setWdrCoin] = useState("USDT");
+  const [wdrNetwork, setWdrNetwork] = useState("TRC20");
+  const [wdrAddr, setWdrAddr] = useState("");
+
+  const [modalFeedback, setModalFeedback] = useState<string | { title: string; description: string; type?: string } | null>(null);
+
+  useEffect(() => {
+    if (depCoin === "USDT") {
+      setDepNetwork("TRC20");
+    } else if (depCoin === "BTC") {
+      setDepNetwork("BTC");
+    } else if (depCoin === "ETH") {
+      setDepNetwork("ERC20");
+    }
+  }, [depCoin]);
+
+  useEffect(() => {
+    if (wdrCoin === "USDT") {
+      setWdrNetwork("TRC20");
+    } else if (wdrCoin === "BTC") {
+      setWdrNetwork("BTC");
+    } else if (wdrCoin === "ETH") {
+      setWdrNetwork("ERC20");
+    } else if (wdrCoin === "USD") {
+      setWdrNetwork("ACH");
+    }
+  }, [wdrCoin]);
+
+  const getNetworksForCoin = (coin: string) => {
+    switch (coin) {
+      case "USDT":
+        return [
+          { id: "TRC20", label: "TRC20 (Tron Network)", address: adminWallets?.USDT_TRC20 || "TYc8Dq6pB1A8C8xbeGf4mDqsD84Kda67vE" },
+          { id: "ERC20", label: "ERC20 (Ethereum Network)", address: adminWallets?.USDT_ERC20 || "0x981A7bFDE6D211a76B97A1f6DAe82b7814a60156" },
+          { id: "BEP20", label: "BEP20 (BNB Smart Chain)", address: adminWallets?.BNB || "0x3fC91A3afd20b00230230233ea86976828a923" }
+        ];
+      case "BTC":
+        return [
+          { id: "BTC", label: "Bitcoin Native Network (BTC)", address: adminWallets?.BTC || "bc1qxy2kg3ut7ytu6e8f4t9rga2dfws368ff66e5g8" }
+        ];
+      case "ETH":
+        return [
+          { id: "ERC20", label: "ERC20 (Ethereum Network)", address: adminWallets?.ETH || "0x7Fba9fB5994A1F62aB016a2E9D843D0B6A780E2e" }
+        ];
+      default:
+        return [
+          { id: "TRC20", label: "TRC20 Network", address: "TYc8Dq6pB1A8C8xbeGf4mDqsD84Kda67vE" }
+        ];
+    }
+  };
+
+  const getNetworksForWdrCoin = (coin: string) => {
+    switch (coin) {
+      case "USDT":
+        return [
+          { id: "TRC20", label: "TRC20 (Tron Network)" },
+          { id: "ERC20", label: "ERC20 (Ethereum Network)" },
+          { id: "BEP20", label: "BEP20 (BNB Smart Chain)" }
+        ];
+      case "BTC":
+        return [
+          { id: "BTC", label: "Bitcoin Native Network (BTC)" }
+        ];
+      case "ETH":
+        return [
+          { id: "ERC20", label: "ERC20 (Ethereum Network)" }
+        ];
+      case "USD":
+        return [
+          { id: "ACH", label: "Bank ACH (Transit / Checking)" },
+          { id: "WIRE", label: "International Wire Transfer" }
+        ];
+      default:
+        return [
+          { id: "TRC20", label: "TRC20 Network" }
+        ];
+    }
+  };
+
+  const handleCopyAddress = (address: string) => {
+    navigator.clipboard.writeText(address);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const triggerModalFeedback = (msg: string | { title: string; description: string; type?: string }) => {
+    setModalFeedback(msg);
+  };
+
+  const handleQuickDeposit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const amount = parseFloat(depAmt);
+    if (!amount || amount <= 0) return;
+
+    const fullAssetLabel = depCoin === "USDT" ? `${depCoin} (${depNetwork})` : depCoin;
+    deposit(amount, fullAssetLabel, depTxHash.trim() || "N/A", depProofName || "payment_proof_receipt.jpg");
+    setDepAmt("");
+    setDepTxHash("");
+    setDepProofName("");
+    triggerModalFeedback({
+      title: "Deposit Processing",
+      description: `Your deposit of $${amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} USD equivalent of ${fullAssetLabel} is being processed. The funds will be credited to your account after network confirmation.`,
+      type: "success"
+    });
+    setTimeout(() => {
+      setDepositModalOpen(false);
+      setModalFeedback(null);
+    }, 5000);
+  };
+
+  const handleQuickWithdraw = (e: React.FormEvent) => {
+    e.preventDefault();
+    const amount = parseFloat(wdrAmt);
+    if (!amount || amount <= 0 || !wdrAddr.trim()) return;
+
+    if (!user.isLoggedIn) {
+      setWithdrawModalOpen(false);
+      setCurrentView("auth");
+      return;
+    }
+
+    const currencyLabel = wdrCoin === "USD" ? "USD" : `${wdrCoin} (${wdrNetwork})`;
+    const res = withdraw(amount, currencyLabel, wdrAddr);
+    if (res.success) {
+      setWdrAmt("");
+      setWdrAddr("");
+      triggerModalFeedback({
+        title: "Withdrawal Submitted",
+        description: `Your request to withdraw $${amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} USD equivalent in ${currencyLabel} to ${wdrAddr} has been safely queued. Settlement is currently processing.`,
+        type: "success"
+      });
+      setTimeout(() => {
+        setWithdrawModalOpen(false);
+        setModalFeedback(null);
+      }, 5000);
+    } else {
+      if (res.message.toLowerCase().includes("insufficient") || res.message.toLowerCase().includes("not enough")) {
+        setWithdrawModalOpen(false);
+        setInsufficientBalanceOpen(true);
+      } else {
+        triggerModalFeedback(`Error: ${res.message}`);
+      }
+    }
+  };
+
+  return (
+    <>
+      {/* QUICK DEPOSIT MODAL OUTLAY */}
+      {depositModalOpen && (() => {
+        const activeNetworkList = getNetworksForCoin(depCoin);
+        const activeNetwork = activeNetworkList.find(n => n.id === depNetwork) || activeNetworkList[0];
+
+        return (
+          <div className="fixed inset-0 bg-[#000000]/80 backdrop-blur-sm overflow-y-auto p-4 z-50 flex items-center justify-center">
+            <div className="bg-orbit-card border border-orbit-border rounded-2xl w-full max-w-md p-6 relative shadow-2xl space-y-5 max-h-[calc(100vh-2rem)] overflow-y-auto my-auto scrollbar-none">
+              <button 
+                onClick={() => { setDepositModalOpen(false); setModalFeedback(null); }}
+                className="absolute top-4 right-4 text-orbit-gray-text hover:text-orbit-white cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+
+              <div>
+                <h3 className="text-base font-bold text-orbit-white flex items-center gap-2">
+                  <ArrowUpRight size={18} className="text-orbit-accent shrink-0 transform rotate-180" />
+                  Fast Deposit
+                </h3>
+                <p className="text-xs text-slate-400 mt-1 leading-relaxed font-sans">
+                  Instantly fund your wallet to begin trading. Select your preferred asset and network.
+                </p>
+              </div>
+
+              {modalFeedback && (() => {
+                if (typeof modalFeedback === "object") {
+                  return (
+                    <div className="p-4 rounded-xl bg-[#141b1a] border border-emerald-500/20 flex items-start gap-3 text-emerald-400">
+                      <div className="shrink-0 mt-0.5">
+                        <Loader2 size={16} className="animate-spin text-emerald-400" />
+                      </div>
+                      <div className="space-y-1">
+                        <h4 className="text-[13px] font-bold text-orbit-white leading-tight">
+                          {modalFeedback.title}
+                        </h4>
+                        <p className="text-xs text-emerald-400/85 leading-relaxed font-sans">
+                          {modalFeedback.description}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                }
+                return (
+                  <div className={`p-3 text-xs rounded-lg text-center ${
+                    modalFeedback.startsWith("Error") 
+                      ? "bg-orbit-red/10 border-orbit-red/30 text-orbit-red" 
+                      : "bg-orbit-green/10 border-orbit-green/30 text-orbit-green font-semibold"
+                  }`}>
+                    {modalFeedback}
+                  </div>
+                );
+              })()}
+
+              <form onSubmit={handleQuickDeposit} className="space-y-5">
+                {/* Step 1: Coin Selection */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] text-slate-400 font-sans uppercase font-bold tracking-wider block">Coin</label>
+                  <div className="grid grid-cols-3 gap-2 text-xs font-bold font-sans">
+                    {["USDT", "BTC", "ETH"].map(coin => (
+                      <button
+                        key={coin}
+                        type="button"
+                        onClick={() => setDepCoin(coin)}
+                        className={`py-2 rounded-xl border text-center cursor-pointer transition-all ${
+                          depCoin === coin 
+                            ? "border-orbit-accent bg-orbit-accent/10 text-orbit-accent" 
+                            : "border-orbit-border/50 bg-[#121318] text-slate-400"
+                        }`}
+                      >
+                        {coin}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Step 2: Blockchain Network Selection */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] text-slate-400 font-sans uppercase font-bold tracking-wider block">Blockchain Network</label>
+                  <div className="flex flex-wrap gap-2 text-[11px] font-bold font-sans">
+                    {activeNetworkList.map((net) => (
+                      <button
+                        key={net.id}
+                        type="button"
+                        onClick={() => setDepNetwork(net.id)}
+                        className={`px-3 py-1.5 rounded-xl border text-center transition-all cursor-pointer ${
+                          depNetwork === net.id 
+                            ? "border-orbit-accent bg-orbit-accent/10 text-orbit-accent font-extrabold" 
+                            : "border-orbit-border/50 bg-[#121318] text-slate-400"
+                        }`}
+                      >
+                        {net.id}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Step 3: Address / QR display */}
+                <div className="space-y-3 pt-1">
+                  <div className="flex gap-4 items-center">
+                    <div className="w-24 h-24 bg-white p-1 rounded-xl shrink-0">
+                      <img 
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${activeNetwork.address}`}
+                        alt="Deposit QR Code"
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+
+                    <div className="flex-1 min-w-0 space-y-1.5 text-left">
+                      <span className="text-[9px] text-slate-400 font-sans uppercase block font-bold tracking-wider">
+                        YOUR {depCoin} DEPOSIT ADDRESS
+                      </span>
+                      <div className="bg-[#121318] border border-orbit-border/50 rounded-xl p-2 flex items-center justify-between gap-1.5">
+                        <span className="font-mono text-[10px] break-all select-all text-orbit-white pr-1">
+                          {activeNetwork.address}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyAddress(activeNetwork.address)}
+                          className="p-1 px-1.5 rounded-lg bg-orbit-border/50 hover:bg-orbit-accent/10 text-orbit-gray-text hover:text-orbit-accent transition-all cursor-pointer select-none shrink-0"
+                          title="Copy Address"
+                        >
+                          {copied ? (
+                            <span className="text-[9px] text-orbit-green font-bold flex items-center gap-1">
+                              <Check size={10} /> COPIED
+                            </span>
+                          ) : (
+                            <Copy size={11} />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-[10px] text-slate-400 italic space-y-0.5 text-left font-sans">
+                    <span>• Ensure you send only {depCoin} to this address.</span>
+                    <span className="block">• Assets are safely held 1:1.</span>
+                  </div>
+                </div>
+
+                {/* Deposit Amount input */}
+                <div className="space-y-1 text-left">
+                  <label className="text-[10px] text-slate-400 font-sans uppercase block font-bold tracking-wider">
+                    AMOUNT OF DEPOSIT (USD VALUE)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      required
+                      min="100"
+                      value={depAmt}
+                      onChange={(e) => setDepAmt(e.target.value)}
+                      placeholder="Min. Deposit: 100 USD"
+                      className="w-full bg-[#121318] border border-orbit-border/80 focus:border-orbit-accent focus:ring-1 focus:ring-orbit-accent rounded-xl py-2.5 px-3 text-[11px] text-orbit-white font-mono font-semibold transition-all focus:outline-none placeholder:text-[10px] placeholder-slate-500"
+                    />
+                    <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono font-bold">
+                      USD
+                    </span>
+                  </div>
+                </div>
+
+                <div className="pt-1 select-none">
+                  <p className="text-[10px] text-slate-400 flex items-start gap-1.5 leading-relaxed text-left">
+                    <Info size={11} className="text-amber-500 shrink-0 mt-0.5" />
+                    <span>Minimum deposit: 100 USD. Deposits below this amount cannot be recovered.</span>
+                  </p>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    className="w-full py-3.5 bg-orbit-accent hover:opacity-95 text-orbit-bg font-extrabold font-heading text-xs uppercase rounded-xl transition-all shadow-md shadow-orbit-accent/10 cursor-pointer tracking-wider text-center"
+                  >
+                    CONFIRM DEPOSIT
+                  </button>
+                  <p className="text-xs text-neutral-400 text-center mt-2 font-sans">
+                    Please only click the Confirm Deposit button if you have already transferred the funds.
+                  </p>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* QUICK WITHDRAWAL MODAL OUTLAY */}
+      {withdrawModalOpen && (
+        <div className="fixed inset-0 bg-[#000000]/80 backdrop-blur-sm overflow-y-auto p-4 z-50 flex items-center justify-center">
+          <div className="bg-orbit-card border border-orbit-border rounded-2xl w-full max-w-md p-6 relative shadow-2xl space-y-5 max-h-[calc(100vh-2rem)] overflow-y-auto my-auto">
+            <button 
+              onClick={() => { setWithdrawModalOpen(false); setModalFeedback(null); }}
+              className="absolute top-4 right-4 text-orbit-gray-text hover:text-orbit-white cursor-pointer"
+            >
+              <X size={18} />
+            </button>
+
+            <div>
+              <h3 className="text-base font-bold text-orbit-white flex items-center gap-2">
+                <ArrowUpRight size={18} className="text-orbit-accent shrink-0" />
+                Withdraw
+              </h3>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                Please ensure the withdrawal address and selected network match exactly to avoid loss of funds.
+              </p>
+            </div>
+
+            {modalFeedback && (() => {
+              if (typeof modalFeedback === "object") {
+                return (
+                  <div className="p-4 rounded-xl bg-[#141b1a] border border-emerald-500/20 flex items-start gap-3 text-emerald-400">
+                    <div className="shrink-0 mt-0.5">
+                      <Loader2 size={16} className="animate-spin text-emerald-400" />
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className="text-[13px] font-bold text-orbit-white leading-tight">
+                        {modalFeedback.title}
+                      </h4>
+                      <p className="text-xs text-emerald-450/85 leading-relaxed font-sans">
+                        {modalFeedback.description}
+                      </p>
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <div className={`p-3 text-xs rounded-lg text-center ${
+                  modalFeedback.startsWith("Error") 
+                    ? "bg-orbit-red/10 border-orbit-red/30 text-orbit-red" 
+                    : "bg-orbit-green/10 border-orbit-green/30 text-orbit-green font-semibold"
+                }`}>
+                  {modalFeedback}
+                </div>
+              );
+            })()}
+
+            <form onSubmit={handleQuickWithdraw} className="space-y-5">
+              {/* Step 1: Coin Selection */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] text-slate-400 font-sans uppercase font-bold tracking-wider block">Coin</label>
+                <div className="grid grid-cols-3 gap-2 text-xs font-bold font-sans">
+                  {["USDT", "BTC", "ETH"].map(coin => (
+                    <button
+                      key={coin}
+                      type="button"
+                      onClick={() => setWdrCoin(coin)}
+                      className={`py-2 rounded-xl border text-center cursor-pointer transition-all ${
+                        wdrCoin === coin 
+                          ? "border-orbit-accent bg-orbit-accent/10 text-orbit-accent" 
+                          : "border-orbit-border/50 bg-[#121318] text-slate-400"
+                      }`}
+                    >
+                      {coin}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Step 2: Blockchain Network Selection */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] text-slate-400 font-sans uppercase font-bold tracking-wider block">Blockchain Network</label>
+                <div className="flex flex-wrap gap-2 text-[11px] font-bold font-sans">
+                  {getNetworksForWdrCoin(wdrCoin).map((net) => (
+                    <button
+                      key={net.id}
+                      type="button"
+                      onClick={() => setWdrNetwork(net.id)}
+                      className={`px-3 py-1.5 rounded-xl border text-center transition-all cursor-pointer ${
+                        wdrNetwork === net.id 
+                          ? "border-orbit-accent bg-orbit-accent/10 text-orbit-accent font-extrabold" 
+                          : "border-orbit-border/50 bg-[#121318] text-slate-400"
+                      }`}
+                    >
+                      {net.id}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Step 3: Wallet Address & Amount Inputs */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] text-slate-400 font-sans uppercase font-bold tracking-wider block">Wallet Address</label>
+                <input
+                  type="text"
+                  required
+                  value={wdrAddr}
+                  onChange={(e) => setWdrAddr(e.target.value)}
+                  placeholder="Fill in the withdrawal address"
+                  className="w-full bg-[#121318] border border-orbit-border/80 focus:border-orbit-accent focus:ring-1 focus:ring-orbit-accent rounded-xl py-2.5 px-3 text-[11px] text-orbit-white font-mono font-semibold transition-all focus:outline-none placeholder:text-[10px] placeholder-slate-500"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <label className="text-[10px] text-slate-400 font-sans uppercase font-bold tracking-wider">Amount</label>
+                  <span className="text-[10px] text-slate-400 font-sans font-semibold">
+                    Available Balance: {user.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })} {wdrCoin}
+                  </span>
+                </div>
+                <div className="relative">
+                  <input
+                    type="number"
+                    required
+                    min="0.01"
+                    step="any"
+                    value={wdrAmt}
+                    onChange={(e) => setWdrAmt(e.target.value)}
+                    placeholder="Fill in the withdrawal amount"
+                    className="w-full bg-[#121318] border border-orbit-border/80 focus:border-orbit-accent focus:ring-1 focus:ring-orbit-accent rounded-xl py-2.5 px-3 pr-20 text-[11px] text-orbit-white font-mono font-semibold transition-all focus:outline-none placeholder:text-[10px] placeholder-slate-500"
+                  />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setWdrAmt(user.balance.toString())}
+                      className="text-[10px] text-orbit-accent hover:opacity-80 font-sans font-extrabold cursor-pointer uppercase"
+                    >
+                      All
+                    </button>
+                    <span className="text-[10px] text-slate-400 font-mono font-bold border-l border-slate-700 pl-2">
+                      {wdrCoin}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Step 4: Fee Breakdown & Button Update */}
+              <div className="flex justify-between items-center text-[11px] font-sans text-slate-400 pt-1">
+                <span>Gas fee:</span>
+                <span className="text-orbit-white font-mono font-bold">
+                  {wdrCoin === "USDT" ? "1.00 USDT" : wdrCoin === "BTC" ? "0.0002 BTC" : "0.003 ETH"}
+                </span>
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3 bg-orbit-accent hover:opacity-95 text-orbit-bg font-extrabold font-heading text-xs uppercase rounded-xl transition-all shadow-md shadow-orbit-accent/10 cursor-pointer tracking-wider"
+              >
+                Withdraw
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Insufficient Balance Modal Overlay */}
+      {insufficientBalanceOpen && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-orbit-card border border-orbit-border rounded-2xl w-full max-w-sm p-6 relative shadow-2xl space-y-5">
+            <button 
+              onClick={() => setInsufficientBalanceOpen(false)}
+              className="absolute top-4 right-4 text-orbit-gray-text hover:text-orbit-white cursor-pointer bg-transparent border-none outline-none"
+            >
+              <X size={18} />
+            </button>
+            <div className="text-center space-y-3">
+              <div className="mx-auto w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-orbit-accent">
+                <AlertTriangle size={24} className="animate-bounce" />
+              </div>
+              <h3 className="text-base font-bold text-orbit-white uppercase tracking-wider font-heading">
+                Insufficient Balance
+              </h3>
+              <p className="text-xs text-orbit-gray-text leading-relaxed font-sans">
+                Your wallet balance is insufficient to complete this action. Please fund your wallet to continue.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setInsufficientBalanceOpen(false)}
+                className="py-2.5 rounded-xl border border-orbit-border/50 hover:border-orbit-white bg-transparent text-orbit-white font-bold font-subheading text-[11px] uppercase transition-all cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setInsufficientBalanceOpen(false);
+                  setDepositModalOpen(true);
+                }}
+                className="py-2.5 rounded-xl bg-orbit-accent hover:opacity-95 text-orbit-bg font-extrabold font-subheading text-[11px] uppercase transition-all shadow-md shadow-orbit-accent/15 cursor-pointer leading-relaxed"
+              >
+                Fund Wallet
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
