@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 import { 
   MarketAsset, 
   TraderProfile, 
@@ -594,6 +594,10 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const [insufficientBalanceOpen, setInsufficientBalanceOpen] = useState(false);
 
+  // Guard ref to prevent useEffect([user]) from writing back to Firestore
+  // when the user state change was triggered by an onSnapshot read FROM Firestore.
+  const firestoreUpdateRef = useRef(false);
+
   // Simulated Master administrative structures
   const [adminUsers, setAdminUsers] = useState<SimulatedUser[]>([]);
 
@@ -853,6 +857,13 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     localStorage.setItem("orbitrio_user", JSON.stringify(user));
 
+    // Skip writing back to Firestore if this state change came FROM Firestore
+    // (via onSnapshot). This prevents a write-back loop that overwrites fresh data.
+    if (firestoreUpdateRef.current) {
+      firestoreUpdateRef.current = false;
+      return;
+    }
+
     if (user.isLoggedIn && user.email) {
       const userDocRef = doc(db, "users", user.email);
       const firebaseUser = auth.currentUser;
@@ -895,6 +906,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           onSnapshot(docRef, async (userSnap) => {
             if (userSnap.exists()) {
               const data = userSnap.data();
+              firestoreUpdateRef.current = true;
               setUser({
                 isLoggedIn: true,
                 email: userEmail,
