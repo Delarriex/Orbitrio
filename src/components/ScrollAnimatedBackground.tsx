@@ -38,7 +38,7 @@ export const ScrollAnimatedBackground: React.FC = () => {
       />
 
       {/* Floating Particles */}
-      {[...Array(20)].map((_, i) => (
+      {[...Array(8)].map((_, i) => (
         <motion.div
           key={i}
           className="absolute w-1.5 h-1.5 bg-amber-500/20 rounded-full"
@@ -74,8 +74,8 @@ export const ScrollAnimatedBackground: React.FC = () => {
           className="absolute w-[60%] h-[60%] rounded-full border-2 border-double border-amber-500/15 animate-spin"
           style={{ animationDuration: "60s" }}
         />
-        {/* Core ring: Pulsing accent */}
-        <div className="absolute w-[40%] h-[40%] rounded-full border border-blue-500/10 animate-ping opacity-60" style={{ animationDuration: "5s" }} />
+        {/* Core ring: Subtle accent */}
+        <div className="absolute w-[40%] h-[40%] rounded-full border border-blue-500/10 animate-pulse opacity-60" style={{ animationDuration: "5s" }} />
         <div className="absolute w-[40%] h-[40%] rounded-full border border-orbit-accent/10" />
       </motion.div>
 
@@ -115,12 +115,12 @@ export const ScrollAnimatedBackground: React.FC = () => {
           <g className="text-amber-400">
             {/* New York to London */}
             <path d="M 230,100 Q 350,60 520,70" fill="none" stroke="#FFD700" strokeWidth="1.5" strokeDasharray="500" strokeDashoffset="500" className="animate-[dash_12s_linear_infinite]" />
-            <circle cx="230" cy="100" r="3" fill="#3b82f6" className="animate-ping" />
+            <circle cx="230" cy="100" r="3" fill="#3b82f6" className="animate-pulse" />
             
             {/* London to Singapore */}
             <path d="M 520,70 Q 640,180 770,220" fill="none" stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="500" strokeDashoffset="500" className="animate-[dash_15s_linear_infinite]" style={{ animationDelay: "3s" }} />
             <circle cx="520" cy="70" r="3.5" fill="#f59e0b" className="animate-pulse" />
-            <circle cx="770" cy="220" r="3" fill="#3b82f6" className="animate-ping" />
+            <circle cx="770" cy="220" r="3" fill="#3b82f6" className="animate-pulse" />
 
             {/* Singapore to Tokyo */}
             <path d="M 770,220 Q 820,150 860,100" fill="none" stroke="#FFD700" strokeWidth="1" strokeDasharray="500" strokeDashoffset="500" className="animate-[dash_10s_linear_infinite]" style={{ animationDelay: "6s" }} />
@@ -268,7 +268,7 @@ export const ScrollAnimatedBackground: React.FC = () => {
       <motion.div style={{ y: ySlow }} className="absolute inset-x-0 mx-auto max-w-7xl h-full w-full pointer-events-none">
         
         {/* Floating backdrop polygon to catch lighting on top of grids */}
-        <div className="absolute top-[180px] right-[4%] w-[220px] h-[340px] rounded-[32px] bg-gradient-to-b from-white/[0.015] to-transparent border border-white/[0.03] backdrop-blur-[1px]" />
+        <div className="absolute top-[180px] right-[4%] w-[220px] h-[340px] rounded-[32px] bg-gradient-to-b from-white/[0.015] to-transparent border border-white/[0.03]" />
         
         {/* Decorative thin gold vector line with bullet node */}
         <div className="absolute top-[520px] left-[3%] w-[150px] h-0.5 bg-gradient-to-r from-transparent via-amber-500/30 to-transparent">
@@ -281,7 +281,7 @@ export const ScrollAnimatedBackground: React.FC = () => {
         </div>
 
         {/* Elegant structural support pillars with glass layer (highly detailed bottom section) */}
-        <div className="absolute bottom-[10%] left-[8%] w-[160px] h-[320px] rounded-[24px] bg-gradient-to-tr from-white/[0.01] via-white/[0.02] to-transparent border border-white/[0.04] backdrop-blur-[1px]" />
+        <div className="absolute bottom-[10%] left-[8%] w-[160px] h-[320px] rounded-[24px] bg-gradient-to-tr from-white/[0.01] via-white/[0.02] to-transparent border border-white/[0.04]" />
       </motion.div>
 
       {/* Embedded core styles for seamless operation */}

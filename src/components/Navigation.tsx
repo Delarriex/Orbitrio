@@ -99,7 +99,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
 
   return (
     <>
-      <nav role="navigation" aria-label="Main navigation" className="fixed top-0 left-0 right-0 w-full h-16 bg-[#07090E]/90 backdrop-blur-2xl border-b border-orbit-border/40 z-50 shadow-[0_4px_30px_rgba(0,0,0,0.4)]">
+      <nav role="navigation" aria-label="Main navigation" className="fixed top-0 left-0 right-0 w-full h-16 bg-[#07090E]/95 backdrop-blur-md border-b border-orbit-border/40 z-50 shadow-[0_4px_30px_rgba(0,0,0,0.4)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between">
           
           {/* Logo */}
@@ -290,7 +290,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="lg:hidden fixed inset-0 bg-[#07090E]/98 backdrop-blur-xl z-[100] overflow-y-auto px-5 py-5 flex flex-col pb-24 shadow-2xl border-l border-orbit-border/30"
+            className="lg:hidden fixed inset-0 bg-[#07090E]/98 backdrop-blur-md z-[100] overflow-y-auto px-5 py-5 flex flex-col pb-24 shadow-2xl border-l border-orbit-border/30"
           >
             
             <div className="flex flex-col space-y-6 min-h-full">

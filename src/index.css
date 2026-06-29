@@ -96,7 +96,7 @@
 }
 
 .orb-panel {
-  @apply rounded-[28px] border border-orbit-border/70 bg-gradient-to-br from-[#12161D] via-[#0D1014] to-[#090B10] shadow-[0_25px_90px_rgba(0,0,0,0.40)] backdrop-blur-xl;
+  @apply rounded-[28px] border border-orbit-border/70 bg-gradient-to-br from-[#12161D] via-[#0D1014] to-[#090B10] shadow-[0_25px_90px_rgba(0,0,0,0.40)];
 }
 
 .orb-card-hover {
