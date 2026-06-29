@@ -1416,11 +1416,21 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       userEmail: user.email || "guest@gmail.com"
     };
 
+    const newBalance = statusType === "completed" ? +(user.balance + amount).toFixed(2) : user.balance;
+    const newTransactions = [newTx, ...user.transactions];
+
     setUser(prev => ({
       ...prev,
-      balance: statusType === "completed" ? +(prev.balance + amount).toFixed(2) : prev.balance,
-      transactions: [newTx, ...prev.transactions]
+      balance: newBalance,
+      transactions: newTransactions
     }));
+
+    if (user.email) {
+      updateDoc(doc(db, "users", user.email), {
+        balance: newBalance,
+        transactions: newTransactions
+      }).catch(console.error);
+    }
 
     handleLog("Asset Deposit Action", `Recharged requested: $${amount} ${currency}. Status: ${statusType}`, user.email || "system", "success");
     addNotification(`Secured ${currency} deposit of ${amount} queued. Status: ${statusType}`);
@@ -1463,11 +1473,21 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       userEmail: user.email || "guest@gmail.com"
     };
 
+    const newBalance = +(user.balance - amount).toFixed(2);
+    const newTransactions = [newTx, ...user.transactions];
+
     setUser(prev => ({
       ...prev,
-      balance: +(prev.balance - amount).toFixed(2),
-      transactions: [newTx, ...prev.transactions]
+      balance: newBalance,
+      transactions: newTransactions
     }));
+
+    if (user.email) {
+      updateDoc(doc(db, "users", user.email), {
+        balance: newBalance,
+        transactions: newTransactions
+      }).catch(console.error);
+    }
 
     handleLog("Asset Withdrawal Action", `Requested payout of $${amount} ${currency} to ${displayAddress}. Queued for Admin.`, user.email || "system", "warning");
     addNotification(`Withdrawal request of $${amount} ${currency} submitted for audit.`);
@@ -1508,24 +1528,34 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       dailyRoiPercent: +(selectedPlan.roiPercent / selectedPlan.durationDays).toFixed(3)
     };
 
+    const newBalance = +(user.balance - amount).toFixed(2);
+    const newActiveInvestments = [newActive, ...user.activeInvestments];
+    const newTx = {
+      id: `tx-plan-${Date.now()}`,
+      type: "investment",
+      amount,
+      status: "completed",
+      asset: "USD",
+      date: todayStr,
+      notes: `Subscribed to portfolio ${selectedPlan.name}`,
+      userEmail: user.email || "system"
+    };
+    const newTransactions = [newTx as Transaction, ...user.transactions];
+
     setUser(prev => ({
       ...prev,
-      balance: +(prev.balance - amount).toFixed(2),
-      activeInvestments: [newActive, ...prev.activeInvestments],
-      transactions: [
-        {
-          id: `tx-plan-${Date.now()}`,
-          type: "investment",
-          amount,
-          status: "completed",
-          asset: "USD",
-          date: todayStr,
-          notes: `Subscribed to portfolio ${selectedPlan.name}`,
-          userEmail: user.email || "system"
-        },
-        ...prev.transactions
-      ]
+      balance: newBalance,
+      activeInvestments: newActiveInvestments,
+      transactions: newTransactions
     }));
+
+    if (user.email) {
+      updateDoc(doc(db, "users", user.email), {
+        balance: newBalance,
+        activeInvestments: newActiveInvestments,
+        transactions: newTransactions
+      }).catch(console.error);
+    }
 
     handleLog("Compound Allocation Enrolled", `Subscribed to ${selectedPlan.name} worth $${amount}.`, user.email || "system", "success");
     addNotification(`Successfully allocated $${amount} to ${selectedPlan.name}.`);
@@ -1537,30 +1567,38 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const item = user.activeInvestments.find(inv => inv.id === investmentId);
     if (!item || item.status !== "completed") return;
 
-    setUser(prev => {
-      const payoutTotal = item.amount + item.accumulatedProfit;
-      const filtered = prev.activeInvestments.filter(i => i.id !== investmentId);
-      return {
-        ...prev,
-        balance: +(prev.balance + payoutTotal).toFixed(2),
-        activeInvestments: filtered,
-        transactions: [
-          {
-            id: `tx-pay-${Date.now()}`,
-            type: "payout",
-            amount: payoutTotal,
-            status: "completed",
-            asset: "USD",
-            date: new Date().toISOString().split("T")[0],
-            notes: `Matured subscription payout of ${item.name}`,
-            userEmail: user.email || "system"
-          },
-          ...prev.transactions
-        ]
-      };
-    });
+    const payoutTotal = item.amount + item.accumulatedProfit;
+    const filteredActiveInvestments = user.activeInvestments.filter(i => i.id !== investmentId);
+    const newBalance = +(user.balance + payoutTotal).toFixed(2);
+    
+    const newTx = {
+      id: `tx-pay-${Date.now()}`,
+      type: "payout",
+      amount: payoutTotal,
+      status: "completed",
+      asset: "USD",
+      date: new Date().toISOString().split("T")[0],
+      notes: `Matured subscription payout of ${item.name}`,
+      userEmail: user.email || "system"
+    };
+    const newTransactions = [newTx as Transaction, ...user.transactions];
 
-    handleLog("Investment Settled", `Recovered contract capital with profit. Claimed $${(item.amount + item.accumulatedProfit).toFixed(2)}`, user.email || "system", "success");
+    setUser(prev => ({
+      ...prev,
+      balance: newBalance,
+      activeInvestments: filteredActiveInvestments,
+      transactions: newTransactions
+    }));
+
+    if (user.email) {
+      updateDoc(doc(db, "users", user.email), {
+        balance: newBalance,
+        activeInvestments: filteredActiveInvestments,
+        transactions: newTransactions
+      }).catch(console.error);
+    }
+
+    handleLog("Investment Settled", `Recovered contract capital with profit. Claimed $${payoutTotal.toFixed(2)}`, user.email || "system", "success");
     addNotification(`Earnings of $${item.accumulatedProfit.toFixed(2)} and initial capital returned to pocket.`);
   };
 
@@ -1593,11 +1631,21 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       userEmail: user.email
     };
 
+    const newBalance = +(user.balance - amount).toFixed(2);
+    const newTransactions = [newTx, ...user.transactions];
+    
     setUser(prev => ({
       ...prev,
-      balance: +(prev.balance - amount).toFixed(2),
-      transactions: [newTx, ...prev.transactions]
+      balance: newBalance,
+      transactions: newTransactions
     }));
+
+    if (user.email) {
+      updateDoc(doc(db, "users", user.email), {
+        balance: newBalance,
+        transactions: newTransactions
+      }).catch(console.error);
+    }
 
     const copyTradeId = `copy-${user.email.replace(/[@.]/g, "-")}-${traderId}`;
     const copyTradeDoc = {
@@ -1651,11 +1699,21 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         userEmail: user?.email || "guest@gmail.com"
       };
 
+      const newBalance = +(user.balance + refundAmount).toFixed(2);
+      const newTransactions = [returnTx, ...user.transactions];
+
       setUser(prev => ({
         ...prev,
-        balance: +(prev.balance + refundAmount).toFixed(2),
-        transactions: [returnTx, ...prev.transactions]
+        balance: newBalance,
+        transactions: newTransactions
       }));
+
+      if (user.email) {
+        updateDoc(doc(db, "users", user.email), {
+          balance: newBalance,
+          transactions: newTransactions
+        }).catch(console.error);
+      }
 
       addNotification(`Copy Trading Deactivated. Returned $${refundAmount} to wallet balance.`);
     }).catch(e => {
@@ -1692,6 +1750,10 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       const quantity = +(amount / price).toFixed(6);
+
+      let finalBalance = user.balance;
+      let finalPortfolio = user.portfolio;
+      let finalTransactions = user.transactions;
 
       setUser(prev => {
         const updatedPortfolio = [...prev.portfolio];
@@ -1732,13 +1794,25 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           userEmail: prev.email || ""
         };
 
+        finalBalance = +(prev.balance - amount).toFixed(2);
+        finalPortfolio = updatedPortfolio;
+        finalTransactions = [buyTx, ...prev.transactions];
+
         return {
           ...prev,
-          balance: +(prev.balance - amount).toFixed(2),
-          portfolio: updatedPortfolio,
-          transactions: [buyTx, ...prev.transactions]
+          balance: finalBalance,
+          portfolio: finalPortfolio,
+          transactions: finalTransactions
         };
       });
+
+      if (user.email) {
+        updateDoc(doc(db, "users", user.email), {
+          balance: finalBalance,
+          portfolio: finalPortfolio,
+          transactions: finalTransactions
+        }).catch(console.error);
+      }
 
       handleLog("Market Order Fulfilled", `Purchased $${amount} of ${symbol} at $${price}`, user.email, "success");
       addNotification(`Market Buy Executed: ${quantity} ${symbol.split("/")[0]} filled.`);
@@ -1755,6 +1829,10 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (holding.amount < quantityToSell) {
         return { success: false, message: `Insufficient assets. You own ${holding.amount} units, but this sale requires ${quantityToSell} units.` };
       }
+
+      let finalBalance = user.balance;
+      let finalPortfolio = user.portfolio;
+      let finalTransactions = user.transactions;
 
       setUser(prev => {
         const updatedPortfolio = prev.portfolio.map(p => {
@@ -1778,13 +1856,25 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           userEmail: prev.email || ""
         };
 
+        finalBalance = +(prev.balance + amount).toFixed(2);
+        finalPortfolio = updatedPortfolio;
+        finalTransactions = [sellTx, ...prev.transactions];
+
         return {
           ...prev,
-          balance: +(prev.balance + amount).toFixed(2),
-          portfolio: updatedPortfolio,
-          transactions: [sellTx, ...prev.transactions]
+          balance: finalBalance,
+          portfolio: finalPortfolio,
+          transactions: finalTransactions
         };
       });
+
+      if (user.email) {
+        updateDoc(doc(db, "users", user.email), {
+          balance: finalBalance,
+          portfolio: finalPortfolio,
+          transactions: finalTransactions
+        }).catch(console.error);
+      }
 
       handleLog("Market Sale Settled", `Liquidated ${quantityToSell} ${symbol.split("/")[0]} for $${amount}`, user.email, "success");
       addNotification(`Market Sell Executed: ${quantityToSell} ${symbol.split("/")[0]} discharged.`);
