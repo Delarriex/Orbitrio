@@ -34,6 +34,11 @@ export const DashboardPortfolio: React.FC<DashboardPortfolioProps> = ({ onNaviga
   const aggregatePnL = +(totalHoldingValue - aggregateCost).toFixed(2);
   const aggregatePnLPct = aggregateCost > 0 ? +((aggregatePnL / aggregateCost) * 100).toFixed(2) : 0;
 
+  // Fix Total Equity to include user's actual balance and active investments
+  const activePlanCapital = user.activeInvestments.reduce((acc, current) => acc + current.amount, 0);
+  const activePlanProfits = user.activeInvestments.reduce((acc, current) => acc + current.accumulatedProfit, 0);
+  const totalEquity = +(user.balance + totalHoldingValue + activePlanCapital + activePlanProfits).toFixed(2);
+
   return (
     <div className="space-y-8 pb-20 font-sans">
       
@@ -55,7 +60,7 @@ export const DashboardPortfolio: React.FC<DashboardPortfolioProps> = ({ onNaviga
             <span>Total Equity</span>
             <Wallet size={14} className="text-orbit-gray-text/70 shrink-0" />
           </div>
-          <strong className="text-2xl font-black font-data text-orbit-white block">${aggregateCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
+          <strong className="text-2xl font-black font-data text-orbit-white block">${totalEquity.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>
         </div>
 
         <div className="bg-orbit-card border border-orbit-border rounded-xl p-6 space-y-2">
