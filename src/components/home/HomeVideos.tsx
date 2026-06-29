@@ -26,7 +26,7 @@ export const HomeVideos = () => {
   return (
     <section className="py-20 md:py-32 bg-[#0B0E11] relative overflow-hidden">
       <div className="max-w-4xl mx-auto px-5 sm:px-6 lg:px-8 relative z-10 flex flex-col gap-24 md:gap-32">
-        
+
         {SECTIONS.map((section, idx) => (
           <motion.div
             key={idx}
@@ -48,12 +48,12 @@ export const HomeVideos = () => {
 
             {/* Video Container */}
             <div className="w-full rounded-3xl overflow-hidden border border-[#2B3139]/60 shadow-2xl bg-black relative">
-              <video 
+              <video
                 src={section.video}
                 className="w-full h-auto object-cover"
-                autoPlay 
-                loop 
-                muted 
+                autoPlay
+                loop
+                muted
                 playsInline
               />
               {/* Optional glowing effect behind video container */}
