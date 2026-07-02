@@ -16,7 +16,8 @@ import {
   Wallet,
   Shield,
   Copy,
-  Check
+  Check,
+  Plus
 } from "lucide-react";
 import { motion } from "motion/react";
 import { DashboardEquityChart } from "../components/charts/DashboardEquityChart";
@@ -32,8 +33,29 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   onOpenDeposit, 
   onOpenWithdraw 
 }) => {
-  const { user, plans, claimPlanPayout, siteContent } = useOrbit();
+  const { user, plans, claimPlanPayout, topUpInvestment, addNotification, siteContent } = useOrbit();
   const [copiedUid, setCopiedUid] = useState(false);
+  const [topUpTarget, setTopUpTarget] = useState<string | null>(null);
+  const [topUpAmount, setTopUpAmount] = useState<string>("");
+
+  const handleTopUp = (invId: string) => {
+    const val = parseFloat(topUpAmount);
+    if (isNaN(val) || val <= 0) {
+      addNotification("Please enter a valid amount to top up.");
+      return;
+    }
+    const res = topUpInvestment(invId, val);
+    if (res.success) {
+      setTopUpTarget(null);
+      setTopUpAmount("");
+    } else {
+      if (res.message === "INSUFFICIENT_BALANCE") {
+        addNotification("Insufficient balance. Please deposit more funds first.");
+      } else {
+        addNotification(res.message);
+      }
+    }
+  };
 
   // Compute stats
   const availableCash = user.balance;
@@ -283,20 +305,44 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                       </div>
                     </div>
 
-                    {/* Progress slider scale bar */}
-                    <div className="space-y-1">
-                      <div className="w-full bg-orbit-border h-1.5 rounded-full overflow-hidden">
-                        <div 
-                          className="bg-orbit-accent h-full transition-all duration-1000"
-                          style={{ width: `${inv.progress}%` }}
+                    {/* Progress & Actions */}
+                    <div className="flex items-center justify-between text-[10px] mt-2">
+                      <span className="text-orbit-gray-text">Allocated: ${inv.amount.toLocaleString()}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-orbit-gray-text">Syncing loops: {inv.progress}%</span>
+                        <button 
+                          onClick={() => setTopUpTarget(topUpTarget === inv.id ? null : inv.id)}
+                          className="text-[9px] text-orbit-accent border border-orbit-accent/30 bg-orbit-accent/10 px-2 py-0.5 rounded flex items-center gap-1 hover:bg-orbit-accent/20 transition-colors"
+                        >
+                          <Plus size={10} /> Top Up
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Top Up Inline Form */}
+                    {topUpTarget === inv.id && (
+                      <div className="pt-2 mt-2 border-t border-orbit-border/50 flex gap-2 animate-in slide-in-from-top-2">
+                        <input 
+                          type="number"
+                          placeholder="Amount to add ($)"
+                          value={topUpAmount}
+                          onChange={(e) => setTopUpAmount(e.target.value)}
+                          className="w-full bg-orbit-bg border border-orbit-border rounded px-3 py-1 text-xs text-orbit-white outline-none focus:border-orbit-accent"
                         />
+                        <button 
+                          onClick={() => handleTopUp(inv.id)}
+                          className="bg-orbit-accent text-orbit-bg px-3 py-1 rounded text-xs font-bold hover:opacity-90"
+                        >
+                          Confirm
+                        </button>
                       </div>
-                      <div className="flex justify-between text-[9px] font-data text-orbit-gray-text">
-                        <span>Allocated: ${inv.amount.toLocaleString()}</span>
-                        <span className={isCompleted ? "text-orbit-green font-bold font-subheading" : ""}>
-                          {isCompleted ? "MATURED COMPLETE 100%" : `Syncing loops: ${inv.progress}%`}
-                        </span>
-                      </div>
+                    )}
+                    
+                    <div className="w-full bg-orbit-bg rounded-full h-1.5 mt-2">
+                      <div 
+                        className="bg-orbit-accent h-1.5 rounded-full" 
+                        style={{ width: `${inv.progress}%` }}
+                      />
                     </div>
 
                     {/* Completion claim action */}

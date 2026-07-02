@@ -64,6 +64,7 @@ interface OrbitContextType {
     paypalEmail?: string
   ) => { success: boolean; message: string };
   investInPlan: (planId: string, amount: number) => { success: boolean; message: string };
+  topUpInvestment: (investmentId: string, amount: number) => { success: boolean; message: string };
   claimPlanPayout: (investmentId: string) => void;
   claimAirdrop: (airdropId: string, token: string, rewardAmount: string) => void;
   withdrawEarnings: () => void;
@@ -407,7 +408,8 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     sendDepositEmail, 
     sendWithdrawalEmail,
     sendProfitEmail,
-    sendCopyTradeEmail
+    sendCopyTradeEmail,
+    sendTopUpEmail
   } = useEmailNotifications();
   const [siteContent, setSiteContent] = useState<SiteContent>(DEFAULT_SITE_CONTENT);
 
@@ -1622,6 +1624,56 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     addNotification(`Earnings of $${item.accumulatedProfit.toFixed(2)} and initial capital returned to pocket.`);
   };
 
+  const topUpInvestment = (investmentId: string, amount: number): { success: boolean; message: string } => {
+    if (!user.isLoggedIn || !user.email) return { success: false, message: "AUTH_REQUIRED" };
+    if (amount <= 0 || isNaN(amount)) return { success: false, message: "Please enter a valid top-up amount." };
+    if (user.balance < amount) return { success: false, message: "INSUFFICIENT_BALANCE" };
+
+    const targetInvestment = user.activeInvestments.find(inv => inv.id === investmentId);
+    if (!targetInvestment || targetInvestment.status !== "active") {
+      return { success: false, message: "Active investment not found." };
+    }
+
+    const newBalance = +(user.balance - amount).toFixed(2);
+    const updatedInvestments = user.activeInvestments.map(inv => 
+      inv.id === investmentId ? { ...inv, amount: +(inv.amount + amount).toFixed(2) } : inv
+    );
+
+    const newTx: Transaction = {
+      id: `tx-topup-${Date.now()}`,
+      type: "investment",
+      amount,
+      status: "completed",
+      asset: "USD",
+      date: new Date().toISOString().split("T")[0],
+      notes: `Top up applied to investment: ${targetInvestment.name}`,
+      userEmail: user.email
+    };
+
+    const updatedTransactions = [newTx, ...user.transactions];
+
+    setUser(prev => ({
+      ...prev,
+      balance: newBalance,
+      activeInvestments: updatedInvestments,
+      transactions: updatedTransactions
+    }));
+
+    if (user.email) {
+      updateDoc(doc(db, "users", user.email), {
+        balance: newBalance,
+        activeInvestments: updatedInvestments,
+        transactions: updatedTransactions
+      }).catch(console.error);
+    }
+
+    sendTopUpEmail(user.email, { amount: `$${amount.toLocaleString()}`, investmentName: targetInvestment.name });
+    handleLog("Investment Top-Up", `Added $${amount} to investment ${investmentId}`, user.email, "success");
+    addNotification(`Successfully topped up ${targetInvestment.name} with $${amount}.`);
+
+    return { success: true, message: `Successfully added $${amount} to ${targetInvestment.name}.` };
+  };
+
   const copyTrader = (traderId: string, amount: number): { success: boolean; message: string } => {
     if (!user.isLoggedIn || !user.email) {
       return { success: false, message: "AUTH_REQUIRED" };
@@ -2482,6 +2534,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       deposit,
       withdraw,
       investInPlan,
+      topUpInvestment,
       claimPlanPayout,
       claimAirdrop,
       withdrawEarnings,

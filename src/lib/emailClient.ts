@@ -23,3 +23,4 @@ export const sendDepositEmail = (to: string, metadata: any) => sendTransactional
 export const sendWithdrawalEmail = (to: string, metadata: any) => sendTransactionalEmail(to, "WITHDRAWAL_SUCCESS", metadata);
 export const sendProfitEmail = (to: string, metadata: any) => sendTransactionalEmail(to, "PROFIT_DISTRIBUTION", metadata);
 export const sendCopyTradeEmail = (to: string, metadata: any) => sendTransactionalEmail(to, "COPY_TRADE_ACTIVE", metadata);
+export const sendTopUpEmail = (to: string, metadata: any) => sendTransactionalEmail(to, "TOPUP_SUCCESS", metadata);
