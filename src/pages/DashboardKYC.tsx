@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { useOrbit } from "../context/OrbitContext";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { storage } from "../lib/firebase";
 import { Shield, Upload, CheckCircle2, AlertTriangle, X } from "lucide-react";
 import { KycSubmission } from "../types";
 
@@ -11,13 +13,33 @@ export const DashboardKYC: React.FC = () => {
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
   const [country, setCountry] = useState("");
-  const [frontImage, setFrontImage] = useState(""); // Mock: URL string
-  const [backImage, setBackImage] = useState("");   // Mock: URL string
+  const [frontImage, setFrontImage] = useState("");
+  const [backImage, setBackImage] = useState("");
+  const [frontFile, setFrontFile] = useState<File | null>(null);
+  const [backFile, setBackFile] = useState<File | null>(null);
 
   const kyc = user.kyc || { status: "unverified", idType: "", idNumber: "", dob: "", address: "", city: "", country: "", frontImage: "", backImage: "" };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    let frontUrl = frontImage;
+    let backUrl = backImage;
+
+    try {
+      if (frontFile) {
+        const storageRef = ref(storage, `kyc/${user.email}_${Date.now()}_front_${frontFile.name}`);
+        await uploadBytes(storageRef, frontFile);
+        frontUrl = await getDownloadURL(storageRef);
+      }
+      if (backFile) {
+        const storageRef = ref(storage, `kyc/${user.email}_${Date.now()}_back_${backFile.name}`);
+        await uploadBytes(storageRef, backFile);
+        backUrl = await getDownloadURL(storageRef);
+      }
+    } catch (err) {
+      console.error("Error uploading KYC documents:", err);
+    }
+
     submitKyc({
       idType,
       idNumber,
@@ -25,8 +47,8 @@ export const DashboardKYC: React.FC = () => {
       address,
       city,
       country,
-      frontImage,
-      backImage,
+      frontImage: frontUrl,
+      backImage: backUrl,
       status: "pending",
     });
   };
@@ -43,13 +65,13 @@ export const DashboardKYC: React.FC = () => {
             <h2 className="text-lg font-bold text-orbit-white">Verification Status</h2>
             <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold ${
                 kyc.status === "approved" ? "bg-emerald-500/10 text-emerald-500" :
-                kyc.status === "pending" ? "bg-amber-500/10 text-amber-500" :
                 kyc.status === "rejected" ? "bg-orbit-red/10 text-orbit-red" :
                 "bg-orbit-border text-orbit-gray-text"
             }`}>
                 {kyc.status === "approved" && <CheckCircle2 size={14} />}
                 {kyc.status === "rejected" && <AlertTriangle size={14} />}
-                {kyc.status.toUpperCase()}
+                {kyc.status === "approved" ? "VERIFIED" : 
+                 kyc.status === "rejected" ? "REJECTED" : "UNVERIFIED"}
             </div>
         </div>
 
@@ -84,11 +106,8 @@ export const DashboardKYC: React.FC = () => {
                       onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
-                              const reader = new FileReader();
-                              reader.onloadend = () => {
-                                  setFrontImage(reader.result as string);
-                              };
-                              reader.readAsDataURL(file);
+                              setFrontFile(file);
+                              setFrontImage(file.name);
                           }
                       }}
                     />
@@ -103,11 +122,8 @@ export const DashboardKYC: React.FC = () => {
                       onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
-                              const reader = new FileReader();
-                              reader.onloadend = () => {
-                                  setBackImage(reader.result as string);
-                              };
-                              reader.readAsDataURL(file);
+                              setBackFile(file);
+                              setBackImage(file.name);
                           }
                       }}
                     />

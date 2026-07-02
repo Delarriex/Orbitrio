@@ -68,7 +68,6 @@ interface OrbitContextType {
   claimAirdrop: (airdropId: string, token: string, rewardAmount: string) => void;
   withdrawEarnings: () => void;
   copyTrader: (traderId: string, amount: number) => { success: boolean; message: string };
-  uncopyTrader: (traderId: string) => { success: boolean; message: string };
   executeTrade: (symbol: string, name: string, type: "buy" | "sell", amount: number, price: number, isCrypto: boolean) => { success: boolean; message: string };
   createTicket: (subject: string, category: "deposit" | "withdrawal" | "trading" | "general", initialMsg: string, priority?: "low" | "medium" | "high") => void;
   replyToTicket: (ticketId: string, text: string) => void;
@@ -608,22 +607,14 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ETH: "0x7Fba9fB5994A1F62aB016a2E9D843D0B6A780E2e",
       USDT_ERC20: "0x981A7bFDE6D211a76B97A1f6DAe82b7814a60156",
       USDT_TRC20: "TYc8Dq6pB1A8C8xbeGf4mDqsD84Kda67vE",
-      BNB: "0x3fC91A3afd20b00230230233ea86976828a923"
+      BNB: "0x3fC91A3afd20b00230230233ea86976828a923",
+      SOL: "7xKX3rncM9G9tve2S4g849mDsa9X8veFDSasf9adFad3",
+      XRP: "rEb8TK3gKLgai2asdaAdsaA324aFD9safAdadW"
     };
   });
 
-  const [adminAnnouncements, setAdminAnnouncements] = useState<Announcement[]>(() => {
-    const saved = localStorage.getItem("orbitrio_announcements");
-    return saved ? JSON.parse(saved) : INITIAL_ANNOUNCEMENTS;
-  });
-
-  const [adminAuditLogs, setAdminAuditLogs] = useState<AuditLog[]>(() => {
-    const saved = localStorage.getItem("orbitrio_audit_logs");
-    return saved ? JSON.parse(saved) : [
-      { id: "log-1", action: "System Booted", details: "orbitrio financial core initialised on secured cluster nodes.", timestamp: "2026-06-19 00:01:00", email: "system", ip: "127.0.0.1", status: "success" },
-      { id: "log-2", action: "Cold Storage Verified", details: "Multi-sig 10-layer physical vaults synchronised and validated.", timestamp: "2026-06-19 00:05:22", email: "sec-op", ip: "10.0.1.5", status: "success" }
-    ];
-  });
+  const [adminAnnouncements, setAdminAnnouncements] = useState<Announcement[]>([]);
+  const [adminAuditLogs, setAdminAuditLogs] = useState<AuditLog[]>([]);
 
   const [adminAirdropClaims, setAdminAirdropClaims] = useState<AirdropClaim[]>([]);
   const [airdrops, setAirdrops] = useState<Airdrop[]>([]);
@@ -643,6 +634,49 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       unsubAirdrops();
       unsubClaims();
     };
+  }, []);
+
+  // Synchronize announcements from Firestore in real-time
+  useEffect(() => {
+    const announcementsCol = collection(db, "announcements");
+    const unsubscribe = onSnapshot(announcementsCol, (snapshot) => {
+      if (snapshot.empty) {
+        // Seed default announcements on first run
+        INITIAL_ANNOUNCEMENTS.forEach(async (ann) => {
+          try {
+            await setDoc(doc(db, "announcements", ann.id), ann);
+          } catch (e) {
+            console.error("Error seeding announcement:", e);
+          }
+        });
+      } else {
+        const loaded: Announcement[] = [];
+        snapshot.forEach((docSnap) => {
+          loaded.push({ id: docSnap.id, ...docSnap.data() } as Announcement);
+        });
+        loaded.sort((a, b) => b.date.localeCompare(a.date));
+        setAdminAnnouncements(loaded);
+      }
+    }, (error) => {
+      console.error("Firestore announcements sync error:", error);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Synchronize audit logs from Firestore in real-time
+  useEffect(() => {
+    const logsCol = collection(db, "audit_logs");
+    const unsubscribe = onSnapshot(logsCol, (snapshot) => {
+      const loaded: AuditLog[] = [];
+      snapshot.forEach((docSnap) => {
+        loaded.push({ id: docSnap.id, ...docSnap.data() } as AuditLog);
+      });
+      loaded.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+      setAdminAuditLogs(loaded);
+    }, (error) => {
+      console.error("Firestore audit logs sync error:", error);
+    });
+    return () => unsubscribe();
   }, []);
 
   const adminApproveAirdrop = async (claimId: string) => {
@@ -785,7 +819,9 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           ETH: "0x7Fba9fB5994A1F62aB016a2E9D843D0B6A780E2e",
           USDT_ERC20: "0x981A7bFDE6D211a76B97A1f6DAe82b7814a60156",
           USDT_TRC20: "TYc8Dq6pB1A8C8xbeGf4mDqsD84Kda67vE",
-          BNB: "0x3fC91A3afd20b00230230233ea86976828a923"
+          BNB: "0x3fC91A3afd20b00230230233ea86976828a923",
+          SOL: "7xKX3rncM9G9tve2S4g849mDsa9X8veFDSasf9adFad3",
+          XRP: "rEb8TK3gKLgai2asdaAdsaA324aFD9safAdadW"
         };
         setDoc(docRef, defaultWallets).catch(console.error);
       }
@@ -988,13 +1024,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     localStorage.setItem("orbitrio_admin_wallets", JSON.stringify(adminWallets));
   }, [adminWallets]);
 
-  useEffect(() => {
-    localStorage.setItem("orbitrio_announcements", JSON.stringify(adminAnnouncements));
-  }, [adminAnnouncements]);
-
-  useEffect(() => {
-    localStorage.setItem("orbitrio_audit_logs", JSON.stringify(adminAuditLogs));
-  }, [adminAuditLogs]);
+  // Announcements and audit logs are now synced via Firestore listeners (no localStorage needed)
 
   useEffect(() => {
     localStorage.setItem("orbitrio_notifications", JSON.stringify(notifications));
@@ -1207,25 +1237,47 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return holding;
       });
 
-      // ROI increments
+      // ROI increments (supports both investment plans AND copy trading)
       const updatedActive = prev.activeInvestments.map(inv => {
         if (inv.status === "active") {
           const currentPlan = plans.find(p => p.id === inv.planId);
+          if (currentPlan && currentPlan.status === "paused") return inv; // Paused by admin
+          
+          // Determine ROI: from plan if available, or from dailyRoiPercent (copy trading)
+          let totalRoiPercent = 0;
           if (currentPlan) {
-            if (currentPlan.status === "paused") return inv; // Paused by admin
-            
-            // Scaled real-time accruals inside sandbox
-            const percentAccruedPerStep = (currentPlan.roiPercent / 100) * (5 / (5 * 60));
-            const addedProfit = inv.amount * percentAccruedPerStep;
-            const nextProgress = Math.min(inv.progress + 0.35, 100);
-            
-            return {
-              ...inv,
-              accumulatedProfit: +(inv.accumulatedProfit + addedProfit).toFixed(4),
-              progress: +nextProgress.toFixed(2),
-              status: nextProgress >= 100 ? "completed" : "active" as any
-            };
+            totalRoiPercent = currentPlan.roiPercent;
+          } else if (inv.dailyRoiPercent) {
+            // Copy trading: dailyRoiPercent stores daily rate, calculate total from duration
+            const durationMs = new Date(inv.endDate).getTime() - new Date(inv.startDate).getTime();
+            const durationDays = Math.max(durationMs / (1000 * 60 * 60 * 24), 1);
+            totalRoiPercent = inv.dailyRoiPercent * durationDays;
+          } else {
+            return inv; // No plan and no ROI data — skip
           }
+          
+          // Real-time accrual based on actual duration
+          const startTimestamp = new Date(inv.startDate).getTime();
+          const endTimestamp = new Date(inv.endDate).getTime();
+          const nowTimestamp = Date.now();
+          
+          let nextProgress = 0;
+          if (endTimestamp > startTimestamp) {
+            nextProgress = Math.min(((nowTimestamp - startTimestamp) / (endTimestamp - startTimestamp)) * 100, 100);
+          } else {
+            nextProgress = 100;
+          }
+          if (nextProgress < 0) nextProgress = 0;
+
+          const totalExpectedProfit = inv.amount * (totalRoiPercent / 100);
+          const nextProfit = totalExpectedProfit * (nextProgress / 100);
+
+          return {
+            ...inv,
+            accumulatedProfit: +nextProfit.toFixed(4),
+            progress: +nextProgress.toFixed(2),
+            status: nextProgress >= 100 ? "completed" : "active" as any
+          };
         }
         return inv;
       });
@@ -1322,89 +1374,12 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const login = async (email: string, password?: string) => {
-    const isMock = ["john.wealth@outlook.com", "sarah.crypto@gmail.com", "banned.scammer@gmail.com"].includes(email.toLowerCase());
-    
-    if (isMock) {
-      const isOwner = email.toLowerCase() === "henrikaram1@gmail.com";
-      const match = adminUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
-
-      const userObj: UserState = {
-        isLoggedIn: true,
-        email,
-        name: match ? match.name : email.split("@")[0].toUpperCase(),
-        balance: match ? match.balance : 1500.00,
-        portfolioValue: match ? match.portfolioValue : 0.00,
-        activeInvestments: match ? match.activeInvestments : [],
-        portfolio: match ? match.portfolio : [],
-        transactions: match ? match.transactions : [],
-        tickets: match ? match.tickets : [],
-        status: match ? match.status : "active",
-        role: isOwner ? "admin" : "user",
-        username: match?.username,
-        firstName: match?.firstName,
-        lastName: match?.lastName,
-        gender: match?.gender,
-        phone: match?.phone,
-        accountType: match?.accountType,
-        country: match?.country,
-        currency: match?.currency,
-      };
-
-      setUser(userObj);
-      handleLog("Account Access Authenticated", `Login verified.`, email, "success");
-      addNotification(`Authenticated logged session: ${userObj.name}`);
-      
-      try {
-        const userDocRef = doc(db, "users", email);
-        const userDocSnap = await getDoc(userDocRef);
-        const userData = userDocSnap.data();
-
-        if (userData && userData.lastLoginDevice && userData.lastLoginDevice !== navigator.userAgent) {
-          sendSecurityAlert(email, {
-            time: new Date().toUTCString(),
-            device: navigator.userAgent
-          });
-        }
-        await updateDoc(userDocRef, { lastLoginDevice: navigator.userAgent });
-      } catch (e) {
-        console.error("Error checking device for security alert:", e);
-      }
-      return;
+    if (!password) {
+      throw new Error("Password is required. Please enter your password to login.");
     }
-
-    if (password) {
-      await signInWithEmailAndPassword(auth, email, password);
-    } else {
-      // Passwordless mock login fallback for platform testing
-      const docRef = doc(db, "users", email);
-      const snap = await getDoc(docRef);
-      if (snap.exists()) {
-        const data = snap.data();
-        setUser({
-          isLoggedIn: true,
-          email,
-          name: data.name || email.split("@")[0].toUpperCase(),
-          balance: data.balance ?? 0.00,
-          portfolioValue: data.portfolioValue ?? 0.00,
-          activeInvestments: data.activeInvestments ?? [],
-          portfolio: data.portfolio ?? [],
-          transactions: data.transactions ?? [],
-          tickets: data.tickets ?? [],
-          status: data.status ?? "active",
-          role: data.role ?? (email.toLowerCase() === "henrikaram1@gmail.com" ? "admin" : "user"),
-          username: data.username,
-          firstName: data.firstName,
-          lastName: data.lastName,
-          gender: data.gender,
-          phone: data.phone,
-          accountType: data.accountType,
-          country: data.country,
-          currency: data.currency
-        });
-      } else {
-        throw new Error("No database user found matching this email. Please register first.");
-      }
-    }
+    // All logins go through Firebase Auth — no mock/sandbox bypasses
+    await signInWithEmailAndPassword(auth, email, password);
+    // User state is set automatically by the onAuthStateChanged listener
   };
 
   const loginWithGoogle = async () => {
@@ -1554,10 +1529,10 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return { success: false, message: "Insufficient wallet funds. Please complete a deposit." };
     }
 
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = new Date().toISOString();
     const end = new Date();
     end.setDate(end.getDate() + selectedPlan.durationDays);
-    const endStr = end.toISOString().split("T")[0];
+    const endStr = end.toISOString();
 
     const newActive: ActiveInvestment = {
       id: `act-invest-${Date.now()}`,
@@ -1663,30 +1638,62 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return { success: false, message: "Trader copying limit capped on active pools." };
     }
 
-    const todayStr = new Date().toISOString().split("T")[0];
+    // Prevent duplicate copy of same trader
+    const alreadyCopying = user.activeInvestments.find(inv => inv.planId === `copy-${traderId}` && inv.status === "active");
+    if (alreadyCopying) {
+      return { success: false, message: "You are already copying this trader." };
+    }
+
+    // Use admin-controlled trader Days & ROI to create a structured investment
+    const traderDays = t.profitDays ?? 30;
+    const traderRoi = t.roi ?? 10;
+    const dailyRoi = traderRoi / traderDays;
+
+    const todayStr = new Date().toISOString();
+    const endDate = new Date();
+    endDate.setDate(endDate.getDate() + traderDays);
+    const endStr = endDate.toISOString();
+
+    // Create a structured ActiveInvestment tied to this trader
+    const newActive: ActiveInvestment = {
+      id: `act-copy-${Date.now()}`,
+      planId: `copy-${traderId}`,
+      name: `Copy: ${t.name}`,
+      amount,
+      startDate: todayStr,
+      endDate: endStr,
+      accumulatedProfit: 0,
+      status: "active",
+      progress: 0,
+      dailyRoiPercent: +dailyRoi.toFixed(4)
+    };
+
     const newTx: Transaction = {
       id: `tx-copy-${Date.now()}`,
       type: "investment",
       amount,
       status: "completed",
       asset: "USD",
-      date: todayStr,
-      notes: `Mirror allocation activated for master trader ${t.name}`,
+      date: todayStr.split("T")[0],
+      notes: `Copy trading activated: ${t.name} — ${traderDays} days, ${traderRoi}% ROI`,
       userEmail: user.email
     };
 
     const newBalance = +(user.balance - amount).toFixed(2);
+    const newActiveInvestments = [newActive, ...user.activeInvestments];
     const newTransactions = [newTx, ...user.transactions];
     
     setUser(prev => ({
       ...prev,
       balance: newBalance,
+      activeInvestments: newActiveInvestments,
       transactions: newTransactions
     }));
 
     if (user.email) {
       updateDoc(doc(db, "users", user.email), {
         balance: newBalance,
+        activeInvestments: newActiveInvestments,
         transactions: newTransactions
       }).catch(console.error);
     }
@@ -1697,7 +1704,10 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       traderId,
       traderName: t.name,
       amount,
-      createdAt: todayStr,
+      investmentId: newActive.id,
+      durationDays: traderDays,
+      roiPercent: traderRoi,
+      createdAt: todayStr.split("T")[0],
       status: "active"
     };
 
@@ -1709,66 +1719,9 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       prev.map(tr => tr.id === traderId ? { ...tr, followers: tr.followers + 1 } : tr)
     );
 
-    handleLog("Mirror Allocator Armed", `Allocated $${amount} to copy ${t.name}.`, user.email, "success");
-    addNotification(`Successfully linked copying vectors to ${t.name} with $${amount}.`);
-    return { success: true, message: "Copy Trading Activated. You are now copying this trader." };
-  };
-
-  const uncopyTrader = (traderId: string): { success: boolean; message: string } => {
-    if (!user.isLoggedIn || !user.email) {
-       return { success: false, message: "Authentication required." };
-    }
-
-    const copyTradeId = `copy-${user.email.replace(/[@.]/g, "-")}-${traderId}`;
-    const todayStr = new Date().toISOString().split("T")[0];
-
-    getDoc(doc(db, "copyTrades", copyTradeId)).then(async (snap) => {
-      let refundAmount = 500; 
-      if (snap.exists()) {
-        const data = snap.data();
-        if (typeof data.amount === "number") {
-          refundAmount = data.amount;
-        }
-        await deleteDoc(doc(db, "copyTrades", copyTradeId));
-      }
-
-      const returnTx: Transaction = {
-        id: `tx-uncopy-${Date.now()}`,
-        type: "payout",
-        amount: refundAmount,
-        status: "completed",
-        asset: "USD",
-        date: todayStr,
-        notes: `Liquidated copy allocation for master trader`,
-        userEmail: user?.email || "guest@gmail.com"
-      };
-
-      const newBalance = +(user.balance + refundAmount).toFixed(2);
-      const newTransactions = [returnTx, ...user.transactions];
-
-      setUser(prev => ({
-        ...prev,
-        balance: newBalance,
-        transactions: newTransactions
-      }));
-
-      if (user.email) {
-        updateDoc(doc(db, "users", user.email), {
-          balance: newBalance,
-          transactions: newTransactions
-        }).catch(console.error);
-      }
-
-      addNotification(`Copy Trading Deactivated. Returned $${refundAmount} to wallet balance.`);
-    }).catch(e => {
-       console.error(e);
-    });
-
-    setTraders(prev => 
-      prev.map(tr => tr.id === traderId ? { ...tr, followers: Math.max(tr.followers - 1, 0) } : tr)
-    );
-
-    return { success: true, message: "Copy Trading Deactivated. Your funds have been released." };
+    handleLog("Mirror Allocator Armed", `Allocated $${amount} to copy ${t.name} for ${traderDays} days at ${traderRoi}% ROI.`, user.email, "success");
+    addNotification(`Copy Trading Activated: ${t.name} — $${amount} for ${traderDays} days at ${traderRoi}% ROI.`);
+    return { success: true, message: `Copy Trading Activated. ${traderDays}-day contract at ${traderRoi}% ROI. Track progress from your dashboard.` };
   };
 
   const executeTrade = (
@@ -2000,18 +1953,17 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Helper logger
   const handleLog = (action: string, details: string, email: string, logStatus: "success" | "warning" | "alert") => {
-    setAdminAuditLogs(prev => [
-      {
-        id: `audit-${Date.now()}-${Math.floor(Math.random()*100)}`,
-        action,
-        details,
-        timestamp: new Date().toISOString().replace("T", " ").substring(0, 19),
-        email,
-        ip: "185.112.55.91",
-        status: logStatus
-      },
-      ...prev
-    ]);
+    const newLog: AuditLog = {
+      id: `audit-${Date.now()}-${Math.floor(Math.random()*1000)}`,
+      action,
+      details,
+      timestamp: new Date().toISOString().replace("T", " ").substring(0, 19),
+      email,
+      ip: "185.112.55.91",
+      status: logStatus
+    };
+    // Write to Firestore — the onSnapshot listener will pick it up automatically
+    setDoc(doc(db, "audit_logs", newLog.id), newLog).catch(console.error);
   };
 
   const addNotification = (text: string) => {
@@ -2395,7 +2347,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  const adminCreateAnnouncement = (title: string, content: string, pinned: boolean, scheduledDate?: string) => {
+  const adminCreateAnnouncement = async (title: string, content: string, pinned: boolean, scheduledDate?: string) => {
     const fresh: Announcement = {
       id: `ann-${Date.now()}`,
       title,
@@ -2404,14 +2356,22 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       date: new Date().toISOString().split("T")[0],
       scheduledDate
     };
-    setAdminAnnouncements(prev => [fresh, ...prev]);
-    handleLog("Bulletin Dispatched", `Added Announcement: ${title}`, user.email || "admin", "success");
-    addNotification(`Global update: "${title}" posted to bulletin.`);
+    try {
+      await setDoc(doc(db, "announcements", fresh.id), fresh);
+      handleLog("Bulletin Dispatched", `Added Announcement: ${title}`, user.email || "admin", "success");
+      addNotification(`Global update: "${title}" posted to bulletin.`);
+    } catch (e) {
+      console.error("Error creating announcement in Firestore:", e);
+    }
   };
 
-  const adminDeleteAnnouncement = (id: string) => {
-    setAdminAnnouncements(prev => prev.filter(a => a.id !== id));
-    handleLog("Bulletin Revoked", `Removed announcement ID: ${id}`, user.email || "admin", "warning");
+  const adminDeleteAnnouncement = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, "announcements", id));
+      handleLog("Bulletin Revoked", `Removed announcement ID: ${id}`, user.email || "admin", "warning");
+    } catch (e) {
+      console.error("Error deleting announcement from Firestore:", e);
+    }
   };
 
   const adminReplyToTicket = async (ticketId: string, replyText: string) => {
@@ -2525,7 +2485,6 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       claimAirdrop,
       withdrawEarnings,
       copyTrader,
-      uncopyTrader,
       executeTrade,
       createTicket,
       replyToTicket,

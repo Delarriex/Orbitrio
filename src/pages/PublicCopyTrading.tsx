@@ -7,7 +7,7 @@ interface PublicCopyTradingProps {
 }
 
 export const PublicCopyTrading: React.FC<PublicCopyTradingProps> = ({ onNavigate }) => {
-  const { traders, copyTrader, uncopyTrader, user, setInsufficientBalanceOpen } = useOrbit();
+  const { traders, copyTrader, user, setInsufficientBalanceOpen } = useOrbit();
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [allocatingTrader, setAllocatingTrader] = useState<any | null>(null);
   const [allocateAmt, setAllocateAmt] = useState("");
@@ -26,11 +26,7 @@ export const PublicCopyTrading: React.FC<PublicCopyTradingProps> = ({ onNavigate
     }
 
     if (copiedIds.includes(traderId)) {
-      uncopyTrader(traderId);
-      const next = copiedIds.filter(id => id !== traderId);
-      setCopiedIds(next);
-      localStorage.setItem("orbit_copied_traders", JSON.stringify(next));
-      triggerFeedback(`Successfully disconnected trading links from copying ${traderName}.`);
+      triggerFeedback(`You are already copying ${traderName}.`);
     } else {
       const selected = traders.find(t => t.id === traderId);
       if (selected) {
@@ -147,7 +143,7 @@ export const PublicCopyTrading: React.FC<PublicCopyTradingProps> = ({ onNavigate
                         </h3>
                         <p className="text-xs text-orbit-gray-text font-sans flex items-center gap-1.5 mt-0.5">
                           <Calendar size={12} className="text-orbit-gray-text shrink-0" />
-                          Days Active: {trader.profitDays}d
+                          Number of Days: {trader.profitDays}
                         </p>
                       </div>
                     </div>
@@ -159,26 +155,30 @@ export const PublicCopyTrading: React.FC<PublicCopyTradingProps> = ({ onNavigate
                   </div>
 
                   {/* Core ROI stats grid */}
-                  <div className="grid grid-cols-3 gap-3 my-6 text-center">
+                  <div className="grid grid-cols-4 gap-2 my-6 text-center">
                     <div>
-                      <span className="block text-[10px] text-orbit-gray-text uppercase font-subheading select-none">Total ROI</span>
-                      <span className="text-lg font-bold font-mono text-orbit-green">+{trader.roi}%</span>
+                      <span className="block text-[9px] text-orbit-gray-text uppercase font-subheading select-none">Target ROI</span>
+                      <span className="text-sm font-bold font-mono text-orbit-green">{typeof trader.roi === 'number' ? trader.roi.toLocaleString() : trader.roi}%</span>
                     </div>
                     <div>
-                      <span className="block text-[10px] text-orbit-gray-text uppercase font-subheading select-none">Win Rate</span>
-                      <span className="text-lg font-bold font-mono text-orbit-white">{trader.winRate}%</span>
+                      <span className="block text-[9px] text-orbit-gray-text uppercase font-subheading select-none">Duration</span>
+                      <span className="text-sm font-bold font-mono text-orbit-accent">{trader.profitDays ?? 30} Days</span>
                     </div>
                     <div>
-                      <span className="block text-[10px] text-orbit-gray-text uppercase font-subheading select-none mb-1">Risk Score</span>
+                      <span className="block text-[9px] text-orbit-gray-text uppercase font-subheading select-none">Win Rate</span>
+                      <span className="text-sm font-bold font-mono text-orbit-white">{trader.winRate}%</span>
+                    </div>
+                    <div>
+                      <span className="block text-[9px] text-orbit-gray-text uppercase font-subheading select-none mb-1">Risk</span>
                       <div className="flex justify-center">
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono border select-none ${
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold font-mono border select-none ${
                           trader.riskScore <= 2 
                             ? "bg-green-500/10 border-green-500/20 text-green-400" 
                             : trader.riskScore === 3 
                               ? "bg-amber-500/10 border-amber-500/20 text-amber-400" 
                               : "bg-red-500/10 border-red-500/20 text-red-500"
                         }`}>
-                          Risk {trader.riskScore}
+                          Lv {trader.riskScore}
                         </span>
                       </div>
                     </div>
@@ -227,13 +227,14 @@ export const PublicCopyTrading: React.FC<PublicCopyTradingProps> = ({ onNavigate
 
                   <button
                     onClick={() => handleCopyClick(trader.id, trader.name)}
+                    disabled={isCopying}
                     className={`px-6 py-2 rounded-lg font-bold font-subheading text-xs transition-all transform hover:-translate-y-0.5 cursor-pointer select-none ${
                       isCopying 
-                        ? "bg-orbit-red text-orbit-white hover:opacity-90 shadow-md shadow-orbit-red/5" 
+                        ? "bg-orbit-border/50 text-orbit-gray-text cursor-not-allowed hover:translate-y-0" 
                         : "bg-orbit-accent text-orbit-bg hover:opacity-90 shadow-lg shadow-orbit-accent/5"
                     }`}
                   >
-                    {isCopying ? "Stop Copying" : "Copy"}
+                    {isCopying ? "Copied" : "Copy"}
                   </button>
                 </div>
 

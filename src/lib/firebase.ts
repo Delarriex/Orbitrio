@@ -1,6 +1,7 @@
 import { initializeApp, type FirebaseOptions } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { getStorage } from "firebase/storage";
 
 const firebaseConfig: FirebaseOptions = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -17,6 +18,7 @@ const app = initializeApp(firebaseConfig);
 // Connect specifying the custom database ID from Firebase
 export const db = getFirestore(app, import.meta.env.VITE_FIRESTORE_DATABASE_ID as string);
 export const auth = getAuth(app);
+export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: "select_account" });
 export { GoogleAuthProvider };

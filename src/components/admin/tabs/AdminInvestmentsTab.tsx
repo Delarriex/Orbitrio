@@ -23,28 +23,39 @@ export const AdminInvestmentsTab: React.FC = () => {
   const handleCreate = () => {
     const { name, minDeposit, maxDeposit, durationDays, roiPercent, description } = formData;
     if (!name || !minDeposit || !maxDeposit || !durationDays || !roiPercent) return showFeedback("Fill all required fields.");
+    const parsedRoi = parseFloat(roiPercent);
+    const parsedDays = parseInt(durationDays);
+    if (parsedRoi <= 0) return showFeedback("ROI must be greater than 0.");
+    if (parsedDays <= 0) return showFeedback("Duration must be at least 1 day.");
     adminCreatePlan({
       name, description,
       minDeposit: parseFloat(minDeposit), maxDeposit: parseFloat(maxDeposit),
-      durationDays: parseInt(durationDays), roiPercent: parseFloat(roiPercent),
+      durationDays: parsedDays, roiPercent: parsedRoi,
+      roiCapPercent: parsedRoi,
       status: "active"
     });
-    showFeedback(`Created plan: ${name}`);
+    showFeedback(`Created plan: ${name} — ROI ${parsedRoi}%, ${parsedDays} days`);
     resetForm();
   };
 
   const handleUpdate = () => {
     if (!editingPlan) return;
+    const updatedRoi = formData.roiPercent !== "" ? parseFloat(formData.roiPercent) : editingPlan.roiPercent;
+    const updatedDays = formData.durationDays !== "" ? parseInt(formData.durationDays) : editingPlan.durationDays;
+    if (updatedRoi <= 0) return showFeedback("ROI must be greater than 0.");
+    if (updatedDays <= 0) return showFeedback("Duration must be at least 1 day.");
+    const updatedName = formData.name || editingPlan.name;
     adminUpdatePlan({
       ...editingPlan,
-      name: formData.name || editingPlan.name,
-      minDeposit: parseFloat(formData.minDeposit) || editingPlan.minDeposit,
-      maxDeposit: parseFloat(formData.maxDeposit) || editingPlan.maxDeposit,
-      durationDays: parseInt(formData.durationDays) || editingPlan.durationDays,
-      roiPercent: parseFloat(formData.roiPercent) || editingPlan.roiPercent,
+      name: updatedName,
+      minDeposit: formData.minDeposit !== "" ? parseFloat(formData.minDeposit) : editingPlan.minDeposit,
+      maxDeposit: formData.maxDeposit !== "" ? parseFloat(formData.maxDeposit) : editingPlan.maxDeposit,
+      durationDays: updatedDays,
+      roiPercent: updatedRoi,
+      roiCapPercent: editingPlan.roiCapPercent ?? updatedRoi,
       description: formData.description || editingPlan.description
     });
-    showFeedback(`Updated plan: ${formData.name || editingPlan.name}`);
+    showFeedback(`Updated plan: ${updatedName} — ROI ${updatedRoi}%, ${updatedDays} days`);
     resetForm();
   };
 
@@ -100,9 +111,9 @@ export const AdminInvestmentsTab: React.FC = () => {
               className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
             <input type="number" placeholder="Max Deposit ($)" value={formData.maxDeposit} onChange={e => setFormData(f => ({ ...f, maxDeposit: e.target.value }))}
               className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
-            <input type="number" placeholder="Duration (Days)" value={formData.durationDays} onChange={e => setFormData(f => ({ ...f, durationDays: e.target.value }))}
+            <input type="number" placeholder="Duration Days (e.g. 14)" value={formData.durationDays} onChange={e => setFormData(f => ({ ...f, durationDays: e.target.value }))} min="1"
               className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
-            <input type="number" placeholder="ROI (%)" value={formData.roiPercent} onChange={e => setFormData(f => ({ ...f, roiPercent: e.target.value }))}
+            <input type="number" placeholder="ROI % (Total Return)" value={formData.roiPercent} onChange={e => setFormData(f => ({ ...f, roiPercent: e.target.value }))} min="0.1" step="0.1"
               className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
             <input placeholder="Description" value={formData.description} onChange={e => setFormData(f => ({ ...f, description: e.target.value }))}
               className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent sm:col-span-2 lg:col-span-1" />

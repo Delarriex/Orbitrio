@@ -65,9 +65,9 @@ export const AdminTradersTab: React.FC = () => {
     setEditingId(t.id);
     setIsCreating(false);
     setForm({
-      name: t.name, avatar: t.avatar, roi: t.roi.toString(), winRate: t.winRate.toString(),
-      followers: t.followers.toString(), maxFollowers: t.maxFollowers.toString(),
-      assetsUnderManagement: t.assetsUnderManagement, riskScore: t.riskScore.toString(), profitDays: t.profitDays.toString()
+      name: t.name, avatar: t.avatar, roi: (t.roi ?? 0).toString(), winRate: (t.winRate ?? 0).toString(),
+      followers: (t.followers ?? 0).toString(), maxFollowers: (t.maxFollowers ?? 500).toString(),
+      assetsUnderManagement: t.assetsUnderManagement || "$0", riskScore: (t.riskScore ?? 2).toString(), profitDays: (t.profitDays ?? 0).toString()
     });
   };
 
@@ -80,13 +80,13 @@ export const AdminTradersTab: React.FC = () => {
     await adminCreateTrader({
       name: form.name,
       avatar: form.avatar,
-      roi: parseFloat(form.roi) || 0,
-      winRate: parseFloat(form.winRate) || 0,
-      followers: parseInt(form.followers) || 0,
-      maxFollowers: parseInt(form.maxFollowers) || 500,
+      roi: form.roi !== "" ? parseFloat(form.roi) : 0,
+      winRate: form.winRate !== "" ? parseFloat(form.winRate) : 0,
+      followers: form.followers !== "" ? parseInt(form.followers) : 0,
+      maxFollowers: form.maxFollowers !== "" ? parseInt(form.maxFollowers) : 500,
       assetsUnderManagement: form.assetsUnderManagement || "$0",
-      riskScore: parseInt(form.riskScore) || 2,
-      profitDays: parseInt(form.profitDays) || 0,
+      riskScore: form.riskScore !== "" ? parseInt(form.riskScore) : 2,
+      profitDays: form.profitDays !== "" ? parseInt(form.profitDays) : 0,
       chartData: Array.from({ length: 10 }, () => Math.random() * 100)
     });
     setFeedback(`Created trader: ${form.name}`);
@@ -99,13 +99,13 @@ export const AdminTradersTab: React.FC = () => {
     await adminUpdateTrader(editingId, {
       name: form.name,
       avatar: form.avatar,
-      roi: parseFloat(form.roi) || 0,
-      winRate: parseFloat(form.winRate) || 0,
-      followers: parseInt(form.followers) || 0,
-      maxFollowers: parseInt(form.maxFollowers) || 500,
+      roi: form.roi !== "" ? parseFloat(form.roi) : 0,
+      winRate: form.winRate !== "" ? parseFloat(form.winRate) : 0,
+      followers: form.followers !== "" ? parseInt(form.followers) : 0,
+      maxFollowers: form.maxFollowers !== "" ? parseInt(form.maxFollowers) : 500,
       assetsUnderManagement: form.assetsUnderManagement,
-      riskScore: parseInt(form.riskScore) || 2,
-      profitDays: parseInt(form.profitDays) || 0,
+      riskScore: form.riskScore !== "" ? parseInt(form.riskScore) : 2,
+      profitDays: form.profitDays !== "" ? parseInt(form.profitDays) : 0,
     });
     setFeedback(`Updated trader: ${form.name}`);
     resetForm();
@@ -171,7 +171,7 @@ export const AdminTradersTab: React.FC = () => {
                 {form.avatar ? "Change Photo" : "Upload Photo"}
               </button>
             </div>
-            <input type="number" placeholder="ROI (%)" value={form.roi} onChange={e => setForm(f => ({ ...f, roi: e.target.value }))}
+            <input type="number" placeholder="ROI % (e.g. 142.5)" value={form.roi} onChange={e => setForm(f => ({ ...f, roi: e.target.value }))}
               className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
             <input type="number" placeholder="Win Rate (%)" value={form.winRate} onChange={e => setForm(f => ({ ...f, winRate: e.target.value }))}
               className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
@@ -183,7 +183,7 @@ export const AdminTradersTab: React.FC = () => {
               className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
             <input type="number" placeholder="Risk Score (1-5)" value={form.riskScore} onChange={e => setForm(f => ({ ...f, riskScore: e.target.value }))}
               className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
-            <input type="number" placeholder="Profit Days" value={form.profitDays} onChange={e => setForm(f => ({ ...f, profitDays: e.target.value }))}
+            <input type="number" placeholder="Profit Days (e.g. 90)" value={form.profitDays} onChange={e => setForm(f => ({ ...f, profitDays: e.target.value }))}
               className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
           </div>
           <button onClick={isCreating ? handleCreate : handleUpdate}
@@ -204,12 +204,21 @@ export const AdminTradersTab: React.FC = () => {
                 <p className="text-[10px] text-orbit-gray-text">{t.assetsUnderManagement} AUM</p>
               </div>
             </div>
+            {/* Highlighted ROI & Days */}
+            <div className="flex gap-2">
+              <div className="flex-1 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 text-center">
+                <p className="text-[9px] text-orbit-gray-text uppercase tracking-wider">ROI</p>
+                <p className="text-sm font-bold text-emerald-400">{t.roi ?? 0}%</p>
+              </div>
+              <div className="flex-1 bg-orbit-accent/10 border border-orbit-accent/20 rounded-lg px-3 py-2 text-center">
+                <p className="text-[9px] text-orbit-gray-text uppercase tracking-wider">Profit Days</p>
+                <p className="text-sm font-bold text-orbit-accent">{t.profitDays ?? 0}</p>
+              </div>
+            </div>
             <div className="grid grid-cols-3 gap-2 text-[10px]">
-              <div><span className="text-orbit-gray-text">ROI:</span> <span className="text-emerald-400 font-bold ml-1">{t.roi}%</span></div>
               <div><span className="text-orbit-gray-text">Win:</span> <span className="text-orbit-white font-bold ml-1">{t.winRate}%</span></div>
               <div><span className="text-orbit-gray-text">Risk:</span> <span className="text-orbit-accent font-bold ml-1">{t.riskScore}/5</span></div>
               <div><span className="text-orbit-gray-text">Followers:</span> <span className="text-orbit-white font-bold ml-1">{t.followers}/{t.maxFollowers}</span></div>
-              <div><span className="text-orbit-gray-text">Profit Days:</span> <span className="text-orbit-white font-bold ml-1">{t.profitDays}</span></div>
             </div>
             <div className="flex gap-2 pt-2 border-t border-orbit-border/50">
               <button onClick={() => startEdit(t)}

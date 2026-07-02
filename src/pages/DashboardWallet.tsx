@@ -1,5 +1,7 @@
 import React, { useState, useRef } from "react";
 import { useOrbit } from "../context/OrbitContext";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { storage } from "../lib/firebase";
 import { 
   PlusSquare, 
   MinusSquare, 
@@ -50,7 +52,7 @@ export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab
     XRP: adminWallets.XRP || "rEb8TK3gKLgai2asdaAdsaA324aFD9safAdadW"
   };
 
-  const handleDepositSubmit = (e: React.FormEvent) => {
+  const handleDepositSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setDepositSuccessLog(null);
 
@@ -60,11 +62,24 @@ export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab
       return;
     }
 
+    let finalProofURL = depositProofName || "payment_proof_receipt.jpg";
+
+    if (fileInputRef.current?.files?.[0]) {
+      try {
+        const file = fileInputRef.current.files[0];
+        const storageRef = ref(storage, `deposits/${user.email}_${Date.now()}_${file.name}`);
+        await uploadBytes(storageRef, file);
+        finalProofURL = await getDownloadURL(storageRef);
+      } catch (err) {
+        console.error("Error uploading deposit proof:", err);
+      }
+    }
+
     const success = deposit(
       amount, 
       depositCurrency, 
       depositTxHash.trim() || "N/A", 
-      depositProofName || "payment_proof_receipt.jpg"
+      finalProofURL
     );
     if (success) {
       setDepositAmountTxt("");

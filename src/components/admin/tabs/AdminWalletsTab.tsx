@@ -26,7 +26,9 @@ export const AdminWalletsTab: React.FC = () => {
     ETH: "Ethereum (ETH)",
     USDT_ERC20: "USDT (ERC-20)",
     USDT_TRC20: "USDT (TRC-20)",
-    BNB: "Binance Coin (BNB)"
+    BNB: "Binance Coin (BNB)",
+    SOL: "Solana (SOL)",
+    XRP: "Ripple (XRP)"
   };
 
   return (
