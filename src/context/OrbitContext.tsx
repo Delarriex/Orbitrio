@@ -601,8 +601,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [adminUsers, setAdminUsers] = useState<SimulatedUser[]>([]);
 
   const [adminWallets, setAdminWallets] = useState<Record<string, string>>(() => {
-    const saved = localStorage.getItem("orbitrio_admin_wallets");
-    return saved ? JSON.parse(saved) : {
+    const defaults = {
       BTC: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
       ETH: "0x7Fba9fB5994A1F62aB016a2E9D843D0B6A780E2e",
       USDT_ERC20: "0x981A7bFDE6D211a76B97A1f6DAe82b7814a60156",
@@ -611,6 +610,8 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       SOL: "7xKX3rncM9G9tve2S4g849mDsa9X8veFDSasf9adFad3",
       XRP: "rEb8TK3gKLgai2asdaAdsaA324aFD9safAdadW"
     };
+    const saved = localStorage.getItem("orbitrio_admin_wallets");
+    return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
   });
 
   const [adminAnnouncements, setAdminAnnouncements] = useState<Announcement[]>([]);
