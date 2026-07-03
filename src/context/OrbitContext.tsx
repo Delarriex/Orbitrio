@@ -24,8 +24,7 @@ import {
   signInWithPopup, 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
-  signOut,
-  sendPasswordResetEmail
+  signOut
 } from "firebase/auth";
 import { useEmailNotifications } from "../hooks/useEmailNotifications";
 import { sendWelcomeEmail } from "../lib/emailClient";
@@ -1394,7 +1393,13 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const sendPasswordReset = async (email: string) => {
     try {
-      await sendPasswordResetEmail(auth, email);
+      const response = await fetch("/api/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email })
+      });
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error);
       handleLog("Security Recovery Requested", "Password reset dispatch succeeded.", email, "success");
     } catch (error: any) {
       throw error;
