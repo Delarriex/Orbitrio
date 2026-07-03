@@ -207,6 +207,39 @@ function buildEmail(eventType: string, metadata: any): { subject: string; html: 
       `;
       break;
 
+    case "TOPUP_SUCCESS":
+      subject = "Investment Top-Up Successful - Orbitrio Trades";
+      html = `
+        <div style="font-family: sans-serif; background-color: #07090e; color: #ffffff; padding: 40px; border-radius: 12px; max-width: 600px; margin: 0 auto; border: 1px solid #10b981;">
+          <div style="text-align: center; margin-bottom: 30px;">
+            <span style="font-size: 28px; font-weight: 800; letter-spacing: -0.5px; color: #ffffff; text-transform: lowercase;">orbit<span style="color: #F7931A;">rio</span>trades</span>
+          </div>
+          <h2 style="color: #10b981; font-size: 22px; font-weight: 700; margin-bottom: 16px;">Top-Up Successful</h2>
+          <p style="color: #94a3b8; font-size: 14px; line-height: 1.6; margin-bottom: 24px;">
+            Your active investment allocation has been successfully increased. The new funds are now actively compounding.
+          </p>
+          <div style="background-color: #0f172a; border: 1px solid #1e293b; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+              <tr>
+                <td style="padding: 6px 0; color: #94a3b8; font-weight: 600;">Top-Up Amount:</td>
+                <td style="padding: 6px 0; color: #10b981; text-align: right; font-weight: bold;">+${metadata.amount || "$0.00"}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 0; color: #94a3b8; font-weight: 600;">Investment Target:</td>
+                <td style="padding: 6px 0; color: #ffffff; text-align: right;">${metadata.investmentName || "Active Portfolio"}</td>
+              </tr>
+            </table>
+          </div>
+          <p style="color: #94a3b8; font-size: 13px; line-height: 1.6; margin-bottom: 24px;">
+            Your overall estimated yield at maturity has been automatically scaled up to match your new capital allocation. 
+          </p>
+          <p style="color: #64748b; font-size: 12px; line-height: 1.5; border-top: 1px solid #1e293b; padding-top: 20px;">
+            Need help? Contact support at <a href="mailto:support@orbitriotrades.com" style="color: #F7931A; text-decoration: none;">support@orbitriotrades.com</a>.
+          </p>
+        </div>
+      `;
+      break;
+
     default:
       throw new Error(`Unknown eventType: ${eventType}`);
   }
