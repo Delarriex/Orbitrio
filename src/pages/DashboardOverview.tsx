@@ -33,7 +33,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   onOpenDeposit, 
   onOpenWithdraw 
 }) => {
-  const { user, plans, claimPlanPayout, topUpInvestment, addNotification, siteContent } = useOrbit();
+  const { user, plans, claimPlanPayout, topUpInvestment, addNotification, siteContent, setInsufficientBalanceOpen } = useOrbit();
   const [copiedUid, setCopiedUid] = useState(false);
   const [topUpTarget, setTopUpTarget] = useState<string | null>(null);
   const [topUpAmount, setTopUpAmount] = useState<string>("");
@@ -50,7 +50,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
       setTopUpAmount("");
     } else {
       if (res.message === "INSUFFICIENT_BALANCE") {
-        addNotification("Insufficient balance. Please deposit more funds first.");
+        setInsufficientBalanceOpen(true);
       } else {
         addNotification(res.message);
       }
