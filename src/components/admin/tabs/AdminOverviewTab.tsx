@@ -151,7 +151,7 @@ export const AdminOverviewTab: React.FC = () => {
                   <p className="text-[10px] text-orbit-gray-text mt-1">Comparisons of total accepted deposits against total settled withdrawals.</p>
                 </div>
                 <div className="h-[200px] mt-4">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                     <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 30, left: 30, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#222" horizontal={false} />
                       <XAxis type="number" stroke="#666" tick={{ fill: "#666", fontSize: 10 }} />

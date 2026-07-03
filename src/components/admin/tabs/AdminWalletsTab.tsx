@@ -9,6 +9,10 @@ export const AdminWalletsTab: React.FC = () => {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
+  React.useEffect(() => {
+    setForm(prev => ({ ...prev, ...adminWallets }));
+  }, [adminWallets]);
+
   const handleSave = () => {
     updateAdminWallets(form);
     setFeedback("Wallet addresses updated successfully!");
@@ -50,7 +54,7 @@ export const AdminWalletsTab: React.FC = () => {
 
       {/* Wallet Fields */}
       <div className="space-y-4">
-        {Object.keys(adminWallets).map(key => (
+        {Object.keys(walletLabels).map(key => (
           <div key={key} className="bg-orbit-card border border-orbit-border rounded-xl p-4 space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-[10px] font-bold text-orbit-gray-text uppercase tracking-wider">

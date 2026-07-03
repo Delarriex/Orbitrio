@@ -24,7 +24,8 @@ import {
   signInWithPopup, 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
-  signOut
+  signOut,
+  type User as FirebaseUser
 } from "firebase/auth";
 import { useEmailNotifications } from "../hooks/useEmailNotifications";
 import { sendWelcomeEmail } from "../lib/emailClient";
@@ -598,6 +599,14 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // when the user state change was triggered by an onSnapshot read FROM Firestore.
   const firestoreUpdateRef = useRef(false);
 
+  // Track Firebase Auth user to gate Firestore listeners behind authentication
+  const [firebaseAuthUser, setFirebaseAuthUser] = useState<FirebaseUser | null>(null);
+  const isLoggingOutRef = useRef(false);
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (fbUser) => setFirebaseAuthUser(fbUser));
+    return () => unsub();
+  }, []);
+
   // Simulated Master administrative structures
   const [adminUsers, setAdminUsers] = useState<SimulatedUser[]>([]);
 
@@ -622,24 +631,30 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [airdrops, setAirdrops] = useState<Airdrop[]>([]);
 
   useEffect(() => {
+    if (!firebaseAuthUser) return;
     const airdropsCol = collection(db, "airdrops");
     const unsubAirdrops = onSnapshot(airdropsCol, (snapshot) => {
       setAirdrops(snapshot.docs.map(doc => doc.data() as Airdrop));
+    }, (error: any) => {
+      if (!isLoggingOutRef.current) console.error("Firestore airdrops sync error:", error);
     });
 
     const claimsCol = collection(db, "airdrop_claims");
     const unsubClaims = onSnapshot(claimsCol, (snapshot) => {
       setAdminAirdropClaims(snapshot.docs.map(doc => doc.data() as AirdropClaim));
+    }, (error: any) => {
+      if (!isLoggingOutRef.current) console.error("Firestore airdrop claims sync error:", error);
     });
 
     return () => {
       unsubAirdrops();
       unsubClaims();
     };
-  }, []);
+  }, [firebaseAuthUser]);
 
   // Synchronize announcements from Firestore in real-time
   useEffect(() => {
+    if (!firebaseAuthUser) return;
     const announcementsCol = collection(db, "announcements");
     const unsubscribe = onSnapshot(announcementsCol, (snapshot) => {
       if (snapshot.empty) {
@@ -659,14 +674,15 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         loaded.sort((a, b) => b.date.localeCompare(a.date));
         setAdminAnnouncements(loaded);
       }
-    }, (error) => {
-      console.error("Firestore announcements sync error:", error);
+    }, (error: any) => {
+      if (!isLoggingOutRef.current) console.error("Firestore announcements sync error:", error);
     });
     return () => unsubscribe();
-  }, []);
+  }, [firebaseAuthUser]);
 
   // Synchronize audit logs from Firestore in real-time
   useEffect(() => {
+    if (!firebaseAuthUser) return;
     const logsCol = collection(db, "audit_logs");
     const unsubscribe = onSnapshot(logsCol, (snapshot) => {
       const loaded: AuditLog[] = [];
@@ -675,11 +691,11 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
       loaded.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
       setAdminAuditLogs(loaded);
-    }, (error) => {
-      console.error("Firestore audit logs sync error:", error);
+    }, (error: any) => {
+      if (!isLoggingOutRef.current) console.error("Firestore audit logs sync error:", error);
     });
     return () => unsubscribe();
-  }, []);
+  }, [firebaseAuthUser]);
 
   const adminApproveAirdrop = async (claimId: string) => {
     const claim = adminAirdropClaims.find(c => c.id === claimId);
@@ -810,6 +826,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Synchronize admin wallets from Firestore in real-time
   useEffect(() => {
+    if (!firebaseAuthUser) return;
     const docRef = doc(db, "admin_settings", "wallets");
     const unsubscribe = onSnapshot(docRef, (snap) => {
       const defaultWallets = {
@@ -832,10 +849,11 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     });
     return () => unsubscribe();
-  }, []);
+  }, [firebaseAuthUser]);
 
   // Synchronically listen to all registered users from Firestore
   useEffect(() => {
+    if (!firebaseAuthUser) return;
     const usersCol = collection(db, "users");
     const unsubscribe = onSnapshot(usersCol, (snapshot) => {
       // If Firestore users collection is empty, seed with INITIAL_MOCK_USERS for local/dev sync
@@ -897,11 +915,11 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         } as SimulatedUser);
       });
       setAdminUsers(loaded);
-    }, (error) => {
-      console.error("Firestore user sync error: ", error);
+    }, (error: any) => {
+      if (!isLoggingOutRef.current) console.error("Firestore user sync error: ", error);
     });
     return () => unsubscribe();
-  }, []);
+  }, [firebaseAuthUser]);
 
   // Synchronize local caches and Firestore user profiles
   useEffect(() => {
@@ -1011,6 +1029,9 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             
             addNotification(`Profile created successfully for ${initialName}!`);
             }
+          }, (error: any) => {
+            // Suppress permission-denied during logout; it's expected
+            if (!isLoggingOutRef.current) console.error("Firestore user doc listener error:", error);
           }); // close onSnapshot
         } catch (err) {
           console.error("Error setting up user from Firestore: ", err);
@@ -1410,7 +1431,12 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (user.email) {
       handleLog("Access Token Cleared", "Signed out successfully.", user.email, "success");
     }
+    // Clear auth user state FIRST so Firestore listeners unsubscribe
+    // before signOut() revokes the token (prevents permission-denied race)
+    isLoggingOutRef.current = true;
+    setFirebaseAuthUser(null);
     await signOut(auth);
+    isLoggingOutRef.current = false;
     setUser({
       isLoggedIn: false,
       email: null,
@@ -2024,7 +2050,9 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       status: logStatus
     };
     // Write to Firestore — the onSnapshot listener will pick it up automatically
-    setDoc(doc(db, "audit_logs", newLog.id), newLog).catch(console.error);
+    setDoc(doc(db, "audit_logs", newLog.id), newLog).catch((err) => {
+      if (!isLoggingOutRef.current) console.error(err);
+    });
   };
 
   const addNotification = (text: string) => {

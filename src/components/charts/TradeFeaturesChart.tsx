@@ -224,7 +224,7 @@ export const TradeFeaturesChart: React.FC<TradeFeaturesChartProps> = ({ onNaviga
 
           {/* Interactive Recharts Area */}
           <div className="p-4 h-[400px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
               <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
@@ -258,7 +258,7 @@ export const TradeFeaturesChart: React.FC<TradeFeaturesChartProps> = ({ onNaviga
           {/* Volume Chart (Optional) */}
           {showVolume && (
             <div className="px-4 pb-4 h-[80px] w-full mt-[-20px]">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                 <ComposedChart data={chartData} margin={{ top: 0, right: 10, left: -20, bottom: 0 }}>
                   <YAxis hide />
                   <Bar dataKey="volume" fill="#2B3139" />

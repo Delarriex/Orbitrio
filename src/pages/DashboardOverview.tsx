@@ -132,10 +132,22 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             </div>
 
             {/* Verification Badge */}
-            <div className="flex items-center gap-1 text-[11px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 py-0.5 px-2.5 rounded-full font-medium shadow-sm">
-              <CheckCircle2 size={11} className="text-emerald-400 shrink-0" />
-              <span>Identity Verified</span>
-            </div>
+            {user.kyc?.status === "approved" ? (
+              <div className="flex items-center gap-1 text-[11px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 py-0.5 px-2.5 rounded-full font-medium shadow-sm">
+                <CheckCircle2 size={11} className="text-emerald-400 shrink-0" />
+                <span>Identity Verified</span>
+              </div>
+            ) : user.kyc?.status === "pending" ? (
+              <div className="flex items-center gap-1 text-[11px] bg-amber-500/10 text-amber-400 border border-amber-500/20 py-0.5 px-2.5 rounded-full font-medium shadow-sm">
+                <AlertTriangle size={11} className="text-amber-400 shrink-0" />
+                <span>Verification Pending</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1 text-[11px] bg-rose-500/10 text-rose-400 border border-rose-500/20 py-0.5 px-2.5 rounded-full font-medium shadow-sm">
+                <AlertTriangle size={11} className="text-rose-400 shrink-0" />
+                <span>Unverified Identity</span>
+              </div>
+            )}
           </div>
         </div>
  

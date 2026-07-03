@@ -62,7 +62,7 @@ export const DashboardEquityChart: React.FC<DashboardEquityChartProps> = ({ curr
       transition={{ duration: 0.6, delay: 0.2 }}
       className="w-full h-[240px] mt-6"
     >
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
         <AreaChart
           data={data}
           margin={{ top: 10, right: 0, left: -20, bottom: 0 }}
