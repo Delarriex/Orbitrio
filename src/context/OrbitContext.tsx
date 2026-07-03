@@ -813,19 +813,22 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     const docRef = doc(db, "admin_settings", "wallets");
     const unsubscribe = onSnapshot(docRef, (snap) => {
+      const defaultWallets = {
+        BTC: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
+        ETH: "0x7Fba9fB5994A1F62aB016a2E9D843D0B6A780E2e",
+        USDT_ERC20: "0x981A7bFDE6D211a76B97A1f6DAe82b7814a60156",
+        USDT_TRC20: "TYc8Dq6pB1A8C8xbeGf4mDqsD84Kda67vE",
+        BNB: "0x3fC91A3afd20b00230230233ea86976828a923",
+        SOL: "7xKX3rncM9G9tve2S4g849mDsa9X8veFDSasf9adFad3",
+        XRP: "rEb8TK3gKLgai2asdaAdsaA324aFD9safAdadW"
+      };
+
       if (snap.exists()) {
         const data = snap.data() as Record<string, string>;
-        setAdminWallets(data);
+        // Auto-heal missing wallet fields by merging with defaults
+        const mergedWallets = { ...defaultWallets, ...data };
+        setAdminWallets(mergedWallets);
       } else {
-        const defaultWallets = {
-          BTC: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
-          ETH: "0x7Fba9fB5994A1F62aB016a2E9D843D0B6A780E2e",
-          USDT_ERC20: "0x981A7bFDE6D211a76B97A1f6DAe82b7814a60156",
-          USDT_TRC20: "TYc8Dq6pB1A8C8xbeGf4mDqsD84Kda67vE",
-          BNB: "0x3fC91A3afd20b00230230233ea86976828a923",
-          SOL: "7xKX3rncM9G9tve2S4g849mDsa9X8veFDSasf9adFad3",
-          XRP: "rEb8TK3gKLgai2asdaAdsaA324aFD9safAdadW"
-        };
         setDoc(docRef, defaultWallets).catch(console.error);
       }
     });
