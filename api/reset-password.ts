@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { initializeApp, getApps, cert } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
+import { Resend } from "resend";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -8,7 +9,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { email } = req.body;
+    const { email } = req.body || {};
 
     if (!email) {
       return res.status(400).json({ success: false, error: "Email is required" });
@@ -21,8 +22,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(500).json({ success: false, error: "FIREBASE_SERVICE_ACCOUNT_KEY is not configured in Vercel environment variables." });
       }
 
+      let parsedKey;
+      try {
+        parsedKey = JSON.parse(serviceAccountKey);
+      } catch (e) {
+        return res.status(500).json({ success: false, error: "FIREBASE_SERVICE_ACCOUNT_KEY is invalid JSON. Make sure you pasted the entire file exactly." });
+      }
+
       initializeApp({
-        credential: cert(JSON.parse(serviceAccountKey)),
+        credential: cert(parsedKey),
       });
     }
 
@@ -30,7 +38,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const resetLink = await getAuth().generatePasswordResetLink(email);
 
     // Call Resend directly to wrap the secure link in a premium Orbitrio Trades HTML template
-    const { Resend } = await import("resend");
     const resendApiKey = process.env.RESEND_API_KEY;
     if (!resendApiKey) {
       return res.status(500).json({ success: false, error: "RESEND_API_KEY is not configured." });
