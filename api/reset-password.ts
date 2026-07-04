@@ -1,14 +1,16 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { initializeApp, getApps, cert } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
-import { Resend } from "resend";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ success: false, error: "Method not allowed" });
-  }
-
   try {
+    if (req.method !== "POST") {
+      return res.status(405).json({ success: false, error: "Method not allowed" });
+    }
+
+    // Dynamically import dependencies INSIDE the try block to catch import crashes on Vercel
+    const { initializeApp, getApps, cert } = await import("firebase-admin/app");
+    const { getAuth } = await import("firebase-admin/auth");
+    const { Resend } = await import("resend");
+
     const { email } = req.body || {};
 
     if (!email) {
