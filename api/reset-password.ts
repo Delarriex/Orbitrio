@@ -6,40 +6,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(405).json({ success: false, error: "Method not allowed" });
     }
 
-    // Dynamically import dependencies INSIDE the try block to catch import crashes on Vercel
-    const { initializeApp, getApps, cert } = await import("firebase-admin/app");
-    const { getAuth } = await import("firebase-admin/auth");
-    const { Resend } = await import("resend");
-
     const { email } = req.body || {};
-
     if (!email) {
       return res.status(400).json({ success: false, error: "Email is required" });
     }
 
-    // Initialize Firebase Admin if not already initialized
-    if (!getApps().length) {
-      const serviceAccountKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
-      if (!serviceAccountKey) {
-        return res.status(500).json({ success: false, error: "FIREBASE_SERVICE_ACCOUNT_KEY is not configured in Vercel environment variables." });
-      }
-
-      let parsedKey;
-      try {
-        parsedKey = JSON.parse(serviceAccountKey);
-      } catch (e) {
-        return res.status(500).json({ success: false, error: "FIREBASE_SERVICE_ACCOUNT_KEY is invalid JSON. Make sure you pasted the entire file exactly." });
-      }
-
-      initializeApp({
-        credential: cert(parsedKey),
-      });
+    // 1. We completely bypassed firebase-admin to avoid Vercel Serverless ESM crashes!
+    // Instead, we use the lightweight Firebase Identity Toolkit REST API to generate the secure link.
+    const apiKey = process.env.VITE_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ success: false, error: "FIREBASE_API_KEY or VITE_FIREBASE_API_KEY is not configured in Vercel." });
     }
 
-    // Generate the secure password reset link mathematically without triggering the default Firebase email
-    const resetLink = await getAuth().generatePasswordResetLink(email);
+    // Make request to Firebase REST API
+    // setting returnOobLink: true ensures Firebase generates the link but DOES NOT send its default ugly email.
+    const firebaseRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        requestType: "PASSWORD_RESET",
+        email: email,
+        returnOobLink: true
+      })
+    });
 
-    // Call Resend directly to wrap the secure link in a premium Orbitrio Trades HTML template
+    const firebaseData = await firebaseRes.json();
+    
+    if (!firebaseRes.ok) {
+      // e.g. EMAIL_NOT_FOUND
+      return res.status(400).json({ success: false, error: firebaseData.error?.message || "Failed to generate Firebase reset link" });
+    }
+
+    const resetLink = firebaseData.oobLink;
+    if (!resetLink) {
+      return res.status(500).json({ success: false, error: "Firebase succeeded but did not return an oobLink." });
+    }
+
+    // 2. Call Resend directly to wrap the secure link in a premium Orbitrio Trades HTML template
+    const { Resend } = await import("resend");
     const resendApiKey = process.env.RESEND_API_KEY;
     if (!resendApiKey) {
       return res.status(500).json({ success: false, error: "RESEND_API_KEY is not configured." });
@@ -129,6 +133,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   } catch (error: any) {
     console.error("Failed to generate or send password reset link:", error);
-    return res.status(500).json({ success: false, error: error.message || String(error) });
+    return res.status(500).json({ success: false, error: String(error.message || error) });
   }
 }
