@@ -1,4 +1,38 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import crypto from "crypto";
+
+// Helper function to generate an OAuth2 Access Token from a Service Account Key
+async function getFirebaseAccessToken(serviceAccount: any): Promise<string> {
+  const header = { alg: "RS256", typ: "JWT" };
+  const iat = Math.floor(Date.now() / 1000);
+  const exp = iat + 3600;
+  const claim = {
+    iss: serviceAccount.client_email,
+    scope: "https://www.googleapis.com/auth/identitytoolkit",
+    aud: "https://oauth2.googleapis.com/token",
+    exp,
+    iat
+  };
+
+  const encodeB64 = (obj: any) => Buffer.from(JSON.stringify(obj)).toString("base64url");
+  const signatureInput = `${encodeB64(header)}.${encodeB64(claim)}`;
+  
+  const sign = crypto.createSign("RSA-SHA256");
+  sign.update(signatureInput);
+  const signature = sign.sign(serviceAccount.private_key, "base64url");
+  
+  const jwt = `${signatureInput}.${signature}`;
+
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}`
+  });
+
+  const data = await res.json();
+  if (!res.ok) throw new Error("Failed to generate access token: " + JSON.stringify(data));
+  return data.access_token;
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -12,17 +46,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // 1. We completely bypassed firebase-admin to avoid Vercel Serverless ESM crashes!
-    // Instead, we use the lightweight Firebase Identity Toolkit REST API to generate the secure link.
-    const apiKey = process.env.VITE_FIREBASE_API_KEY || process.env.FIREBASE_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ success: false, error: "FIREBASE_API_KEY or VITE_FIREBASE_API_KEY is not configured in Vercel." });
+    // We use Node's native crypto to generate an admin token, granting us permission to use returnOobLink=true
+    const serviceAccountStr = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+    if (!serviceAccountStr) {
+      return res.status(500).json({ success: false, error: "FIREBASE_SERVICE_ACCOUNT_KEY is not configured in Vercel." });
+    }
+    
+    let serviceAccount;
+    try {
+      serviceAccount = JSON.parse(serviceAccountStr);
+    } catch(e) {
+      return res.status(500).json({ success: false, error: "FIREBASE_SERVICE_ACCOUNT_KEY is invalid JSON." });
     }
 
-    // Make request to Firebase REST API
-    // setting returnOobLink: true ensures Firebase generates the link but DOES NOT send its default ugly email.
-    const firebaseRes = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${apiKey}`, {
+    const accessToken = await getFirebaseAccessToken(serviceAccount);
+    const projectId = serviceAccount.project_id;
+
+    // Make request to Firebase REST API as an ADMIN
+    const firebaseRes = await fetch(`https://identitytoolkit.googleapis.com/v1/projects/${projectId}/accounts:sendOobCode`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${accessToken}`
+      },
       body: JSON.stringify({
         requestType: "PASSWORD_RESET",
         email: email,
@@ -33,7 +79,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const firebaseData = await firebaseRes.json();
     
     if (!firebaseRes.ok) {
-      // e.g. EMAIL_NOT_FOUND
       return res.status(400).json({ success: false, error: firebaseData.error?.message || "Failed to generate Firebase reset link" });
     }
 
@@ -42,7 +87,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ success: false, error: "Firebase succeeded but did not return an oobLink." });
     }
 
-    // 2. Call Resend directly to wrap the secure link in a premium Orbitrio Trades HTML template
+    // 2. Call Resend directly to wrap the secure link in a premium HTML template
     const { Resend } = await import("resend");
     const resendApiKey = process.env.RESEND_API_KEY;
     if (!resendApiKey) {
