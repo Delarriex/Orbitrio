@@ -32,7 +32,7 @@ export const DashboardTrading: React.FC<DashboardTradingProps> = ({ initialAsset
     setPriceInput(activeAsset.price.toString());
   }, [selectedAssetSymbol, activeAsset.price]);
 
-  const handleOrderSubmit = (e: React.FormEvent) => {
+  const handleOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLog(null);
 
@@ -53,7 +53,7 @@ export const DashboardTrading: React.FC<DashboardTradingProps> = ({ initialAsset
       return;
     }
 
-    const result = executeTrade(
+    const result = await executeTrade(
       selectedAssetSymbol,
       activeAsset.name,
       tradeType,

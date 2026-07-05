@@ -3,7 +3,8 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
-import { handleSendEmail } from "./src/pages/api/send-email";
+import sendEmailHandler from "./api/send-email";
+import resetPasswordHandler from "./api/reset-password";
 
 dotenv.config();
 
@@ -34,69 +35,10 @@ async function startServer() {
   app.use(express.json());
 
   // API Route: Send Transactional Email using Resend
-  app.post("/api/send-email", handleSendEmail);
+  app.post("/api/send-email", sendEmailHandler as any);
 
-  // API Route: AI Advisor Chat Integration
-  app.post("/api/chat", async (req, res) => {
-    try {
-      const { messages, marketContext } = req.body;
-      if (!messages || !Array.isArray(messages)) {
-        return res.status(400).json({ error: "Invalid array of messages provided." });
-      }
-
-      const client = getGeminiClient();
-
-      // We extract the last user message and set up the professional advisory context in system instructions
-      const systemInstruction = `
-You are the Orbitrio AI Trading Advisor, an institutional-grade crypto, stock, and portfolio management intelligence. 
-Your goal is to provide insightful, math-backed, structural, and professional answers about financial markets, trading strategies, technical indicators, and investment tiers.
-Keep answers structured, elegant, and action-oriented. Emphasize that you are an AI advisor and recommend risk assessment.
-Current context:
-- Brand Name: Orbitrio (TRADE. ELEVATE. ORBIT.)
-- Investment tiers offered: 
-  * Starter Plan: Min $100 / Max $999 | Duration: 7 Days | ROI: 10%
-  * Professional Plan: Min $1,000 / Max $9,999 | Duration: 14 Days | ROI: 18%
-  * VIP Plan: Min $10,000 / Max Unlimited | Duration: 30 Days | ROI: 35%
-- Professional Copy Trading feature exists enabling followers to mimic experienced traders automatically.
-- Live assets tracked inside user portfolio.
-- Use currency USD ($).
-${marketContext ? `Real-time Asset State: ${JSON.stringify(marketContext)}` : ""}
-`;
-
-      const formattedMessages = messages.map((m: any) => ({
-        role: m.role === "user" ? "user" : "model",
-        parts: [{ text: m.content || "" }],
-      }));
-
-      // Generate content using gemini-3.5-flash as mandated for conversational Q&A
-      const response = await client.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: formattedMessages,
-        config: {
-          systemInstruction,
-          temperature: 0.75,
-        },
-      });
-
-      const replyText = response.text || "I apologize, but I am unable to generate a response at this time. Please try again soon.";
-      return res.json({ message: replyText });
-
-    } catch (err: any) {
-      console.error("Gemini API Error:", err);
-      // Let's check if the error is due to missing API Key and return a detailed, helpful guide
-      const errorMessage = err.message || "";
-      if (errorMessage.includes("GEMINI_API_KEY")) {
-        return res.status(403).json({
-          error: "API_KEY_MISSING",
-          message: "The Gemini API Key is missing. Please add your GEMINI_API_KEY in the Settings > Secrets panel of your Google AI Studio UI to activate the AI advisor module immediately.",
-        });
-      }
-      return res.status(500).json({
-        error: "INTERNAL_ERROR",
-        message: "An error occurred while generating a response from the AI advisor. Details: " + (err.message || err),
-      });
-    }
-  });
+  // API Route: Reset Password
+  app.post("/api/reset-password", resetPasswordHandler as any);
 
   // API Route: Live Market Data Feed
   app.get("/api/markets", async (req, res) => {

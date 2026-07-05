@@ -1,13 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from "react";
-import { 
-  MarketAsset, 
-  TraderProfile, 
-  InvestmentPlan, 
-  ActiveInvestment, 
-  PortfolioAsset, 
-  Transaction, 
-  ChatMessage, 
-  SupportTicket, 
+import {
+  MarketAsset,
+  TraderProfile,
+  InvestmentPlan,
+  ActiveInvestment,
+  PortfolioAsset,
+  Transaction,
+  ChatMessage,
+  SupportTicket,
   UserState,
   SimulatedUser,
   Announcement,
@@ -17,13 +17,13 @@ import {
   AirdropClaim,
   KycSubmission
 } from "../types";
-import { doc, onSnapshot, setDoc, getDoc, updateDoc, collection, deleteDoc } from "firebase/firestore";
+import { doc, onSnapshot, setDoc, getDoc, updateDoc, collection, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { db, handleFirestoreError, OperationType, auth, googleProvider } from "../lib/firebase";
-import { 
-  onAuthStateChanged, 
-  signInWithPopup, 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
+import {
+  onAuthStateChanged,
+  signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   signOut,
   type User as FirebaseUser
 } from "firebase/auth";
@@ -54,7 +54,7 @@ interface OrbitContextType {
   logout: () => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
-  deposit: (amount: number, currency: string, txHash?: string, proofFile?: string) => boolean;
+  deposit: (amount: number, currency: string, txHash?: string, proofFile?: string) => Promise<boolean>;
   withdraw: (
     amount: number,
     currency: string,
@@ -62,16 +62,16 @@ interface OrbitContextType {
     destinationTag?: string,
     bankDetails?: { accountNumber: string; bankName: string; accountName: string; routingCode: string },
     paypalEmail?: string
-  ) => { success: boolean; message: string };
-  investInPlan: (planId: string, amount: number) => { success: boolean; message: string };
-  topUpInvestment: (investmentId: string, amount: number) => { success: boolean; message: string };
-  claimPlanPayout: (investmentId: string) => void;
+  ) => Promise<{ success: boolean; message: string }>;
+  investInPlan: (planId: string, amount: number) => Promise<{ success: boolean; message: string }>;
+  topUpInvestment: (investmentId: string, amount: number) => Promise<{ success: boolean; message: string }>;
+  claimPlanPayout: (investmentId: string) => Promise<void>;
   claimAirdrop: (airdropId: string, token: string, rewardAmount: string) => void;
   withdrawEarnings: () => void;
-  copyTrader: (traderId: string, amount: number) => { success: boolean; message: string };
-  executeTrade: (symbol: string, name: string, type: "buy" | "sell", amount: number, price: number, isCrypto: boolean) => { success: boolean; message: string };
-  createTicket: (subject: string, category: "deposit" | "withdrawal" | "trading" | "general", initialMsg: string, priority?: "low" | "medium" | "high") => void;
-  replyToTicket: (ticketId: string, text: string) => void;
+  copyTrader: (traderId: string, amount: number) => Promise<{ success: boolean; message: string }>;
+  executeTrade: (symbol: string, name: string, type: "buy" | "sell", amount: number, price: number, isCrypto: boolean) => Promise<{ success: boolean; message: string }>;
+  createTicket: (subject: string, category: "deposit" | "withdrawal" | "trading" | "general", initialMsg: string, priority?: "low" | "medium" | "high") => Promise<void>;
+  replyToTicket: (ticketId: string, text: string) => Promise<void>;
 
   // Administrative Operations
   adminUsers: SimulatedUser[];
@@ -81,36 +81,36 @@ interface OrbitContextType {
   adminAirdropClaims: AirdropClaim[];
   airdrops: Airdrop[];
   notifications: Array<{ id: string; text: string; time: string; read: boolean }>;
-  
+
   updateAdminWallets: (wallets: Record<string, string>) => void;
   adminUpdateUserBalance: (email: string, amount: number, txData?: { type: "credit" | "debit"; amount: number; label: string; notes: string; }) => Promise<void>;
   adminChangeUserStatus: (email: string, status: "active" | "suspended" | "banned") => void;
   adminResetUserPassword: (email: string) => void;
   adminKycReview: (email: string, status: "approved" | "rejected", reason?: string) => void;
-  
+
   adminCreatePlan: (plan: Omit<InvestmentPlan, "id">) => void;
   adminUpdatePlan: (plan: InvestmentPlan) => void;
   adminDeletePlan: (planId: string) => void;
   adminSetPlanStatus: (planId: string, status: "active" | "paused") => void;
-  
+
   adminApproveDeposit: (txId: string) => void;
   adminRejectDeposit: (txId: string, notes?: string) => void;
   adminApproveWithdrawal: (txId: string, notes?: string) => void;
   adminRejectWithdrawal: (txId: string, notes?: string) => void;
-  
+
   adminApproveAirdrop: (claimId: string) => void;
   adminRejectAirdrop: (claimId: string) => void;
   adminCreateAirdrop: (airdrop: Omit<Airdrop, "id">) => void;
   adminUpdateAirdrop: (airdrop: Airdrop) => void;
   adminDeleteAirdrop: (airdropId: string) => void;
-  
+
   adminCreateAnnouncement: (title: string, content: string, pinned: boolean, scheduledDate?: string) => void;
   adminDeleteAnnouncement: (announcementId: string) => void;
-  
+
   adminReplyToTicket: (ticketId: string, text: string) => void;
   adminCloseTicket: (ticketId: string) => void;
   adminSetTicketPriority: (ticketId: string, priority: "low" | "medium" | "high") => void;
-  
+
   addNotification: (text: string) => void;
   clearNotifications: () => void;
   submitKyc: (kyc: KycSubmission) => void;
@@ -402,10 +402,10 @@ const INITIAL_MOCK_USERS: SimulatedUser[] = [
 ];
 
 export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { 
-    sendWelcomeEmail, 
-    sendSecurityAlert, 
-    sendDepositEmail, 
+  const {
+    sendWelcomeEmail,
+    sendSecurityAlert,
+    sendDepositEmail,
     sendWithdrawalEmail,
     sendProfitEmail,
     sendCopyTradeEmail,
@@ -422,7 +422,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const unsubscribe = onSnapshot(docRef, (snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        
+
         // Auto-heal legacy database text content to match the new crisp terminology requested by the user
         const hasLegacyTitle = data.investment_title === "Cryptocurrency Compounding Tiers";
         const hasLegacyDesc = data.investment_description && data.investment_description.includes("locked-liquidity compounding tier");
@@ -574,7 +574,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           });
         }
         return u;
-      } catch (e) {}
+      } catch (e) { }
     }
     return {
       isLoggedIn: false,
@@ -764,23 +764,29 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     addNotification("Changes saved successfully!");
   };
 
-  const withdrawEarnings = () => {
+  const withdrawEarnings = async () => {
     if (!user.points || user.points < 100) return;
-    const usdAmount = user.points * 1; 
+    const usdAmount = user.points * 1;
     const newBalance = user.balance + usdAmount;
+    if (user.email) {
+      try {
+        await updateDoc(doc(db, "users", user.email), {
+          balance: newBalance,
+          points: 0,
+          lastActivityAt: serverTimestamp()
+        });
+      } catch (err) {
+        console.error("Firestore write failed:", err);
+        return;
+      }
+    }
+
     setUser(prev => ({
       ...prev,
       balance: newBalance,
       points: 0
     }));
-    
-    if (user.email) {
-      updateDoc(doc(db, "users", user.email), {
-        balance: newBalance,
-        points: 0
-      }).catch(console.error);
-    }
-    
+
     addNotification(`Withdrew $${usdAmount.toFixed(2)} to wallet.`);
   };
 
@@ -921,45 +927,9 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return () => unsubscribe();
   }, [firebaseAuthUser]);
 
-  // Synchronize local caches and Firestore user profiles
+  // Synchronize local caches
   useEffect(() => {
     localStorage.setItem("orbitrio_user", JSON.stringify(user));
-
-    // Skip writing back to Firestore if this state change came FROM Firestore
-    // (via onSnapshot). This prevents a write-back loop that overwrites fresh data.
-    if (firestoreUpdateRef.current) {
-      firestoreUpdateRef.current = false;
-      return;
-    }
-
-    if (user.isLoggedIn && user.email) {
-      const userDocRef = doc(db, "users", user.email);
-      const firebaseUser = auth.currentUser;
-      if (firebaseUser && firebaseUser.email === user.email) {
-        const fieldsToUpdate = {
-          name: user.name,
-          balance: user.balance,
-          portfolioValue: user.portfolioValue,
-          activeInvestments: user.activeInvestments,
-          portfolio: user.portfolio,
-          transactions: user.transactions,
-          tickets: user.tickets,
-          status: user.status || "active",
-          role: user.role || "user",
-          username: user.username || "",
-          firstName: user.firstName || "",
-          lastName: user.lastName || "",
-          gender: user.gender || "",
-          phone: user.phone || "",
-          accountType: user.accountType || "",
-          country: user.country || "",
-          currency: user.currency || ""
-        };
-        setDoc(userDocRef, fieldsToUpdate, { merge: true }).catch(err => {
-          console.error("Failed to sync state to Firestore:", err);
-        });
-      }
-    }
   }, [user]);
 
   // Synchronize Firebase Auth state to restore logged session after page refresh
@@ -968,7 +938,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (firebaseUser?.email) {
         const userEmail = firebaseUser.email;
         const docRef = doc(db, "users", userEmail);
-        
+
         try {
           // Listen to the user document in real-time
           onSnapshot(docRef, async (userSnap) => {
@@ -1004,30 +974,30 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 name: initialName,
                 balance: 0.00,
                 portfolioValue: 0.00,
-              status: "active" as const,
-              activeInvestments: [],
-              portfolio: [],
-              transactions: [],
-              tickets: [],
-              loginHistory: [{ date: new Date().toISOString().replace("T", " ").substring(0, 19), ip: "127.0.0.1", device: "Google Auth Session" }],
-              role: userEmail.toLowerCase() === "henrikaram1@gmail.com" ? ("admin" as const) : ("user" as const),
-              username: firebaseUser.displayName?.replace(/\s+/g, "").toLowerCase() || userEmail.split("@")[0],
-              firstName: firebaseUser.displayName?.split(" ")[0] || "Trader",
-              lastName: firebaseUser.displayName?.split(" ").slice(1).join(" ") || "",
-              gender: "Male" as const,
-              phone: "",
-              accountType: "Bronze",
-              country: "United States",
-              currency: "USD"
-            };
-            await setDoc(docRef, initialUser);
-            
-            setUser({
-              isLoggedIn: true,
-              ...initialUser
-            });
-            
-            addNotification(`Profile created successfully for ${initialName}!`);
+                status: "active" as const,
+                activeInvestments: [],
+                portfolio: [],
+                transactions: [],
+                tickets: [],
+                loginHistory: [{ date: new Date().toISOString().replace("T", " ").substring(0, 19), ip: "127.0.0.1", device: "Google Auth Session" }],
+                role: userEmail.toLowerCase() === "henrikaram1@gmail.com" ? ("admin" as const) : ("user" as const),
+                username: firebaseUser.displayName?.replace(/\s+/g, "").toLowerCase() || userEmail.split("@")[0],
+                firstName: firebaseUser.displayName?.split(" ")[0] || "Trader",
+                lastName: firebaseUser.displayName?.split(" ").slice(1).join(" ") || "",
+                gender: "Male" as const,
+                phone: "",
+                accountType: "Bronze",
+                country: "United States",
+                currency: "USD"
+              };
+              await setDoc(docRef, initialUser);
+
+              setUser({
+                isLoggedIn: true,
+                ...initialUser
+              });
+
+              addNotification(`Profile created successfully for ${initialName}!`);
             }
           }, (error: any) => {
             // Suppress permission-denied during logout; it's expected
@@ -1175,15 +1145,15 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // Connect to Live Binance API
       const symbolsQuery = mockC.map(c => `"${c.symbol.replace('/USD', 'USDT')}"`).join(",");
       const res = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbols=[${symbolsQuery}]`);
-      
+
       if (res.ok) {
         const liveData = await res.json();
-        
+
         // Map live Binance data to our app's MarketAsset structure
         const processedCrypto = mockC.map(mockAsset => {
           const binanceSymbol = mockAsset.symbol.replace('/USD', 'USDT');
           const liveTicker = liveData.find((t: any) => t.symbol === binanceSymbol);
-          
+
           if (liveTicker) {
             const currentPrice = parseFloat(liveTicker.lastPrice);
             return {
@@ -1203,7 +1173,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           ...s,
           sparkline: Array.from({ length: 12 }, () => s.price * (1 + (Math.random() * 0.02 - 0.01)))
         }));
-        
+
         setMarketCrypto(processedCrypto);
         setMarketStocks(processedStocks);
       } else {
@@ -1227,7 +1197,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Fluctuations
   useEffect(() => {
     const marketFlux = setInterval(() => {
-      setMarketCrypto(prev => 
+      setMarketCrypto(prev =>
         prev.map(asset => {
           const delta = (Math.random() * 0.003 - 0.0015);
           const nextPrice = +(asset.price * (1 + delta)).toFixed(asset.price > 10 ? 2 : 4);
@@ -1268,7 +1238,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (inv.status === "active") {
           const currentPlan = plans.find(p => p.id === inv.planId);
           if (currentPlan && currentPlan.status === "paused") return inv; // Paused by admin
-          
+
           // Determine ROI: from plan if available, or from dailyRoiPercent (copy trading)
           let totalRoiPercent = 0;
           if (currentPlan) {
@@ -1281,12 +1251,12 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           } else {
             return inv; // No plan and no ROI data — skip
           }
-          
+
           // Real-time accrual based on actual duration
           const startTimestamp = new Date(inv.startDate).getTime();
           const endTimestamp = new Date(inv.endDate).getTime();
           const nowTimestamp = Date.now();
-          
+
           let nextProgress = 0;
           if (endTimestamp > startTimestamp) {
             nextProgress = Math.min(((nowTimestamp - startTimestamp) / (endTimestamp - startTimestamp)) * 100, 100);
@@ -1334,7 +1304,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   ) => {
     const isOwner = email.toLowerCase() === "henrikaram1@gmail.com";
-    
+
     if (additionalData?.password) {
       await createUserWithEmailAndPassword(auth, email, additionalData.password);
     }
@@ -1452,10 +1422,9 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   };
 
-  const deposit = (amount: number, currency: string, txHash?: string, proofFile?: string): boolean => {
+  const deposit = async (amount: number, currency: string, txHash?: string, proofFile?: string): Promise<boolean> => {
     if (amount <= 0) return false;
-    
-    // Manual deposits with proof go to pending
+
     const isManual = !!txHash || !!proofFile || currency !== "USD";
     const statusType = isManual ? "pending" : "completed";
 
@@ -1475,18 +1444,24 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const newBalance = statusType === "completed" ? +(user.balance + amount).toFixed(2) : user.balance;
     const newTransactions = [newTx, ...user.transactions];
 
+    if (user.email) {
+      try {
+        await updateDoc(doc(db, "users", user.email), {
+          balance: newBalance,
+          transactions: newTransactions,
+          lastActivityAt: serverTimestamp()
+        });
+      } catch (err) {
+        console.error("Firestore write failed:", err);
+        return false;
+      }
+    }
+
     setUser(prev => ({
       ...prev,
       balance: newBalance,
       transactions: newTransactions
     }));
-
-    if (user.email) {
-      updateDoc(doc(db, "users", user.email), {
-        balance: newBalance,
-        transactions: newTransactions
-      }).catch(console.error);
-    }
 
     handleLog("Asset Deposit Action", `Recharged requested: $${amount} ${currency}. Status: ${statusType}`, user.email || "system", "success");
     addNotification(`Secured ${currency} deposit of ${amount} queued. Status: ${statusType}`);
@@ -1494,14 +1469,14 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return true;
   };
 
-  const withdraw = (
+  const withdraw = async (
     amount: number,
     currency: string,
     address?: string,
     destinationTag?: string,
     bankDetails?: { accountNumber: string; bankName: string; accountName: string; routingCode: string },
     paypalEmail?: string
-  ): { success: boolean; message: string } => {
+  ): Promise<{ success: boolean; message: string }> => {
     if (user.kyc?.status !== "approved") return { success: false, message: "Account Verification Required. Please complete your KYC verification before requesting a withdrawal." };
     if (amount <= 0) return { success: false, message: "Invalid amount specified." };
     if (user.balance < amount) return { success: false, message: "Insufficient withdrawable balance." };
@@ -1532,26 +1507,32 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const newBalance = +(user.balance - amount).toFixed(2);
     const newTransactions = [newTx, ...user.transactions];
 
+    if (user.email) {
+      try {
+        await updateDoc(doc(db, "users", user.email), {
+          balance: newBalance,
+          transactions: newTransactions,
+          lastActivityAt: serverTimestamp()
+        });
+      } catch (err) {
+        console.error("Firestore write failed:", err);
+        return { success: false, message: "Unable to submit withdrawal right now. Please try again." };
+      }
+    }
+
     setUser(prev => ({
       ...prev,
       balance: newBalance,
       transactions: newTransactions
     }));
 
-    if (user.email) {
-      updateDoc(doc(db, "users", user.email), {
-        balance: newBalance,
-        transactions: newTransactions
-      }).catch(console.error);
-    }
-
     handleLog("Asset Withdrawal Action", `Requested payout of $${amount} ${currency} to ${displayAddress}. Queued for Admin.`, user.email || "system", "warning");
     addNotification(`Withdrawal request of $${amount} ${currency} submitted for audit.`);
-    
+
     return { success: true, message: `Payout request queued. Balance deducted. Pending Admin Approval.` };
   };
 
-  const investInPlan = (planId: string, amount: number): { success: boolean; message: string } => {
+  const investInPlan = async (planId: string, amount: number): Promise<{ success: boolean; message: string }> => {
     const selectedPlan = plans.find(p => p.id === planId);
     if (!selectedPlan) return { success: false, message: "Selected plan not recognized." };
     if (selectedPlan.status === "paused") return { success: false, message: "This yield program is temporarily locked by platform admin nodes." };
@@ -1598,6 +1579,19 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
     const newTransactions = [newTx as Transaction, ...user.transactions];
 
+    if (user.email) {
+      try {
+        await updateDoc(doc(db, "users", user.email), {
+          balance: newBalance,
+          activeInvestments: newActiveInvestments,
+          transactions: newTransactions
+        });
+      } catch (err) {
+        console.error('Firestore write failed:', err);
+        throw err;
+      }
+    }
+
     setUser(prev => ({
       ...prev,
       balance: newBalance,
@@ -1605,28 +1599,20 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       transactions: newTransactions
     }));
 
-    if (user.email) {
-      updateDoc(doc(db, "users", user.email), {
-        balance: newBalance,
-        activeInvestments: newActiveInvestments,
-        transactions: newTransactions
-      }).catch(console.error);
-    }
-
     handleLog("Compound Allocation Enrolled", `Subscribed to ${selectedPlan.name} worth $${amount}.`, user.email || "system", "success");
     addNotification(`Successfully allocated $${amount} to ${selectedPlan.name}.`);
-    
+
     return { success: true, message: `Compounding contract established! Daily accruals are active.` };
   };
 
-  const claimPlanPayout = (investmentId: string) => {
+  const claimPlanPayout = async (investmentId: string): Promise<void> => {
     const item = user.activeInvestments.find(inv => inv.id === investmentId);
     if (!item || item.status !== "completed") return;
 
     const payoutTotal = item.amount + item.accumulatedProfit;
     const filteredActiveInvestments = user.activeInvestments.filter(i => i.id !== investmentId);
     const newBalance = +(user.balance + payoutTotal).toFixed(2);
-    
+
     const newTx = {
       id: `tx-pay-${Date.now()}`,
       type: "payout",
@@ -1639,6 +1625,20 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
     const newTransactions = [newTx as Transaction, ...user.transactions];
 
+    if (user.email) {
+      try {
+        await updateDoc(doc(db, "users", user.email), {
+          balance: newBalance,
+          activeInvestments: filteredActiveInvestments,
+          transactions: newTransactions,
+          lastActivityAt: serverTimestamp()
+        });
+      } catch (err) {
+        console.error("Firestore write failed:", err);
+        return;
+      }
+    }
+
     setUser(prev => ({
       ...prev,
       balance: newBalance,
@@ -1646,19 +1646,11 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       transactions: newTransactions
     }));
 
-    if (user.email) {
-      updateDoc(doc(db, "users", user.email), {
-        balance: newBalance,
-        activeInvestments: filteredActiveInvestments,
-        transactions: newTransactions
-      }).catch(console.error);
-    }
-
     handleLog("Investment Settled", `Recovered contract capital with profit. Claimed $${payoutTotal.toFixed(2)}`, user.email || "system", "success");
     addNotification(`Earnings of $${item.accumulatedProfit.toFixed(2)} and initial capital returned to pocket.`);
   };
 
-  const topUpInvestment = (investmentId: string, amount: number): { success: boolean; message: string } => {
+  const topUpInvestment = async (investmentId: string, amount: number): Promise<{ success: boolean; message: string }> => {
     if (!user.isLoggedIn || !user.email) return { success: false, message: "AUTH_REQUIRED" };
     if (amount <= 0 || isNaN(amount)) return { success: false, message: "Please enter a valid top-up amount." };
     if (user.balance < amount) return { success: false, message: "INSUFFICIENT_BALANCE" };
@@ -1669,7 +1661,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     const newBalance = +(user.balance - amount).toFixed(2);
-    const updatedInvestments = user.activeInvestments.map(inv => 
+    const updatedInvestments = user.activeInvestments.map(inv =>
       inv.id === investmentId ? { ...inv, amount: +(inv.amount + amount).toFixed(2) } : inv
     );
 
@@ -1686,20 +1678,26 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const updatedTransactions = [newTx, ...user.transactions];
 
+    if (user.email) {
+      try {
+        await updateDoc(doc(db, "users", user.email), {
+          balance: newBalance,
+          activeInvestments: updatedInvestments,
+          transactions: updatedTransactions,
+          lastActivityAt: serverTimestamp()
+        });
+      } catch (err) {
+        console.error("Firestore write failed:", err);
+        return { success: false, message: "Unable to complete the top-up right now." };
+      }
+    }
+
     setUser(prev => ({
       ...prev,
       balance: newBalance,
       activeInvestments: updatedInvestments,
       transactions: updatedTransactions
     }));
-
-    if (user.email) {
-      updateDoc(doc(db, "users", user.email), {
-        balance: newBalance,
-        activeInvestments: updatedInvestments,
-        transactions: updatedTransactions
-      }).catch(console.error);
-    }
 
     sendTopUpEmail(user.email, { amount: `$${amount.toLocaleString()}`, investmentName: targetInvestment.name });
     handleLog("Investment Top-Up", `Added $${amount} to investment ${investmentId}`, user.email, "success");
@@ -1708,7 +1706,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return { success: true, message: `Successfully added $${amount} to ${targetInvestment.name}.` };
   };
 
-  const copyTrader = (traderId: string, amount: number): { success: boolean; message: string } => {
+  const copyTrader = async (traderId: string, amount: number): Promise<{ success: boolean; message: string }> => {
     if (!user.isLoggedIn || !user.email) {
       return { success: false, message: "AUTH_REQUIRED" };
     }
@@ -1769,21 +1767,27 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const newBalance = +(user.balance - amount).toFixed(2);
     const newActiveInvestments = [newActive, ...user.activeInvestments];
     const newTransactions = [newTx, ...user.transactions];
-    
+
+    if (user.email) {
+      try {
+        await updateDoc(doc(db, "users", user.email), {
+          balance: newBalance,
+          activeInvestments: newActiveInvestments,
+          transactions: newTransactions,
+          lastActivityAt: serverTimestamp()
+        });
+      } catch (err) {
+        console.error("Firestore write failed:", err);
+        return { success: false, message: "Unable to activate copy trading right now." };
+      }
+    }
+
     setUser(prev => ({
       ...prev,
       balance: newBalance,
       activeInvestments: newActiveInvestments,
       transactions: newTransactions
     }));
-
-    if (user.email) {
-      updateDoc(doc(db, "users", user.email), {
-        balance: newBalance,
-        activeInvestments: newActiveInvestments,
-        transactions: newTransactions
-      }).catch(console.error);
-    }
 
     const copyTradeId = `copy-${user.email.replace(/[@.]/g, "-")}-${traderId}`;
     const copyTradeDoc = {
@@ -1798,11 +1802,11 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       status: "active"
     };
 
-    setDoc(doc(db, "copyTrades", copyTradeId), copyTradeDoc).catch(e => {
+    await setDoc(doc(db, "copyTrades", copyTradeId), copyTradeDoc).catch(e => {
       console.error("Firestore error saving copy trade record: ", e);
     });
 
-    setTraders(prev => 
+    setTraders(prev =>
       prev.map(tr => tr.id === traderId ? { ...tr, followers: tr.followers + 1 } : tr)
     );
 
@@ -1811,14 +1815,14 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return { success: true, message: `Copy Trading Activated. ${traderDays}-day contract at ${traderRoi}% ROI. Track progress from your dashboard.` };
   };
 
-  const executeTrade = (
+  const executeTrade = async (
     symbol: string,
     name: string,
     type: "buy" | "sell",
     amount: number,
     price: number,
     isCrypto: boolean
-  ): { success: boolean; message: string } => {
+  ): Promise<{ success: boolean; message: string }> => {
     if (!user.isLoggedIn || !user.email) {
       return { success: false, message: "AUTH_REQUIRED" };
     }
@@ -1891,11 +1895,17 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
 
       if (user.email) {
-        updateDoc(doc(db, "users", user.email), {
-          balance: finalBalance,
-          portfolio: finalPortfolio,
-          transactions: finalTransactions
-        }).catch(console.error);
+        try {
+          await updateDoc(doc(db, "users", user.email), {
+            balance: finalBalance,
+            portfolio: finalPortfolio,
+            transactions: finalTransactions,
+            lastActivityAt: serverTimestamp()
+          });
+        } catch (err) {
+          console.error("Firestore write failed:", err);
+          return { success: false, message: "Unable to complete this trade right now." };
+        }
       }
 
       handleLog("Market Order Fulfilled", `Purchased $${amount} of ${symbol} at $${price}`, user.email, "success");
@@ -1953,11 +1963,17 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
 
       if (user.email) {
-        updateDoc(doc(db, "users", user.email), {
-          balance: finalBalance,
-          portfolio: finalPortfolio,
-          transactions: finalTransactions
-        }).catch(console.error);
+        try {
+          await updateDoc(doc(db, "users", user.email), {
+            balance: finalBalance,
+            portfolio: finalPortfolio,
+            transactions: finalTransactions,
+            lastActivityAt: serverTimestamp()
+          });
+        } catch (err) {
+          console.error("Firestore write failed:", err);
+          return { success: false, message: "Unable to complete this trade right now." };
+        }
       }
 
       handleLog("Market Sale Settled", `Liquidated ${quantityToSell} ${symbol.split("/")[0]} for $${amount}`, user.email, "success");
@@ -1966,12 +1982,12 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  const createTicket = (
-    subject: string, 
-    category: "deposit" | "withdrawal" | "trading" | "general", 
+  const createTicket = async (
+    subject: string,
+    category: "deposit" | "withdrawal" | "trading" | "general",
     initialMsg: string,
     priority: "low" | "medium" | "high" = "medium"
-  ) => {
+  ): Promise<void> => {
     const todayStr = new Date().toISOString().split("T")[0];
     const newTkt: SupportTicket = {
       id: `tkt-${Date.now()}`,
@@ -1988,26 +2004,32 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const newTickets = [newTkt, ...user.tickets];
 
+    if (user.email) {
+      try {
+        await updateDoc(doc(db, "users", user.email), {
+          tickets: newTickets,
+          lastActivityAt: serverTimestamp()
+        });
+      } catch (err) {
+        console.error("Firestore write failed:", err);
+        return;
+      }
+    }
+
     setUser(prev => ({
       ...prev,
       tickets: newTickets
     }));
 
-    if (user.email) {
-      updateDoc(doc(db, "users", user.email), {
-        tickets: newTickets
-      }).catch(console.error);
-    }
-
     handleLog("Support Ticket Created", `Submitted ticket regarding topic: ${subject}`, user.email || "guest@gmail.com", "success");
-    
+
     // Auto simulated response
     setTimeout(() => {
       adminReplyToTicket(newTkt.id, `Dear orbitrio Member, thank you for writing. Dynamic agent node assigned. We are actively auditing your ${category} logs. Please stand by.`);
     }, 4000);
   };
 
-  const replyToTicket = (ticketId: string, text: string) => {
+  const replyToTicket = async (ticketId: string, text: string): Promise<void> => {
     const updatedTickets = user.tickets.map(tkt => {
       if (tkt.id === ticketId) {
         return {
@@ -2026,22 +2048,28 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return tkt;
     });
 
+    if (user.email) {
+      try {
+        await updateDoc(doc(db, "users", user.email), {
+          tickets: updatedTickets,
+          lastActivityAt: serverTimestamp()
+        });
+      } catch (err) {
+        console.error("Firestore write failed:", err);
+        return;
+      }
+    }
+
     setUser(prev => ({
       ...prev,
       tickets: updatedTickets
     }));
-
-    if (user.email) {
-      updateDoc(doc(db, "users", user.email), {
-        tickets: updatedTickets
-      }).catch(console.error);
-    }
   };
 
   // Helper logger
   const handleLog = (action: string, details: string, email: string, logStatus: "success" | "warning" | "alert") => {
     const newLog: AuditLog = {
-      id: `audit-${Date.now()}-${Math.floor(Math.random()*1000)}`,
+      id: `audit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       action,
       details,
       timestamp: new Date().toISOString().replace("T", " ").substring(0, 19),
@@ -2050,7 +2078,10 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       status: logStatus
     };
     // Write to Firestore — the onSnapshot listener will pick it up automatically
-    setDoc(doc(db, "audit_logs", newLog.id), newLog).catch((err) => {
+    setDoc(doc(db, "audit_logs", newLog.id), {
+      ...newLog,
+      createdAt: serverTimestamp()
+    }).catch((err) => {
       if (!isLoggingOutRef.current) console.error(err);
     });
   };
@@ -2080,18 +2111,18 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const adminUpdateUserBalance = async (
-    email: string, 
-    amount: number, 
-    txData?: { 
-      type: "credit" | "debit"; 
-      amount: number; 
-      label: string; 
-      notes: string; 
+    email: string,
+    amount: number,
+    txData?: {
+      type: "credit" | "debit";
+      amount: number;
+      label: string;
+      notes: string;
     }
   ) => {
     try {
       const userDocRef = doc(db, "users", email);
-      
+
       let updatedTransactions: Transaction[] = [];
       const userSnap = await getDoc(userDocRef);
       if (userSnap.exists()) {
@@ -2151,7 +2182,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         fieldsToUpdate.transactions = updatedTransactions;
       }
       await updateDoc(userDocRef, fieldsToUpdate);
-      
+
       if (user.email && user.email.toLowerCase() === email.toLowerCase()) {
         setUser(prev => {
           const updated: any = { ...prev, balance: amount };
@@ -2218,12 +2249,13 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  const submitKyc = async (kyc: KycSubmission) => {
+  const submitKyc = async (kyc: KycSubmission): Promise<void> => {
     if (!user.email) return;
     try {
       const userDocRef = doc(db, "users", user.email);
       await updateDoc(userDocRef, {
-        kyc: { ...kyc, status: "pending" }
+        kyc: { ...kyc, status: "pending" },
+        lastActivityAt: serverTimestamp()
       });
       setUser(prev => ({ ...prev, kyc: { ...kyc, status: "pending" } }));
       addNotification("KYC submission sent for admin review.");
@@ -2301,7 +2333,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const matchingTx = targetUser.transactions.find(t => t.id === txId);
     if (!matchingTx) return;
 
-    const updatedTransactions = targetUser.transactions.map(t => 
+    const updatedTransactions = targetUser.transactions.map(t =>
       t.id === txId ? { ...t, status: "completed" as const } : t
     );
     const updatedBalance = +(targetUser.balance + matchingTx.amount).toFixed(2);
@@ -2340,7 +2372,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const targetUser = adminUsers.find(u => u.transactions.some(t => t.id === txId));
     if (!targetUser) return;
 
-    const updatedTransactions = targetUser.transactions.map(t => 
+    const updatedTransactions = targetUser.transactions.map(t =>
       t.id === txId ? { ...t, status: "rejected" as const, notes: noteText } : t
     );
 
@@ -2368,7 +2400,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const targetUser = adminUsers.find(u => u.transactions.some(t => t.id === txId));
     if (!targetUser) return;
 
-    const updatedTransactions = targetUser.transactions.map(t => 
+    const updatedTransactions = targetUser.transactions.map(t =>
       t.id === txId ? { ...t, status: "completed" as const, notes: noteText } : t
     );
 
@@ -2387,7 +2419,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       handleLog("Withdrawing Dispatched", `Released payout ID: ${txId}. Notes: ${noteText}`, user.email || "admin", "success");
       addNotification(`Settled withdrawal invoice ${txId}. Funds successfully dispatched.`);
-      
+
       const tx = targetUser.transactions.find(t => t.id === txId);
       if (targetUser.email && tx) {
         sendWithdrawalEmail(targetUser.email, {
@@ -2409,7 +2441,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!matched) return;
 
     const refundAmount = matched.amount;
-    const updatedTransactions = targetUser.transactions.map(t => 
+    const updatedTransactions = targetUser.transactions.map(t =>
       t.id === txId ? { ...t, status: "failed" as const, notes: noteTextByAdmin } : t
     );
     const updatedBalance = +(targetUser.balance + refundAmount).toFixed(2);
@@ -2504,7 +2536,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const targetUser = adminUsers.find(u => u.tickets.some(t => t.id === ticketId));
     if (!targetUser) return;
 
-    const updatedTickets = targetUser.tickets.map(tkt => 
+    const updatedTickets = targetUser.tickets.map(tkt =>
       tkt.id === ticketId ? { ...tkt, status: "resolved" as const } : tkt
     );
 
@@ -2531,7 +2563,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const targetUser = adminUsers.find(u => u.tickets.some(t => t.id === ticketId));
     if (!targetUser) return;
 
-    const updatedTickets = targetUser.tickets.map(t => 
+    const updatedTickets = targetUser.tickets.map(t =>
       t.id === ticketId ? { ...t, priority: rate } : t
     );
 
@@ -2578,7 +2610,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       executeTrade,
       createTicket,
       replyToTicket,
-      
+
       // Administrative Exports
       adminUsers,
       adminWallets,
@@ -2587,18 +2619,18 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       adminAirdropClaims,
       airdrops,
       notifications,
-      
+
       updateAdminWallets,
       adminUpdateUserBalance,
       adminChangeUserStatus,
       adminResetUserPassword,
       adminKycReview,
-      
+
       adminCreatePlan,
       adminUpdatePlan,
       adminDeletePlan,
       adminSetPlanStatus,
-      
+
       adminApproveDeposit,
       adminRejectDeposit,
       adminApproveWithdrawal,
@@ -2608,14 +2640,14 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       adminCreateAirdrop,
       adminUpdateAirdrop,
       adminDeleteAirdrop,
-      
+
       adminCreateAnnouncement,
       adminDeleteAnnouncement,
-      
+
       adminReplyToTicket,
       adminCloseTicket,
       adminSetTicketPriority,
-      
+
       addNotification,
       clearNotifications,
       submitKyc,

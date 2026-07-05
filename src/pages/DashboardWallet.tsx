@@ -199,7 +199,7 @@ export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab
     return { valid: true, message: "" };
   };
 
-  const handleWithdrawSubmit = (e: React.FormEvent) => {
+  const handleWithdrawSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setWdrLog(null);
 
@@ -219,7 +219,7 @@ export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab
       currencyWithNetwork = "PayPal Withdrawal";
     }
 
-    const res = withdraw(
+    const res = await withdraw(
       amount,
       currencyWithNetwork,
       wdrCurrency === "Bank" || wdrCurrency === "PayPal" ? undefined : wdrAddress,

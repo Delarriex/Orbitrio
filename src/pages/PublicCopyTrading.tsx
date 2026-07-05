@@ -54,8 +54,8 @@ export const PublicCopyTrading: React.FC<PublicCopyTradingProps> = ({ onNavigate
 
     setAllocateLoading(true);
 
-    setTimeout(() => {
-      const res = copyTrader(allocatingTrader.id, amt);
+    setTimeout(async () => {
+      const res = await copyTrader(allocatingTrader.id, amt);
       setAllocateLoading(false);
 
       if (res.success) {

@@ -115,13 +115,13 @@ export function GlobalModals({
     setModalFeedback(msg);
   };
 
-  const handleQuickDeposit = (e: React.FormEvent) => {
+  const handleQuickDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
     const amount = parseFloat(depAmt);
     if (!amount || amount <= 0) return;
 
     const fullAssetLabel = depCoin === "USDT" ? `${depCoin} (${depNetwork})` : depCoin;
-    deposit(amount, fullAssetLabel, depTxHash.trim() || "N/A", depProofName || "payment_proof_receipt.jpg");
+    await deposit(amount, fullAssetLabel, depTxHash.trim() || "N/A", depProofName || "payment_proof_receipt.jpg");
     setDepAmt("");
     setDepTxHash("");
     setDepProofName("");
@@ -136,7 +136,7 @@ export function GlobalModals({
     }, 5000);
   };
 
-  const handleQuickWithdraw = (e: React.FormEvent) => {
+  const handleQuickWithdraw = async (e: React.FormEvent) => {
     e.preventDefault();
     const amount = parseFloat(wdrAmt);
     if (!amount || amount <= 0 || !wdrAddr.trim()) return;
@@ -148,7 +148,7 @@ export function GlobalModals({
     }
 
     const currencyLabel = wdrCoin === "USD" ? "USD" : `${wdrCoin} (${wdrNetwork})`;
-    const res = withdraw(amount, currencyLabel, wdrAddr);
+    const res = await withdraw(amount, currencyLabel, wdrAddr);
     if (res.success) {
       setWdrAmt("");
       setWdrAddr("");

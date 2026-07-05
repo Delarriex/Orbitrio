@@ -27,7 +27,7 @@ export const DashboardPlans: React.FC = () => {
 
   const activePlanObj = plans.find(p => p.id === selectedPlanId) || plans[0];
 
-  const handleInvestSubmit = (e: React.FormEvent) => {
+  const handleInvestSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFeedback(null);
 
@@ -37,7 +37,7 @@ export const DashboardPlans: React.FC = () => {
       return;
     }
 
-    const res = investInPlan(selectedPlanId, amount);
+    const res = await investInPlan(selectedPlanId, amount);
     if (res.success) {
       setFeedback({ type: "success", message: res.message });
       setInvestAmountText("");

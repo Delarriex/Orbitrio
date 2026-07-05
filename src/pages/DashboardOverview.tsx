@@ -38,13 +38,13 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   const [topUpTarget, setTopUpTarget] = useState<string | null>(null);
   const [topUpAmount, setTopUpAmount] = useState<string>("");
 
-  const handleTopUp = (invId: string) => {
+  const handleTopUp = async (invId: string) => {
     const val = parseFloat(topUpAmount);
     if (isNaN(val) || val <= 0) {
       addNotification("Please enter a valid amount to top up.");
       return;
     }
-    const res = topUpInvestment(invId, val);
+    const res = await topUpInvestment(invId, val);
     if (res.success) {
       setTopUpTarget(null);
       setTopUpAmount("");
