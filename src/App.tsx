@@ -15,6 +15,7 @@ import { PublicPlans } from "./pages/PublicPlans";
 import { AuthPage } from "./pages/AuthPage";
 import { TermsPage } from "./pages/TermsPage";
 import { PrivacyPage } from "./pages/PrivacyPage";
+import { MaintenancePage } from "./pages/MaintenancePage";
 
 // Dashboard
 import { DashboardOverview } from "./pages/DashboardOverview";
@@ -34,6 +35,7 @@ function MainAppContent() {
   const [currentView, setCurrentView] = useState("home");
   const [targetTradeAsset, setTargetTradeAsset] = useState<string | null>(null);
   const [walletSubTab, setWalletSubTab] = useState<"deposit" | "withdraw" | "ledger" | "support">("deposit");
+  const maintenanceMode = import.meta.env.VITE_MAINTENANCE_MODE === "true";
 
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
@@ -109,6 +111,9 @@ function MainAppContent() {
   };
 
   const renderView = () => {
+    if (maintenanceMode) {
+      return <MaintenancePage />;
+    }
     switch (currentView) {
       case "home":
         return <PublicHome onNavigate={handleNavigate} />;
@@ -169,7 +174,7 @@ function MainAppContent() {
       <ScrollAnimatedBackground />
       
       {/* Dynamic top bar links */}
-      <Navigation currentView={currentView} onNavigate={handleNavigate} />
+      {!maintenanceMode && <Navigation currentView={currentView} onNavigate={handleNavigate} />}
 
       {/* Primary content area container */}
       <main className={`relative z-10 flex-grow ${
@@ -181,21 +186,21 @@ function MainAppContent() {
       </main>
 
       {/* Global Standard Footer - Hidden on mobile */}
-      {currentView !== "dashboard-admin" && currentView !== "auth" && (
+      {!maintenanceMode && currentView !== "dashboard-admin" && currentView !== "auth" && (
         <div className="hidden sm:block">
           <Footer />
         </div>
       )}
 
       {/* Mobile Sticky Navigation (Logged in users only) */}
-      {user.isLoggedIn && currentView !== "dashboard-admin" && currentView !== "auth" && (
+      {!maintenanceMode && user.isLoggedIn && currentView !== "dashboard-admin" && currentView !== "auth" && (
         <div className="sm:hidden mt-auto z-40 relative">
           <MobileNav currentView={currentView} onNavigate={handleNavigate} />
         </div>
       )}
 
       {/* Tawk.to Live Chat integration overlay fixed */}
-      <TawkChat />
+      {!maintenanceMode && <TawkChat />}
 
       <GlobalModals 
         depositModalOpen={depositModalOpen}
