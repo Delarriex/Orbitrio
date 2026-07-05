@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AreaChart,
   Area,
@@ -15,6 +15,36 @@ interface DashboardEquityChartProps {
 }
 
 export const DashboardEquityChart: React.FC<DashboardEquityChartProps> = ({ currentEquity }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [hasSize, setHasSize] = useState(false);
+
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+
+    const updateSize = () => {
+      setHasSize(node.clientWidth > 0 && node.clientHeight > 0);
+    };
+
+    updateSize();
+    const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateSize) : null;
+
+    if (resizeObserver) {
+      resizeObserver.observe(node);
+    } else {
+      const timeoutId = window.setTimeout(updateSize, 0);
+      window.addEventListener("resize", updateSize);
+      return () => {
+        window.clearTimeout(timeoutId);
+        window.removeEventListener("resize", updateSize);
+      };
+    }
+
+    return () => {
+      resizeObserver?.disconnect();
+    };
+  }, []);
+
   // Generate realistic looking mock data ending exactly at currentEquity
   const data = useMemo(() => {
     const dataPoints = [];
@@ -62,42 +92,46 @@ export const DashboardEquityChart: React.FC<DashboardEquityChartProps> = ({ curr
       transition={{ duration: 0.6, delay: 0.2 }}
       className="w-full h-[240px] mt-6"
     >
-      <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-        <AreaChart
-          data={data}
-          margin={{ top: 10, right: 0, left: -20, bottom: 0 }}
-        >
-          <defs>
-            <linearGradient id="colorEquity" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#F7931A" stopOpacity={0.3}/>
-              <stop offset="95%" stopColor="#F7931A" stopOpacity={0}/>
-            </linearGradient>
-          </defs>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1A1C24" />
-          <XAxis 
-            dataKey="name" 
-            axisLine={false} 
-            tickLine={false} 
-            tick={{ fill: '#6B7280', fontSize: 10, fontFamily: 'monospace' }}
-            minTickGap={30}
-          />
-          <YAxis 
-            axisLine={false} 
-            tickLine={false} 
-            tick={{ fill: '#6B7280', fontSize: 10, fontFamily: 'monospace' }}
-            tickFormatter={(value) => `$${value.toLocaleString()}`}
-          />
-          <Tooltip content={<CustomTooltip />} />
-          <Area 
-            type="monotone" 
-            dataKey="Equity" 
-            stroke="#F7931A" 
-            strokeWidth={3}
-            fillOpacity={1} 
-            fill="url(#colorEquity)" 
-          />
-        </AreaChart>
-      </ResponsiveContainer>
+      <div ref={containerRef} className="w-full h-full">
+        {hasSize ? (
+          <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+            <AreaChart
+              data={data}
+              margin={{ top: 10, right: 0, left: -20, bottom: 0 }}
+            >
+              <defs>
+                <linearGradient id="colorEquity" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#F7931A" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#F7931A" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1A1C24" />
+              <XAxis 
+                dataKey="name" 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{ fill: '#6B7280', fontSize: 10, fontFamily: 'monospace' }}
+                minTickGap={30}
+              />
+              <YAxis 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{ fill: '#6B7280', fontSize: 10, fontFamily: 'monospace' }}
+                tickFormatter={(value) => `$${value.toLocaleString()}`}
+              />
+              <Tooltip content={<CustomTooltip />} />
+              <Area 
+                type="monotone" 
+                dataKey="Equity" 
+                stroke="#F7931A" 
+                strokeWidth={3}
+                fillOpacity={1} 
+                fill="url(#colorEquity)" 
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        ) : null}
+      </div>
     </motion.div>
   );
 };

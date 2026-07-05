@@ -602,6 +602,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Track Firebase Auth user to gate Firestore listeners behind authentication
   const [firebaseAuthUser, setFirebaseAuthUser] = useState<FirebaseUser | null>(null);
   const isLoggingOutRef = useRef(false);
+  const userDocUnsubscribeRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (fbUser) => setFirebaseAuthUser(fbUser));
     return () => unsub();
@@ -859,7 +860,17 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Synchronically listen to all registered users from Firestore
   useEffect(() => {
-    if (!firebaseAuthUser) return;
+    if (!firebaseAuthUser) {
+      setAdminUsers([]);
+      return;
+    }
+
+    const isAdminUser = firebaseAuthUser.email?.toLowerCase() === "henrikaram1@gmail.com" || user.role === "admin";
+    if (!isAdminUser) {
+      setAdminUsers([]);
+      return;
+    }
+
     const usersCol = collection(db, "users");
     const unsubscribe = onSnapshot(usersCol, (snapshot) => {
       // If Firestore users collection is empty, seed with INITIAL_MOCK_USERS for local/dev sync
@@ -925,7 +936,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (!isLoggingOutRef.current) console.error("Firestore user sync error: ", error);
     });
     return () => unsubscribe();
-  }, [firebaseAuthUser]);
+  }, [firebaseAuthUser, user.role]);
 
   // Synchronize local caches
   useEffect(() => {
@@ -935,13 +946,16 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Synchronize Firebase Auth state to restore logged session after page refresh
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      userDocUnsubscribeRef.current?.();
+      userDocUnsubscribeRef.current = null;
+
       if (firebaseUser?.email) {
         const userEmail = firebaseUser.email;
         const docRef = doc(db, "users", userEmail);
 
         try {
           // Listen to the user document in real-time
-          onSnapshot(docRef, async (userSnap) => {
+          const userDocUnsubscribe = onSnapshot(docRef, async (userSnap) => {
             if (userSnap.exists()) {
               const data = userSnap.data();
               firestoreUpdateRef.current = true;
@@ -1002,14 +1016,19 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           }, (error: any) => {
             // Suppress permission-denied during logout; it's expected
             if (!isLoggingOutRef.current) console.error("Firestore user doc listener error:", error);
-          }); // close onSnapshot
+          });
+          userDocUnsubscribeRef.current = userDocUnsubscribe;
         } catch (err) {
           console.error("Error setting up user from Firestore: ", err);
         }
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      userDocUnsubscribeRef.current?.();
+      userDocUnsubscribeRef.current = null;
+      unsubscribe();
+    };
   }, [plans]);
 
   useEffect(() => {

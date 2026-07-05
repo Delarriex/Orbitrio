@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import {
   Settings, HelpCircle, ChevronDown, Plus, TrendingUp, Sparkles, Activity, BarChart3, Layers
@@ -58,6 +58,35 @@ export const TradeFeaturesChart: React.FC<TradeFeaturesChartProps> = ({ onNaviga
   const [priceChangeAbs, setPriceChangeAbs] = useState(1052.04);
   const [chartType, setChartType] = useState<"area" | "line">("area");
   const [showVolume, setShowVolume] = useState(true);
+  const [hasChartSize, setHasChartSize] = useState(false);
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const node = chartContainerRef.current;
+    if (!node) return;
+
+    const updateSize = () => {
+      setHasChartSize(node.clientWidth > 0 && node.clientHeight > 0);
+    };
+
+    updateSize();
+    const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateSize) : null;
+
+    if (resizeObserver) {
+      resizeObserver.observe(node);
+    } else {
+      const timeoutId = window.setTimeout(updateSize, 0);
+      window.addEventListener("resize", updateSize);
+      return () => {
+        window.clearTimeout(timeoutId);
+        window.removeEventListener("resize", updateSize);
+      };
+    }
+
+    return () => {
+      resizeObserver?.disconnect();
+    };
+  }, []);
 
   // Update data when coin changes
   useEffect(() => {
@@ -223,36 +252,38 @@ export const TradeFeaturesChart: React.FC<TradeFeaturesChartProps> = ({ onNaviga
           </div>
 
           {/* Interactive Recharts Area */}
-          <div className="p-4 h-[400px] w-full">
-            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={priceChangePercent >= 0 ? "#10B981" : "#F43F5E"} stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor={priceChangePercent >= 0 ? "#10B981" : "#F43F5E"} stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#2B3139" vertical={false} />
-                <XAxis dataKey="time" stroke="#848E9C" fontSize={10} tickMargin={10} minTickGap={30} />
-                <YAxis 
-                  domain={yDomain} 
-                  stroke="#848E9C" 
-                  fontSize={10} 
-                  tickFormatter={(value) => `$${value.toLocaleString()}`}
-                  orientation="right"
-                />
-                <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#475569', strokeWidth: 1, strokeDasharray: '4 4' }} />
-                <Area 
-                  type="monotone" 
-                  dataKey="price" 
-                  stroke={priceChangePercent >= 0 ? "#10B981" : "#F43F5E"} 
-                  strokeWidth={2}
-                  fillOpacity={chartType === "area" ? 1 : 0} 
-                  fill={chartType === "area" ? "url(#colorPrice)" : "transparent"} 
-                  isAnimationActive={false}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+          <div ref={chartContainerRef} className="p-4 h-[400px] w-full">
+            {hasChartSize ? (
+              <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+                <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={priceChangePercent >= 0 ? "#10B981" : "#F43F5E"} stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor={priceChangePercent >= 0 ? "#10B981" : "#F43F5E"} stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#2B3139" vertical={false} />
+                  <XAxis dataKey="time" stroke="#848E9C" fontSize={10} tickMargin={10} minTickGap={30} />
+                  <YAxis 
+                    domain={yDomain} 
+                    stroke="#848E9C" 
+                    fontSize={10} 
+                    tickFormatter={(value) => `$${value.toLocaleString()}`}
+                    orientation="right"
+                  />
+                  <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#475569', strokeWidth: 1, strokeDasharray: '4 4' }} />
+                  <Area 
+                    type="monotone" 
+                    dataKey="price" 
+                    stroke={priceChangePercent >= 0 ? "#10B981" : "#F43F5E"} 
+                    strokeWidth={2}
+                    fillOpacity={chartType === "area" ? 1 : 0} 
+                    fill={chartType === "area" ? "url(#colorPrice)" : "transparent"} 
+                    isAnimationActive={false}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : null}
           </div>
           
           {/* Volume Chart (Optional) */}
