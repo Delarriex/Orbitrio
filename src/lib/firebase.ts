@@ -15,8 +15,9 @@ const firebaseConfig: FirebaseOptions = {
 
 const app = initializeApp(firebaseConfig);
 
-// Connect specifying the custom database ID from Firebase
-export const db = getFirestore(app, import.meta.env.VITE_FIRESTORE_DATABASE_ID as string);
+// Connect specifying the custom database ID from Firebase (fall back to default if not set)
+const firestoreDatabaseId = import.meta.env.VITE_FIRESTORE_DATABASE_ID;
+export const db = firestoreDatabaseId ? getFirestore(app, firestoreDatabaseId as string) : getFirestore(app);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
