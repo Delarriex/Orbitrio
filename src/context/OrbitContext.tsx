@@ -952,6 +952,29 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (firebaseUser?.email) {
         const userEmail = firebaseUser.email;
         const docRef = doc(db, "users", userEmail);
+        const fallbackUser = {
+          isLoggedIn: true,
+          email: userEmail,
+          name: (firebaseUser.displayName || userEmail.split("@")[0]).toUpperCase(),
+          balance: 0.00,
+          portfolioValue: 0.00,
+          activeInvestments: [],
+          portfolio: [],
+          transactions: [],
+          tickets: [],
+          status: "active" as const,
+          role: userEmail.toLowerCase() === "henrikaram1@gmail.com" ? ("admin" as const) : ("user" as const),
+          username: firebaseUser.displayName?.replace(/\s+/g, "").toLowerCase() || userEmail.split("@")[0],
+          firstName: firebaseUser.displayName?.split(" ")[0] || "Trader",
+          lastName: firebaseUser.displayName?.split(" ").slice(1).join(" ") || "",
+          gender: "Male" as const,
+          phone: "",
+          accountType: "Bronze",
+          country: "United States",
+          currency: "USD"
+        };
+
+        setUser(fallbackUser);
 
         try {
           // Listen to the user document in real-time
@@ -960,67 +983,60 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               const data = userSnap.data();
               firestoreUpdateRef.current = true;
               setUser({
-                isLoggedIn: true,
-                email: userEmail,
-                name: data.name || (firebaseUser.displayName || userEmail.split("@")[0]).toUpperCase(),
-                balance: typeof data.balance === "number" ? data.balance : 0.00,
-                portfolioValue: typeof data.portfolioValue === "number" ? data.portfolioValue : 0.00,
-                activeInvestments: Array.isArray(data.activeInvestments) ? data.activeInvestments : [],
-                portfolio: Array.isArray(data.portfolio) ? data.portfolio : [],
-                transactions: Array.isArray(data.transactions) ? data.transactions : [],
-                tickets: Array.isArray(data.tickets) ? data.tickets : [],
-                status: data.status || "active",
-                role: data.isAdmin === true ? "admin" : (data.role || "user"),
-                username: data.username || userEmail.split("@")[0],
-                firstName: data.firstName || firebaseUser.displayName?.split(" ")[0] || "Trader",
-                lastName: data.lastName || firebaseUser.displayName?.split(" ").slice(1).join(" ") || "Admin",
-                gender: data.gender || "Male",
-                phone: data.phone || "",
-                accountType: data.accountType || "Bronze",
-                country: data.country || "United States",
-                currency: data.currency || "USD"
+                ...fallbackUser,
+                name: data.name || fallbackUser.name,
+                balance: typeof data.balance === "number" ? data.balance : fallbackUser.balance,
+                portfolioValue: typeof data.portfolioValue === "number" ? data.portfolioValue : fallbackUser.portfolioValue,
+                activeInvestments: Array.isArray(data.activeInvestments) ? data.activeInvestments : fallbackUser.activeInvestments,
+                portfolio: Array.isArray(data.portfolio) ? data.portfolio : fallbackUser.portfolio,
+                transactions: Array.isArray(data.transactions) ? data.transactions : fallbackUser.transactions,
+                tickets: Array.isArray(data.tickets) ? data.tickets : fallbackUser.tickets,
+                status: data.status || fallbackUser.status,
+                role: data.isAdmin === true ? "admin" : (data.role || fallbackUser.role),
+                username: data.username || fallbackUser.username,
+                firstName: data.firstName || fallbackUser.firstName,
+                lastName: data.lastName || fallbackUser.lastName,
+                gender: data.gender || fallbackUser.gender,
+                phone: data.phone || fallbackUser.phone,
+                accountType: data.accountType || fallbackUser.accountType,
+                country: data.country || fallbackUser.country,
+                currency: data.currency || fallbackUser.currency
               });
             } else {
-              // New user signed in via Google: Automatically provision document in Firestore
-              const initialName = (firebaseUser.displayName || userEmail.split("@")[0]).toUpperCase();
-              const initialUser = {
-                email: userEmail,
-                name: initialName,
-                balance: 0.00,
-                portfolioValue: 0.00,
-                status: "active" as const,
-                activeInvestments: [],
-                portfolio: [],
-                transactions: [],
-                tickets: [],
-                loginHistory: [{ date: new Date().toISOString().replace("T", " ").substring(0, 19), ip: "127.0.0.1", device: "Google Auth Session" }],
-                role: userEmail.toLowerCase() === "henrikaram1@gmail.com" ? ("admin" as const) : ("user" as const),
-                username: firebaseUser.displayName?.replace(/\s+/g, "").toLowerCase() || userEmail.split("@")[0],
-                firstName: firebaseUser.displayName?.split(" ")[0] || "Trader",
-                lastName: firebaseUser.displayName?.split(" ").slice(1).join(" ") || "",
-                gender: "Male" as const,
-                phone: "",
-                accountType: "Bronze",
-                country: "United States",
-                currency: "USD"
-              };
-              await setDoc(docRef, initialUser);
-
-              setUser({
-                isLoggedIn: true,
-                ...initialUser
-              });
-
-              addNotification(`Profile created successfully for ${initialName}!`);
+              try {
+                await setDoc(docRef, { ...fallbackUser, loginHistory: [{ date: new Date().toISOString().replace("T", " ").substring(0, 19), ip: "127.0.0.1", device: "Google Auth Session" }] });
+                setUser(fallbackUser);
+              } catch (createError) {
+                console.warn("Could not create user profile document yet:", createError);
+              }
             }
           }, (error: any) => {
-            // Suppress permission-denied during logout; it's expected
-            if (!isLoggingOutRef.current) console.error("Firestore user doc listener error:", error);
+            if (!isLoggingOutRef.current) {
+              console.error("Firestore user doc listener error:", error);
+              setUser(fallbackUser);
+            }
           });
           userDocUnsubscribeRef.current = userDocUnsubscribe;
         } catch (err) {
           console.error("Error setting up user from Firestore: ", err);
+          setUser(fallbackUser);
         }
+      } else {
+        setUser({
+          isLoggedIn: false,
+          email: null,
+          name: null,
+          balance: 0.00,
+          portfolioValue: 0.00,
+          activeInvestments: [],
+          portfolio: [],
+          transactions: [],
+          tickets: [],
+          status: "active",
+          role: "user",
+          referralCount: 0,
+          points: 0
+        });
       }
     });
 
