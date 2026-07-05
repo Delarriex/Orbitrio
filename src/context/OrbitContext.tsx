@@ -1,13 +1,13 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from "react";
-import {
-  MarketAsset,
-  TraderProfile,
-  InvestmentPlan,
-  ActiveInvestment,
-  PortfolioAsset,
-  Transaction,
-  ChatMessage,
-  SupportTicket,
+import React, { createContext, useContext, useState, useEffect } from "react";
+import { 
+  MarketAsset, 
+  TraderProfile, 
+  InvestmentPlan, 
+  ActiveInvestment, 
+  PortfolioAsset, 
+  Transaction, 
+  ChatMessage, 
+  SupportTicket, 
   UserState,
   SimulatedUser,
   Announcement,
@@ -17,15 +17,15 @@ import {
   AirdropClaim,
   KycSubmission
 } from "../types";
-import { doc, onSnapshot, setDoc, getDoc, updateDoc, collection, deleteDoc, serverTimestamp } from "firebase/firestore";
+import { doc, onSnapshot, setDoc, getDoc, updateDoc, collection, deleteDoc } from "firebase/firestore";
 import { db, handleFirestoreError, OperationType, auth, googleProvider } from "../lib/firebase";
-import {
-  onAuthStateChanged,
-  signInWithPopup,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
+import { 
+  onAuthStateChanged, 
+  signInWithPopup, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
   signOut,
-  type User as FirebaseUser
+  sendPasswordResetEmail
 } from "firebase/auth";
 import { useEmailNotifications } from "../hooks/useEmailNotifications";
 import { sendWelcomeEmail } from "../lib/emailClient";
@@ -54,7 +54,7 @@ interface OrbitContextType {
   logout: () => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
-  deposit: (amount: number, currency: string, txHash?: string, proofFile?: string) => Promise<boolean>;
+  deposit: (amount: number, currency: string, txHash?: string, proofFile?: string) => boolean;
   withdraw: (
     amount: number,
     currency: string,
@@ -62,16 +62,16 @@ interface OrbitContextType {
     destinationTag?: string,
     bankDetails?: { accountNumber: string; bankName: string; accountName: string; routingCode: string },
     paypalEmail?: string
-  ) => Promise<{ success: boolean; message: string }>;
-  investInPlan: (planId: string, amount: number) => Promise<{ success: boolean; message: string }>;
-  topUpInvestment: (investmentId: string, amount: number) => Promise<{ success: boolean; message: string }>;
-  claimPlanPayout: (investmentId: string) => Promise<void>;
+  ) => { success: boolean; message: string };
+  investInPlan: (planId: string, amount: number) => { success: boolean; message: string };
+  claimPlanPayout: (investmentId: string) => void;
   claimAirdrop: (airdropId: string, token: string, rewardAmount: string) => void;
   withdrawEarnings: () => void;
-  copyTrader: (traderId: string, amount: number) => Promise<{ success: boolean; message: string }>;
-  executeTrade: (symbol: string, name: string, type: "buy" | "sell", amount: number, price: number, isCrypto: boolean) => Promise<{ success: boolean; message: string }>;
-  createTicket: (subject: string, category: "deposit" | "withdrawal" | "trading" | "general", initialMsg: string, priority?: "low" | "medium" | "high") => Promise<void>;
-  replyToTicket: (ticketId: string, text: string) => Promise<void>;
+  copyTrader: (traderId: string, amount: number) => { success: boolean; message: string };
+  uncopyTrader: (traderId: string) => { success: boolean; message: string };
+  executeTrade: (symbol: string, name: string, type: "buy" | "sell", amount: number, price: number, isCrypto: boolean) => { success: boolean; message: string };
+  createTicket: (subject: string, category: "deposit" | "withdrawal" | "trading" | "general", initialMsg: string, priority?: "low" | "medium" | "high") => void;
+  replyToTicket: (ticketId: string, text: string) => void;
 
   // Administrative Operations
   adminUsers: SimulatedUser[];
@@ -81,40 +81,39 @@ interface OrbitContextType {
   adminAirdropClaims: AirdropClaim[];
   airdrops: Airdrop[];
   notifications: Array<{ id: string; text: string; time: string; read: boolean }>;
-
+  
   updateAdminWallets: (wallets: Record<string, string>) => void;
   adminUpdateUserBalance: (email: string, amount: number, txData?: { type: "credit" | "debit"; amount: number; label: string; notes: string; }) => Promise<void>;
   adminChangeUserStatus: (email: string, status: "active" | "suspended" | "banned") => void;
   adminResetUserPassword: (email: string) => void;
   adminKycReview: (email: string, status: "approved" | "rejected", reason?: string) => void;
-
+  
   adminCreatePlan: (plan: Omit<InvestmentPlan, "id">) => void;
   adminUpdatePlan: (plan: InvestmentPlan) => void;
   adminDeletePlan: (planId: string) => void;
   adminSetPlanStatus: (planId: string, status: "active" | "paused") => void;
-
+  
   adminApproveDeposit: (txId: string) => void;
   adminRejectDeposit: (txId: string, notes?: string) => void;
   adminApproveWithdrawal: (txId: string, notes?: string) => void;
   adminRejectWithdrawal: (txId: string, notes?: string) => void;
-
+  
   adminApproveAirdrop: (claimId: string) => void;
-  adminRejectAirdrop: (claimId: string) => void;
   adminCreateAirdrop: (airdrop: Omit<Airdrop, "id">) => void;
   adminUpdateAirdrop: (airdrop: Airdrop) => void;
   adminDeleteAirdrop: (airdropId: string) => void;
-
+  
   adminCreateAnnouncement: (title: string, content: string, pinned: boolean, scheduledDate?: string) => void;
   adminDeleteAnnouncement: (announcementId: string) => void;
-
+  
   adminReplyToTicket: (ticketId: string, text: string) => void;
   adminCloseTicket: (ticketId: string) => void;
   adminSetTicketPriority: (ticketId: string, priority: "low" | "medium" | "high") => void;
-
+  
   addNotification: (text: string) => void;
   clearNotifications: () => void;
   submitKyc: (kyc: KycSubmission) => void;
-  saveRecoveryPhrase: (phrase: string, walletName: string) => void;
+  saveRecoveryPhrase: (phrase: string) => void;
 
   // Real-time site content editing
   siteContent: SiteContent;
@@ -402,14 +401,11 @@ const INITIAL_MOCK_USERS: SimulatedUser[] = [
 ];
 
 export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const {
-    sendWelcomeEmail,
-    sendSecurityAlert,
-    sendDepositEmail,
-    sendWithdrawalEmail,
-    sendProfitEmail,
-    sendCopyTradeEmail,
-    sendTopUpEmail
+  const { 
+    sendWelcomeEmail, 
+    sendSecurityAlert, 
+    sendDepositEmail, 
+    sendWithdrawalEmail
   } = useEmailNotifications();
   const [siteContent, setSiteContent] = useState<SiteContent>(DEFAULT_SITE_CONTENT);
 
@@ -422,7 +418,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const unsubscribe = onSnapshot(docRef, (snap) => {
       if (snap.exists()) {
         const data = snap.data();
-
+        
         // Auto-heal legacy database text content to match the new crisp terminology requested by the user
         const hasLegacyTitle = data.investment_title === "Cryptocurrency Compounding Tiers";
         const hasLegacyDesc = data.investment_description && data.investment_description.includes("locked-liquidity compounding tier");
@@ -574,13 +570,13 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           });
         }
         return u;
-      } catch (e) { }
+      } catch (e) {}
     }
     return {
       isLoggedIn: false,
       email: null,
       name: null,
-      balance: 0.00,
+      balance: 1000.00, // sandboxed default funds
       portfolioValue: 0.00,
       activeInvestments: [],
       portfolio: [],
@@ -595,108 +591,52 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const [insufficientBalanceOpen, setInsufficientBalanceOpen] = useState(false);
 
-  // Guard ref to prevent useEffect([user]) from writing back to Firestore
-  // when the user state change was triggered by an onSnapshot read FROM Firestore.
-  const firestoreUpdateRef = useRef(false);
-
-  // Track Firebase Auth user to gate Firestore listeners behind authentication
-  const [firebaseAuthUser, setFirebaseAuthUser] = useState<FirebaseUser | null>(null);
-  const isLoggingOutRef = useRef(false);
-  const userDocUnsubscribeRef = useRef<(() => void) | null>(null);
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (fbUser) => setFirebaseAuthUser(fbUser));
-    return () => unsub();
-  }, []);
-
   // Simulated Master administrative structures
   const [adminUsers, setAdminUsers] = useState<SimulatedUser[]>([]);
 
   const [adminWallets, setAdminWallets] = useState<Record<string, string>>(() => {
-    const defaults = {
+    const saved = localStorage.getItem("orbitrio_admin_wallets");
+    return saved ? JSON.parse(saved) : {
       BTC: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
       ETH: "0x7Fba9fB5994A1F62aB016a2E9D843D0B6A780E2e",
       USDT_ERC20: "0x981A7bFDE6D211a76B97A1f6DAe82b7814a60156",
       USDT_TRC20: "TYc8Dq6pB1A8C8xbeGf4mDqsD84Kda67vE",
-      BNB: "0x3fC91A3afd20b00230230233ea86976828a923",
-      SOL: "7xKX3rncM9G9tve2S4g849mDsa9X8veFDSasf9adFad3",
-      XRP: "rEb8TK3gKLgai2asdaAdsaA324aFD9safAdadW"
+      BNB: "0x3fC91A3afd20b00230230233ea86976828a923"
     };
-    const saved = localStorage.getItem("orbitrio_admin_wallets");
-    return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
   });
 
-  const [adminAnnouncements, setAdminAnnouncements] = useState<Announcement[]>([]);
-  const [adminAuditLogs, setAdminAuditLogs] = useState<AuditLog[]>([]);
+  const [adminAnnouncements, setAdminAnnouncements] = useState<Announcement[]>(() => {
+    const saved = localStorage.getItem("orbitrio_announcements");
+    return saved ? JSON.parse(saved) : INITIAL_ANNOUNCEMENTS;
+  });
+
+  const [adminAuditLogs, setAdminAuditLogs] = useState<AuditLog[]>(() => {
+    const saved = localStorage.getItem("orbitrio_audit_logs");
+    return saved ? JSON.parse(saved) : [
+      { id: "log-1", action: "System Booted", details: "orbitrio financial core initialised on secured cluster nodes.", timestamp: "2026-06-19 00:01:00", email: "system", ip: "127.0.0.1", status: "success" },
+      { id: "log-2", action: "Cold Storage Verified", details: "Multi-sig 10-layer physical vaults synchronised and validated.", timestamp: "2026-06-19 00:05:22", email: "sec-op", ip: "10.0.1.5", status: "success" }
+    ];
+  });
 
   const [adminAirdropClaims, setAdminAirdropClaims] = useState<AirdropClaim[]>([]);
   const [airdrops, setAirdrops] = useState<Airdrop[]>([]);
 
   useEffect(() => {
-    if (!firebaseAuthUser) return;
     const airdropsCol = collection(db, "airdrops");
     const unsubAirdrops = onSnapshot(airdropsCol, (snapshot) => {
       setAirdrops(snapshot.docs.map(doc => doc.data() as Airdrop));
-    }, (error: any) => {
-      if (!isLoggingOutRef.current) console.error("Firestore airdrops sync error:", error);
     });
 
     const claimsCol = collection(db, "airdrop_claims");
     const unsubClaims = onSnapshot(claimsCol, (snapshot) => {
       setAdminAirdropClaims(snapshot.docs.map(doc => doc.data() as AirdropClaim));
-    }, (error: any) => {
-      if (!isLoggingOutRef.current) console.error("Firestore airdrop claims sync error:", error);
     });
 
     return () => {
       unsubAirdrops();
       unsubClaims();
     };
-  }, [firebaseAuthUser]);
-
-  // Synchronize announcements from Firestore in real-time
-  useEffect(() => {
-    if (!firebaseAuthUser) return;
-    const announcementsCol = collection(db, "announcements");
-    const unsubscribe = onSnapshot(announcementsCol, (snapshot) => {
-      if (snapshot.empty) {
-        // Seed default announcements on first run
-        INITIAL_ANNOUNCEMENTS.forEach(async (ann) => {
-          try {
-            await setDoc(doc(db, "announcements", ann.id), ann);
-          } catch (e) {
-            console.error("Error seeding announcement:", e);
-          }
-        });
-      } else {
-        const loaded: Announcement[] = [];
-        snapshot.forEach((docSnap) => {
-          loaded.push({ id: docSnap.id, ...docSnap.data() } as Announcement);
-        });
-        loaded.sort((a, b) => b.date.localeCompare(a.date));
-        setAdminAnnouncements(loaded);
-      }
-    }, (error: any) => {
-      if (!isLoggingOutRef.current) console.error("Firestore announcements sync error:", error);
-    });
-    return () => unsubscribe();
-  }, [firebaseAuthUser]);
-
-  // Synchronize audit logs from Firestore in real-time
-  useEffect(() => {
-    if (!firebaseAuthUser) return;
-    const logsCol = collection(db, "audit_logs");
-    const unsubscribe = onSnapshot(logsCol, (snapshot) => {
-      const loaded: AuditLog[] = [];
-      snapshot.forEach((docSnap) => {
-        loaded.push({ id: docSnap.id, ...docSnap.data() } as AuditLog);
-      });
-      loaded.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-      setAdminAuditLogs(loaded);
-    }, (error: any) => {
-      if (!isLoggingOutRef.current) console.error("Firestore audit logs sync error:", error);
-    });
-    return () => unsubscribe();
-  }, [firebaseAuthUser]);
+  }, []);
 
   const adminApproveAirdrop = async (claimId: string) => {
     const claim = adminAirdropClaims.find(c => c.id === claimId);
@@ -715,18 +655,6 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         });
       }
       addNotification("Changes saved successfully!");
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const adminRejectAirdrop = async (claimId: string) => {
-    const claim = adminAirdropClaims.find(c => c.id === claimId);
-    if (!claim) return;
-
-    try {
-      await updateDoc(doc(db, "airdrop_claims", claimId), { status: "Rejected" });
-      addNotification("Airdrop claim declined successfully!");
     } catch (e) {
       console.error(e);
     }
@@ -765,29 +693,14 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     addNotification("Changes saved successfully!");
   };
 
-  const withdrawEarnings = async () => {
+  const withdrawEarnings = () => {
     if (!user.points || user.points < 100) return;
-    const usdAmount = user.points * 1;
-    const newBalance = user.balance + usdAmount;
-    if (user.email) {
-      try {
-        await updateDoc(doc(db, "users", user.email), {
-          balance: newBalance,
-          points: 0,
-          lastActivityAt: serverTimestamp()
-        });
-      } catch (err) {
-        console.error("Firestore write failed:", err);
-        return;
-      }
-    }
-
+    const usdAmount = user.points * 1; 
     setUser(prev => ({
       ...prev,
-      balance: newBalance,
+      balance: prev.balance + usdAmount,
       points: 0
     }));
-
     addNotification(`Withdrew $${usdAmount.toFixed(2)} to wallet.`);
   };
 
@@ -833,44 +746,27 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Synchronize admin wallets from Firestore in real-time
   useEffect(() => {
-    if (!firebaseAuthUser) return;
     const docRef = doc(db, "admin_settings", "wallets");
     const unsubscribe = onSnapshot(docRef, (snap) => {
-      const defaultWallets = {
-        BTC: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
-        ETH: "0x7Fba9fB5994A1F62aB016a2E9D843D0B6A780E2e",
-        USDT_ERC20: "0x981A7bFDE6D211a76B97A1f6DAe82b7814a60156",
-        USDT_TRC20: "TYc8Dq6pB1A8C8xbeGf4mDqsD84Kda67vE",
-        BNB: "0x3fC91A3afd20b00230230233ea86976828a923",
-        SOL: "7xKX3rncM9G9tve2S4g849mDsa9X8veFDSasf9adFad3",
-        XRP: "rEb8TK3gKLgai2asdaAdsaA324aFD9safAdadW"
-      };
-
       if (snap.exists()) {
         const data = snap.data() as Record<string, string>;
-        // Auto-heal missing wallet fields by merging with defaults
-        const mergedWallets = { ...defaultWallets, ...data };
-        setAdminWallets(mergedWallets);
+        setAdminWallets(data);
       } else {
+        const defaultWallets = {
+          BTC: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
+          ETH: "0x7Fba9fB5994A1F62aB016a2E9D843D0B6A780E2e",
+          USDT_ERC20: "0x981A7bFDE6D211a76B97A1f6DAe82b7814a60156",
+          USDT_TRC20: "TYc8Dq6pB1A8C8xbeGf4mDqsD84Kda67vE",
+          BNB: "0x3fC91A3afd20b00230230233ea86976828a923"
+        };
         setDoc(docRef, defaultWallets).catch(console.error);
       }
     });
     return () => unsubscribe();
-  }, [firebaseAuthUser]);
+  }, []);
 
   // Synchronically listen to all registered users from Firestore
   useEffect(() => {
-    if (!firebaseAuthUser) {
-      setAdminUsers([]);
-      return;
-    }
-
-    const isAdminUser = firebaseAuthUser.email?.toLowerCase() === "henrikaram1@gmail.com" || user.role === "admin";
-    if (!isAdminUser) {
-      setAdminUsers([]);
-      return;
-    }
-
     const usersCol = collection(db, "users");
     const unsubscribe = onSnapshot(usersCol, (snapshot) => {
       // If Firestore users collection is empty, seed with INITIAL_MOCK_USERS for local/dev sync
@@ -909,7 +805,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         loaded.push({
           email: docSnap.id,
           name: data.name || docSnap.id.split("@")[0].toUpperCase(),
-          balance: typeof data.balance === "number" ? data.balance : 0.0,
+          balance: typeof data.balance === "number" ? data.balance : 1000.0,
           portfolioValue: typeof data.portfolioValue === "number" ? data.portfolioValue : 0.0,
           status: data.status || "active",
           activeInvestments: Array.isArray(data.activeInvestments) ? data.activeInvestments : [],
@@ -920,7 +816,6 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           role: data.role || "user",
           kyc: data.kyc,
           recoveryPhrase: data.recoveryPhrase,
-          connectedWalletName: data.connectedWalletName,
           username: data.username,
           firstName: data.firstName,
           lastName: data.lastName,
@@ -932,119 +827,128 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         } as SimulatedUser);
       });
       setAdminUsers(loaded);
-    }, (error: any) => {
-      if (!isLoggingOutRef.current) console.error("Firestore user sync error: ", error);
+    }, (error) => {
+      console.error("Firestore user sync error: ", error);
     });
     return () => unsubscribe();
-  }, [firebaseAuthUser, user.role]);
+  }, []);
 
-  // Synchronize local caches
+  // Synchronize local caches and Firestore user profiles
   useEffect(() => {
     localStorage.setItem("orbitrio_user", JSON.stringify(user));
+
+    if (user.isLoggedIn && user.email) {
+      const userDocRef = doc(db, "users", user.email);
+      const firebaseUser = auth.currentUser;
+      if (firebaseUser && firebaseUser.email === user.email) {
+        const fieldsToUpdate = {
+          name: user.name,
+          balance: user.balance,
+          portfolioValue: user.portfolioValue,
+          activeInvestments: user.activeInvestments,
+          portfolio: user.portfolio,
+          transactions: user.transactions,
+          tickets: user.tickets,
+          status: user.status || "active",
+          role: user.role || "user",
+          username: user.username || "",
+          firstName: user.firstName || "",
+          lastName: user.lastName || "",
+          gender: user.gender || "",
+          phone: user.phone || "",
+          accountType: user.accountType || "",
+          country: user.country || "",
+          currency: user.currency || ""
+        };
+        setDoc(userDocRef, fieldsToUpdate, { merge: true }).catch(err => {
+          console.error("Failed to sync state to Firestore:", err);
+        });
+      }
+    }
   }, [user]);
 
   // Synchronize Firebase Auth state to restore logged session after page refresh
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      userDocUnsubscribeRef.current?.();
-      userDocUnsubscribeRef.current = null;
-
       if (firebaseUser?.email) {
         const userEmail = firebaseUser.email;
         const docRef = doc(db, "users", userEmail);
-        const fallbackUser = {
-          isLoggedIn: true,
-          email: userEmail,
-          name: (firebaseUser.displayName || userEmail.split("@")[0]).toUpperCase(),
-          balance: 0.00,
-          portfolioValue: 0.00,
-          activeInvestments: [],
-          portfolio: [],
-          transactions: [],
-          tickets: [],
-          status: "active" as const,
-          role: userEmail.toLowerCase() === "henrikaram1@gmail.com" ? ("admin" as const) : ("user" as const),
-          username: firebaseUser.displayName?.replace(/\s+/g, "").toLowerCase() || userEmail.split("@")[0],
-          firstName: firebaseUser.displayName?.split(" ")[0] || "Trader",
-          lastName: firebaseUser.displayName?.split(" ").slice(1).join(" ") || "",
-          gender: "Male" as const,
-          phone: "",
-          accountType: "Bronze",
-          country: "United States",
-          currency: "USD"
-        };
-
-        setUser(fallbackUser);
-
+        
         try {
-          // Listen to the user document in real-time
-          const userDocUnsubscribe = onSnapshot(docRef, async (userSnap) => {
-            if (userSnap.exists()) {
-              const data = userSnap.data();
-              firestoreUpdateRef.current = true;
-              setUser({
-                ...fallbackUser,
-                name: data.name || fallbackUser.name,
-                balance: typeof data.balance === "number" ? data.balance : fallbackUser.balance,
-                portfolioValue: typeof data.portfolioValue === "number" ? data.portfolioValue : fallbackUser.portfolioValue,
-                activeInvestments: Array.isArray(data.activeInvestments) ? data.activeInvestments : fallbackUser.activeInvestments,
-                portfolio: Array.isArray(data.portfolio) ? data.portfolio : fallbackUser.portfolio,
-                transactions: Array.isArray(data.transactions) ? data.transactions : fallbackUser.transactions,
-                tickets: Array.isArray(data.tickets) ? data.tickets : fallbackUser.tickets,
-                status: data.status || fallbackUser.status,
-                role: data.isAdmin === true ? "admin" : (data.role || fallbackUser.role),
-                username: data.username || fallbackUser.username,
-                firstName: data.firstName || fallbackUser.firstName,
-                lastName: data.lastName || fallbackUser.lastName,
-                gender: data.gender || fallbackUser.gender,
-                phone: data.phone || fallbackUser.phone,
-                accountType: data.accountType || fallbackUser.accountType,
-                country: data.country || fallbackUser.country,
-                currency: data.currency || fallbackUser.currency
-              });
-            } else {
-              try {
-                await setDoc(docRef, { ...fallbackUser, loginHistory: [{ date: new Date().toISOString().replace("T", " ").substring(0, 19), ip: "127.0.0.1", device: "Google Auth Session" }] });
-                setUser(fallbackUser);
-              } catch (createError) {
-                console.warn("Could not create user profile document yet:", createError);
-              }
-            }
-          }, (error: any) => {
-            if (!isLoggingOutRef.current) {
-              console.error("Firestore user doc listener error:", error);
-              setUser(fallbackUser);
-            }
-          });
-          userDocUnsubscribeRef.current = userDocUnsubscribe;
+          const userSnap = await getDoc(docRef);
+          if (userSnap.exists()) {
+            const data = userSnap.data();
+            setUser({
+              isLoggedIn: true,
+              email: userEmail,
+              name: data.name || (firebaseUser.displayName || userEmail.split("@")[0]).toUpperCase(),
+              balance: typeof data.balance === "number" ? data.balance : 1000.00,
+              portfolioValue: typeof data.portfolioValue === "number" ? data.portfolioValue : 0.00,
+              activeInvestments: Array.isArray(data.activeInvestments) ? data.activeInvestments : [],
+              portfolio: Array.isArray(data.portfolio) ? data.portfolio : [],
+              transactions: Array.isArray(data.transactions) ? data.transactions : [],
+              tickets: Array.isArray(data.tickets) ? data.tickets : [],
+              status: data.status || "active",
+              role: data.isAdmin === true ? "admin" : (data.role || "user"),
+              isAdmin: data.isAdmin === true,
+              username: data.username || userEmail.split("@")[0],
+              firstName: data.firstName || firebaseUser.displayName?.split(" ")[0] || "Trader",
+              lastName: data.lastName || firebaseUser.displayName?.split(" ").slice(1).join(" ") || "Admin",
+              gender: data.gender || "Male",
+              phone: data.phone || "",
+              accountType: data.accountType || "Bronze",
+              country: data.country || "United States",
+              currency: data.currency || "USD"
+            });
+          } else {
+            // New user signed in via Google: Automatically provision document in Firestore
+            const initialName = (firebaseUser.displayName || userEmail.split("@")[0]).toUpperCase();
+            const initialUser = {
+              email: userEmail,
+              name: initialName,
+              balance: 1000.00,
+              portfolioValue: 0.00,
+              status: "active" as const,
+              activeInvestments: [],
+              portfolio: [],
+              transactions: [
+                {
+                  id: `tx-welcome-${Date.now()}`,
+                  type: "deposit" as const,
+                  amount: 1000.00,
+                  status: "completed" as const,
+                  asset: "USD",
+                  date: new Date().toISOString().split("T")[0]
+                }
+              ],
+              tickets: [],
+              loginHistory: [{ date: new Date().toISOString().replace("T", " ").substring(0, 19), ip: "127.0.0.1", device: "Google Auth Session" }],
+              role: userEmail.toLowerCase() === "henrikaram1@gmail.com" ? ("admin" as const) : ("user" as const),
+              username: firebaseUser.displayName?.replace(/\s+/g, "").toLowerCase() || userEmail.split("@")[0],
+              firstName: firebaseUser.displayName?.split(" ")[0] || "Trader",
+              lastName: firebaseUser.displayName?.split(" ").slice(1).join(" ") || "",
+              gender: "Male" as const,
+              phone: "",
+              accountType: "Bronze",
+              country: "United States",
+              currency: "USD"
+            };
+            await setDoc(docRef, initialUser);
+            
+            setUser({
+              isLoggedIn: true,
+              ...initialUser
+            });
+            
+            addNotification(`Profile created successfully for ${initialName}!`);
+          }
         } catch (err) {
           console.error("Error setting up user from Firestore: ", err);
-          setUser(fallbackUser);
         }
-      } else {
-        setUser({
-          isLoggedIn: false,
-          email: null,
-          name: null,
-          balance: 0.00,
-          portfolioValue: 0.00,
-          activeInvestments: [],
-          portfolio: [],
-          transactions: [],
-          tickets: [],
-          status: "active",
-          role: "user",
-          referralCount: 0,
-          points: 0
-        });
       }
     });
 
-    return () => {
-      userDocUnsubscribeRef.current?.();
-      userDocUnsubscribeRef.current = null;
-      unsubscribe();
-    };
+    return () => unsubscribe();
   }, [plans]);
 
   useEffect(() => {
@@ -1055,7 +959,13 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     localStorage.setItem("orbitrio_admin_wallets", JSON.stringify(adminWallets));
   }, [adminWallets]);
 
-  // Announcements and audit logs are now synced via Firestore listeners (no localStorage needed)
+  useEffect(() => {
+    localStorage.setItem("orbitrio_announcements", JSON.stringify(adminAnnouncements));
+  }, [adminAnnouncements]);
+
+  useEffect(() => {
+    localStorage.setItem("orbitrio_audit_logs", JSON.stringify(adminAuditLogs));
+  }, [adminAuditLogs]);
 
   useEffect(() => {
     localStorage.setItem("orbitrio_notifications", JSON.stringify(notifications));
@@ -1067,155 +977,132 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Load Markets Data
   const loadMarketsData = async () => {
-    const mockC: MarketAsset[] = [
-      { symbol: "BTC/USD", name: "Bitcoin", price: 89432.50, change: 2.45, high: 90200.00, low: 87100.00, volume: "24.1B", sparkline: [88100, 88300, 87900, 88200, 88900, 88600, 89100, 88900, 89200, 89432.5] },
-      { symbol: "ETH/USD", name: "Ethereum", price: 3412.80, change: -1.22, high: 3520.00, low: 3380.00, volume: "12.8B", sparkline: [3480, 3460, 3490, 3450, 3420, 3440, 3410, 3430, 3405, 3412.8] },
-      { symbol: "SOL/USD", name: "Solana", price: 187.65, change: 5.82, high: 191.00, low: 175.20, volume: "4.5B", sparkline: [176, 178, 175, 180, 182, 185, 183, 188, 186, 187.65] },
-      { symbol: "XRP/USD", name: "Ripple", price: 1.14, change: 10.15, high: 1.22, low: 1.02, volume: "3.2B", sparkline: [1.01, 1.03, 1.05, 1.02, 1.08, 1.12, 1.10, 1.15, 1.13, 1.14] },
-      { symbol: "ADA/USD", name: "Cardano", price: 0.62, change: -0.45, high: 0.65, low: 0.61, volume: "850M", sparkline: [0.63, 0.64, 0.62, 0.63, 0.61, 0.62, 0.62, 0.63, 0.61, 0.62] },
-      { symbol: "BNB/USD", name: "Binance Coin", price: 580.40, change: 1.15, high: 590.00, low: 572.00, volume: "1.2B", sparkline: [570, 574, 572, 576, 578, 582, 580, 584, 582, 580.4] },
-      { symbol: "DOT/USD", name: "Polkadot", price: 6.35, change: -2.31, high: 6.60, low: 6.25, volume: "180M", sparkline: [6.5, 6.4, 6.45, 6.35, 6.3, 6.38, 6.32, 6.35] },
-      { symbol: "DOGE/USD", name: "Dogecoin", price: 0.154, change: 4.82, high: 0.162, low: 0.145, volume: "950M", sparkline: [0.142, 0.145, 0.148, 0.146, 0.151, 0.153, 0.154] },
-      { symbol: "SHIB/USD", name: "Shiba Inu", price: 0.000018, change: 3.12, high: 0.000019, low: 0.000017, volume: "420M", sparkline: [0.000017, 0.0000175, 0.000018] },
-      { symbol: "LTC/USD", name: "Litecoin", price: 82.40, change: -0.85, high: 84.10, low: 81.50, volume: "350M", sparkline: [83.1, 82.8, 83.2, 82.5, 82.9, 82.4] },
-      { symbol: "LINK/USD", name: "Chainlink", price: 15.20, change: 1.74, high: 15.60, low: 14.80, volume: "210M", sparkline: [14.9, 15.0, 14.85, 15.1, 15.2] },
-      { symbol: "UNI/USD", name: "Uniswap", price: 7.85, change: -1.45, high: 8.10, low: 7.70, volume: "160M", sparkline: [7.95, 7.9, 7.82, 7.88, 7.85] },
-      { symbol: "AVAX/USD", name: "Avalanche", price: 34.60, change: 2.11, high: 35.80, low: 33.20, volume: "280M", sparkline: [33.8, 34.1, 33.9, 34.4, 34.6] },
-      { symbol: "MATIC/USD", name: "Polygon", price: 0.58, change: -0.92, high: 0.61, low: 0.56, volume: "110M", sparkline: [0.59, 0.585, 0.58] },
-      { symbol: "TON/USD", name: "Toncoin", price: 7.15, change: 6.25, high: 7.35, low: 6.65, volume: "340M", sparkline: [6.7, 6.9, 7.0, 7.12, 7.15] },
-      { symbol: "TRX/USD", name: "TRON", price: 0.118, change: 0.45, high: 0.122, low: 0.115, volume: "250M", sparkline: [0.116, 0.117, 0.118] },
-      { symbol: "XLM/USD", name: "Stellar", price: 0.124, change: 1.25, high: 0.128, low: 0.121, volume: "90M", sparkline: [0.122, 0.123, 0.124] },
-      { symbol: "ATOM/USD", name: "Cosmos", price: 8.45, change: -2.15, high: 8.80, low: 8.35, volume: "130M", sparkline: [8.65, 8.52, 8.45] },
-      { symbol: "NEAR/USD", name: "NEAR Protocol", price: 5.65, change: 3.42, high: 5.85, low: 5.40, volume: "220M", sparkline: [5.42, 5.55, 5.65] },
-      { symbol: "ALGO/USD", name: "Algorand", price: 0.185, change: -1.12, high: 0.192, low: 0.181, volume: "65M", sparkline: [0.187, 0.184, 0.185] },
-      { symbol: "FTM/USD", name: "Fantom", price: 0.82, change: 5.14, high: 0.85, low: 0.77, volume: "105M", sparkline: [0.78, 0.80, 0.82] },
-      { symbol: "ICP/USD", name: "Internet Computer", price: 11.40, change: -1.82, high: 11.90, low: 11.20, volume: "95M", sparkline: [11.6, 11.5, 11.4] },
-      { symbol: "HBAR/USD", name: "Hedera", price: 0.082, change: -0.42, high: 0.086, low: 0.080, volume: "75M", sparkline: [0.083, 0.082] },
-      { symbol: "APT/USD", name: "Aptos", price: 9.15, change: 2.85, high: 9.45, low: 8.80, volume: "155M", sparkline: [8.85, 9.02, 9.15] },
-      { symbol: "SUI/USD", name: "Sui", price: 1.25, change: 4.15, high: 1.32, low: 1.18, volume: "185M", sparkline: [1.19, 1.22, 1.25] },
-      { symbol: "OP/USD", name: "Optimism", price: 2.15, change: -2.44, high: 2.25, low: 2.10, volume: "140M", sparkline: [2.21, 2.18, 2.15] },
-      { symbol: "ARB/USD", name: "Arbitrum", price: 0.95, change: -1.85, high: 0.99, low: 0.92, volume: "125M", sparkline: [0.97, 0.96, 0.95] },
-      { symbol: "FIL/USD", name: "Filecoin", price: 5.40, change: 1.12, high: 5.60, low: 5.25, volume: "80M", sparkline: [5.32, 5.38, 5.40] },
-      { symbol: "VET/USD", name: "VeChain", price: 0.034, change: -0.58, high: 0.036, low: 0.033, volume: "55M", sparkline: [0.0345, 0.034] },
-      { symbol: "LDO/USD", name: "Lido DAO", price: 1.85, change: 2.20, high: 1.92, low: 1.78, volume: "115M", sparkline: [1.81, 1.83, 1.85] },
-      { symbol: "GRT/USD", name: "The Graph", price: 0.28, change: 3.14, high: 0.30, low: 0.27, volume: "90M", sparkline: [0.27, 0.275, 0.28] },
-      { symbol: "RNDR/USD", name: "Render Token", price: 8.85, change: 7.42, high: 9.15, low: 8.10, volume: "260M", sparkline: [8.2, 8.5, 8.85] },
-      { symbol: "AAVE/USD", name: "Aave", price: 110.15, change: 1.25, high: 115.00, low: 108.30, volume: "145M", sparkline: [108.9, 109.5, 110.15] },
-      { symbol: "MKR/USD", name: "Maker", price: 2320.00, change: -1.18, high: 2390.00, low: 2280.00, volume: "85M", sparkline: [2350, 2330, 2320] },
-      { symbol: "INJ/USD", name: "Injective", price: 22.40, change: 4.85, high: 23.50, low: 21.05, volume: "120M", sparkline: [21.2, 21.8, 22.4] },
-      { symbol: "RUNE/USD", name: "THORChain", price: 5.15, change: -3.12, high: 5.40, low: 5.02, volume: "95M", sparkline: [5.32, 5.21, 5.15] },
-      { symbol: "IMX/USD", name: "Immutable", price: 1.45, change: 2.11, high: 1.52, low: 1.38, volume: "75M", sparkline: [1.39, 1.42, 1.45] },
-      { symbol: "FET/USD", name: "Fetch.ai", price: 1.62, change: 8.42, high: 1.70, low: 1.48, volume: "190M", sparkline: [1.50, 1.55, 1.62] },
-      { symbol: "FLOW/USD", name: "Flow", price: 0.65, change: -0.45, high: 0.68, low: 0.61, volume: "45M", sparkline: [0.66, 0.64, 0.65] },
-      { symbol: "WIF/USD", name: "dogwifhat", price: 2.15, change: 12.14, high: 2.30, low: 1.85, volume: "210M", sparkline: [1.90, 2.05, 2.15] },
-      { symbol: "PEPE/USD", name: "Pepe", price: 0.000012, change: 9.25, high: 0.000013, low: 0.000011, volume: "320M", sparkline: [0.000011, 0.0000115, 0.000012] },
-      { symbol: "STX/USD", name: "Stacks", price: 1.82, change: -1.75, high: 1.90, low: 1.76, volume: "110M", sparkline: [1.88, 1.84, 1.82] },
-      { symbol: "THETA/USD", name: "Theta Network", price: 2.35, change: 3.12, high: 2.45, low: 2.22, volume: "80M", sparkline: [2.25, 2.30, 2.35] },
-      { symbol: "EGLD/USD", name: "MultiversX", price: 34.50, change: -1.82, high: 35.90, low: 33.80, volume: "50M", sparkline: [35.2, 34.8, 34.5] },
-      { symbol: "SAND/USD", name: "The Sandbox", price: 0.38, change: -0.42, high: 0.40, low: 0.36, volume: "60M", sparkline: [0.39, 0.385, 0.38] },
-      { symbol: "MANA/USD", name: "Decentraland", price: 0.42, change: 1.15, high: 0.44, low: 0.40, volume: "55M", sparkline: [0.41, 0.415, 0.42] },
-      { symbol: "CHZ/USD", name: "Chiliz", price: 0.095, change: 2.85, high: 0.098, low: 0.091, volume: "40M", sparkline: [0.091, 0.093, 0.095] },
-      { symbol: "ENS/USD", name: "Ethereum Name Service", price: 16.40, change: 5.12, high: 17.20, low: 15.80, volume: "65M", sparkline: [15.5, 16.0, 16.4] },
-      { symbol: "CRV/USD", name: "Curve DAO Token", price: 0.32, change: -1.45, high: 0.34, low: 0.31, volume: "35M", sparkline: [0.33, 0.325, 0.32] },
-      { symbol: "GALA/USD", name: "Gala", price: 0.038, change: 4.25, high: 0.040, low: 0.036, volume: "75M", sparkline: [0.036, 0.037, 0.038] },
-      { symbol: "JUP/USD", name: "Jupiter", price: 0.98, change: 6.82, high: 1.05, low: 0.92, volume: "125M", sparkline: [0.91, 0.95, 0.98] }
-    ];
-
-    const mockS: MarketAsset[] = [
-      { symbol: "AAPL", name: "Apple Inc.", price: 182.30, change: 0.85, high: 183.50, low: 180.80, volume: "52.4M", sparkline: [181.2, 181.5, 180.8, 181.9, 182.1, 182.3] },
-      { symbol: "TSLA", name: "Tesla Inc.", price: 214.50, change: -3.42, high: 221.00, low: 212.30, volume: "83.1M", sparkline: [219.5, 218.0, 216.5, 217.2, 215.1, 214.5] },
-      { symbol: "NVDA", name: "NVIDIA Corp.", price: 924.80, change: 4.12, high: 935.00, low: 885.00, volume: "41.6M", sparkline: [889, 895, 902, 915, 910, 924.8] },
-      { symbol: "MSFT", name: "Microsoft Corp.", price: 415.60, change: 0.42, high: 418.00, low: 412.50, volume: "22.8M", sparkline: [412, 414, 413, 416, 415.6] },
-      { symbol: "AMZN", name: "Amazon.com Inc.", price: 178.90, change: -1.15, high: 181.20, low: 177.50, volume: "32.1M", sparkline: [180.5, 179.8, 178.9] },
-      { symbol: "GOOGL", name: "Alphabet Inc.", price: 172.50, change: 1.22, high: 174.10, low: 170.80, volume: "25.4M", sparkline: [170.2, 171.4, 172.5] },
-      { symbol: "META", name: "Meta Platforms Inc.", price: 475.20, change: 2.15, high: 480.50, low: 468.20, volume: "18.2M", sparkline: [468.5, 471.2, 475.2] },
-      { symbol: "NFLX", name: "Netflix Inc.", price: 610.40, change: -1.82, high: 622.00, low: 605.50, volume: "8.5M", sparkline: [618, 615, 610.4] },
-      { symbol: "AMD", name: "Advanced Micro Devices", price: 164.80, change: -2.45, high: 170.10, low: 162.30, volume: "42.1M", sparkline: [168.2, 166.5, 164.8] },
-      { symbol: "INTC", name: "Intel Corp.", price: 30.15, change: -0.85, high: 30.90, low: 29.80, volume: "35.2M", sparkline: [30.4, 30.2, 30.15] },
-      { symbol: "PYPL", name: "PayPal Holdings", price: 62.40, change: 0.45, high: 63.20, low: 61.80, volume: "12.4M", sparkline: [62.0, 62.2, 62.4] },
-      { symbol: "ADBE", name: "Adobe Inc.", price: 482.60, change: 1.05, high: 488.50, low: 477.15, volume: "4.8M", sparkline: [478.5, 480.1, 482.6] },
-      { symbol: "CRM", name: "Salesforce Inc.", price: 278.40, change: -1.15, high: 282.00, low: 275.50, volume: "7.2M", sparkline: [280, 279, 278.4] },
-      { symbol: "COIN", name: "Coinbase Global", price: 232.10, change: 6.85, high: 240.50, low: 221.80, volume: "15.6M", sparkline: [220, 225, 232.1] },
-      { symbol: "QCOM", name: "QUALCOMM Inc.", price: 173.20, change: 0.95, high: 175.50, low: 171.10, volume: "9.2M", sparkline: [171.5, 172.4, 173.2] },
-      { symbol: "AVGO", name: "Broadcom Inc.", price: 1350.20, change: 1.82, high: 1370.00, low: 1335.50, volume: "3.1M", sparkline: [1330, 1342, 1350.2] },
-      { symbol: "ASML", name: "ASML Holding", price: 915.40, change: -1.12, high: 928.00, low: 902.50, volume: "2.4M", sparkline: [922, 918, 915.4] },
-      { symbol: "MU", name: "Micron Technology", price: 112.50, change: 3.42, high: 115.20, low: 108.40, volume: "21.5M", sparkline: [108.9, 110.5, 112.5] },
-      { symbol: "AMAT", name: "Applied Materials", price: 205.80, change: 0.65, high: 208.90, low: 203.10, volume: "6.8M", sparkline: [204.2, 205.1, 205.8] },
-      { symbol: "TXN", name: "Texas Instruments", price: 168.40, change: -0.35, high: 170.20, low: 166.80, volume: "5.1M", sparkline: [169.1, 168.7, 168.4] },
-      { symbol: "COST", name: "Costco Wholesale", price: 725.60, change: 0.82, high: 730.50, low: 720.10, volume: "4.2M", sparkline: [721.2, 723.4, 725.6] },
-      { symbol: "PEP", name: "PepsiCo Inc.", price: 171.20, change: -0.22, high: 173.00, low: 169.80, volume: "5.5M", sparkline: [171.5, 171.3, 171.2] },
-      { symbol: "SBUX", name: "Starbucks Corp.", price: 82.40, change: -1.45, high: 84.00, low: 81.50, volume: "7.8M", sparkline: [83.5, 83.0, 82.4] },
-      { symbol: "NKE", name: "Nike Inc.", price: 95.15, change: 0.15, high: 96.50, low: 94.20, volume: "8.1M", sparkline: [95.0, 95.15] },
-      { symbol: "DIS", name: "Walt Disney Co.", price: 114.30, change: -0.85, high: 116.00, low: 113.10, volume: "9.6M", sparkline: [115.2, 114.3] },
-      { symbol: "CMG", name: "Chipotle Mexican Grill", price: 298.50, change: 1.55, high: 301.00, low: 295.00, volume: "1.1M", sparkline: [293.0, 298.5] },
-      { symbol: "LULU", name: "Lululemon Athletica", price: 345.20, change: -4.12, high: 362.00, low: 341.00, volume: "2.8M", sparkline: [358.0, 345.2] },
-      { symbol: "MSTR", name: "MicroStrategy Inc.", price: 1420.50, change: 11.22, high: 1480.00, low: 1310.00, volume: "6.2M", sparkline: [1310, 1420.5] },
-      { symbol: "PANW", name: "Palo Alto Networks", price: 292.80, change: -1.35, high: 298.00, low: 289.50, volume: "3.5M", sparkline: [295, 292.8] },
-      { symbol: "FTNT", name: "Fortinet Inc.", price: 61.20, change: 0.75, high: 62.10, low: 60.50, volume: "4.4M", sparkline: [60.8, 61.2] },
-      { symbol: "ZS", name: "Zscaler Inc.", price: 182.40, change: -2.15, high: 188.00, low: 179.50, volume: "2.9M", sparkline: [186, 182.4] },
-      { symbol: "DDOG", name: "Datadog Inc.", price: 118.50, change: 1.15, high: 121.20, low: 116.40, volume: "3.8M", sparkline: [117, 118.5] },
-      { symbol: "ORCL", name: "Oracle Corp.", price: 124.50, change: 1.15, high: 126.00, low: 123.20, volume: "10.4M", sparkline: [123.5, 124.5] },
-      { symbol: "CSCO", name: "Cisco Systems Inc.", price: 47.80, change: -0.42, high: 48.30, low: 47.10, volume: "15.2M", sparkline: [48.1, 47.8] },
-      { symbol: "ABNB", name: "Airbnb Inc.", price: 148.60, change: 2.15, high: 151.20, low: 145.80, volume: "4.8M", sparkline: [145.2, 148.6] },
-      { symbol: "UBER", name: "Uber Technologies", price: 68.40, change: 3.22, high: 69.50, low: 66.85, volume: "18.5M", sparkline: [66.5, 68.4] },
-      { symbol: "SNOW", name: "Snowflake Inc.", price: 152.30, change: -4.15, high: 158.40, low: 150.10, volume: "6.2M", sparkline: [156.4, 152.3] },
-      { symbol: "PLTR", name: "Palantir Technologies", price: 24.50, change: 8.12, high: 25.40, low: 22.80, volume: "38.4M", sparkline: [22.4, 24.5] },
-      { symbol: "NET", name: "Cloudflare Inc.", price: 92.15, change: -1.85, high: 95.00, low: 90.80, volume: "5.1M", sparkline: [93.5, 92.15] },
-      { symbol: "SHOP", name: "Shopify Inc.", price: 74.80, change: 0.95, high: 76.20, low: 73.10, volume: "9.6M", sparkline: [73.5, 74.8] },
-      { symbol: "MDB", name: "MongoDB Inc.", price: 365.40, change: -3.42, high: 375.00, low: 360.50, volume: "2.1M", sparkline: [372.0, 365.4] },
-      { symbol: "NOW", name: "ServiceNow Inc.", price: 742.60, change: 1.12, high: 748.50, low: 735.00, volume: "1.8M", sparkline: [738.0, 742.6] },
-      { symbol: "SQ", name: "Block Inc.", price: 65.15, change: 2.45, high: 66.80, low: 63.90, volume: "11.2M", sparkline: [63.5, 65.15] },
-      { symbol: "TEAM", name: "Atlassian Corp.", price: 185.30, change: -1.75, high: 191.00, low: 183.20, volume: "3.2M", sparkline: [188.5, 185.3] },
-      { symbol: "WDAY", name: "Workday Inc.", price: 262.40, change: 0.15, high: 265.80, low: 259.10, volume: "2.5M", sparkline: [261.9, 262.4] },
-      { symbol: "OKTA", name: "Okta Inc.", price: 92.40, change: -1.18, high: 95.20, low: 91.00, volume: "3.4M", sparkline: [93.5, 92.4] },
-      { symbol: "SPLK", name: "Splunk Inc.", price: 156.20, change: 0.05, high: 157.00, low: 155.80, volume: "1.5M", sparkline: [156.0, 156.2] },
-      { symbol: "MRVL", name: "Marvell Technology", price: 68.15, change: 4.12, high: 69.80, low: 65.10, volume: "12.8M", sparkline: [65.4, 68.15] },
-      { symbol: "CRWD", name: "CrowdStrike Holdings", price: 315.40, change: 5.82, high: 322.00, low: 308.50, volume: "6.5M", sparkline: [305.2, 315.4] },
-      { symbol: "ALNY", name: "Alnylam Pharmaceuticals", price: 154.20, change: -0.45, high: 156.80, low: 152.10, volume: "1.2M", sparkline: [155.0, 154.2] },
-      { symbol: "GILD", name: "Gilead Sciences Inc.", price: 66.80, change: 0.25, high: 67.50, low: 65.90, volume: "7.4M", sparkline: [66.5, 66.8] },
-      { symbol: "SIRI", name: "Sirius XM Holdings", price: 3.85, change: -1.12, high: 3.98, low: 3.75, volume: "21.2M", sparkline: [3.92, 3.85] }
-    ];
-
     try {
-      // Connect to Live Binance API
-      const symbolsQuery = mockC.map(c => `"${c.symbol.replace('/USD', 'USDT')}"`).join(",");
-      const res = await fetch(`https://api.binance.com/api/v3/ticker/24hr?symbols=[${symbolsQuery}]`);
-
+      const res = await fetch("/api/markets");
       if (res.ok) {
-        const liveData = await res.json();
-
-        // Map live Binance data to our app's MarketAsset structure
-        const processedCrypto = mockC.map(mockAsset => {
-          const binanceSymbol = mockAsset.symbol.replace('/USD', 'USDT');
-          const liveTicker = liveData.find((t: any) => t.symbol === binanceSymbol);
-
-          if (liveTicker) {
-            const currentPrice = parseFloat(liveTicker.lastPrice);
-            return {
-              ...mockAsset,
-              price: currentPrice,
-              change: parseFloat(liveTicker.priceChangePercent),
-              high: parseFloat(liveTicker.highPrice),
-              low: parseFloat(liveTicker.lowPrice),
-              volume: `$${(parseFloat(liveTicker.quoteVolume) / 1000000).toFixed(1)}M`,
-              sparkline: Array.from({ length: 12 }, () => currentPrice * (1 + (Math.random() * 0.04 - 0.02)))
-            };
-          }
-          return mockAsset;
-        });
-
-        const processedStocks = mockS.map((s: any) => ({
+        const data = await res.json();
+        const processedCrypto = data.crypto.map((c: any) => ({
+          ...c,
+          sparkline: Array.from({ length: 12 }, () => c.price * (1 + (Math.random() * 0.04 - 0.02)))
+        }));
+        const processedStocks = data.stocks.map((s: any) => ({
           ...s,
           sparkline: Array.from({ length: 12 }, () => s.price * (1 + (Math.random() * 0.02 - 0.01)))
         }));
-
         setMarketCrypto(processedCrypto);
         setMarketStocks(processedStocks);
       } else {
-        throw new Error("Binance API failed");
+        throw new Error("API failed");
       }
     } catch (e) {
-      // Graceful fallback to mock data
+      const mockC: MarketAsset[] = [
+        { symbol: "BTC/USD", name: "Bitcoin", price: 89432.50, change: 2.45, high: 90200.00, low: 87100.00, volume: "24.1B", sparkline: [88100, 88300, 87900, 88200, 88900, 88600, 89100, 88900, 89200, 89432.5] },
+        { symbol: "ETH/USD", name: "Ethereum", price: 3412.80, change: -1.22, high: 3520.00, low: 3380.00, volume: "12.8B", sparkline: [3480, 3460, 3490, 3450, 3420, 3440, 3410, 3430, 3405, 3412.8] },
+        { symbol: "SOL/USD", name: "Solana", price: 187.65, change: 5.82, high: 191.00, low: 175.20, volume: "4.5B", sparkline: [176, 178, 175, 180, 182, 185, 183, 188, 186, 187.65] },
+        { symbol: "XRP/USD", name: "Ripple", price: 1.14, change: 10.15, high: 1.22, low: 1.02, volume: "3.2B", sparkline: [1.01, 1.03, 1.05, 1.02, 1.08, 1.12, 1.10, 1.15, 1.13, 1.14] },
+        { symbol: "ADA/USD", name: "Cardano", price: 0.62, change: -0.45, high: 0.65, low: 0.61, volume: "850M", sparkline: [0.63, 0.64, 0.62, 0.63, 0.61, 0.62, 0.62, 0.63, 0.61, 0.62] },
+        { symbol: "BNB/USD", name: "Binance Coin", price: 580.40, change: 1.15, high: 590.00, low: 572.00, volume: "1.2B", sparkline: [570, 574, 572, 576, 578, 582, 580, 584, 582, 580.4] },
+        { symbol: "DOT/USD", name: "Polkadot", price: 6.35, change: -2.31, high: 6.60, low: 6.25, volume: "180M", sparkline: [6.5, 6.4, 6.45, 6.35, 6.3, 6.38, 6.32, 6.35] },
+        { symbol: "DOGE/USD", name: "Dogecoin", price: 0.154, change: 4.82, high: 0.162, low: 0.145, volume: "950M", sparkline: [0.142, 0.145, 0.148, 0.146, 0.151, 0.153, 0.154] },
+        { symbol: "SHIB/USD", name: "Shiba Inu", price: 0.000018, change: 3.12, high: 0.000019, low: 0.000017, volume: "420M", sparkline: [0.000017, 0.0000175, 0.000018] },
+        { symbol: "LTC/USD", name: "Litecoin", price: 82.40, change: -0.85, high: 84.10, low: 81.50, volume: "350M", sparkline: [83.1, 82.8, 83.2, 82.5, 82.9, 82.4] },
+        { symbol: "LINK/USD", name: "Chainlink", price: 15.20, change: 1.74, high: 15.60, low: 14.80, volume: "210M", sparkline: [14.9, 15.0, 14.85, 15.1, 15.2] },
+        { symbol: "UNI/USD", name: "Uniswap", price: 7.85, change: -1.45, high: 8.10, low: 7.70, volume: "160M", sparkline: [7.95, 7.9, 7.82, 7.88, 7.85] },
+        { symbol: "AVAX/USD", name: "Avalanche", price: 34.60, change: 2.11, high: 35.80, low: 33.20, volume: "280M", sparkline: [33.8, 34.1, 33.9, 34.4, 34.6] },
+        { symbol: "MATIC/USD", name: "Polygon", price: 0.58, change: -0.92, high: 0.61, low: 0.56, volume: "110M", sparkline: [0.59, 0.585, 0.58] },
+        { symbol: "TON/USD", name: "Toncoin", price: 7.15, change: 6.25, high: 7.35, low: 6.65, volume: "340M", sparkline: [6.7, 6.9, 7.0, 7.12, 7.15] },
+        { symbol: "TRX/USD", name: "TRON", price: 0.118, change: 0.45, high: 0.122, low: 0.115, volume: "250M", sparkline: [0.116, 0.117, 0.118] },
+        { symbol: "XLM/USD", name: "Stellar", price: 0.124, change: 1.25, high: 0.128, low: 0.121, volume: "90M", sparkline: [0.122, 0.123, 0.124] },
+        { symbol: "ATOM/USD", name: "Cosmos", price: 8.45, change: -2.15, high: 8.80, low: 8.35, volume: "130M", sparkline: [8.65, 8.52, 8.45] },
+        { symbol: "NEAR/USD", name: "NEAR Protocol", price: 5.65, change: 3.42, high: 5.85, low: 5.40, volume: "220M", sparkline: [5.42, 5.55, 5.65] },
+        { symbol: "ALGO/USD", name: "Algorand", price: 0.185, change: -1.12, high: 0.192, low: 0.181, volume: "65M", sparkline: [0.187, 0.184, 0.185] },
+        { symbol: "FTM/USD", name: "Fantom", price: 0.82, change: 5.14, high: 0.85, low: 0.77, volume: "105M", sparkline: [0.78, 0.80, 0.82] },
+        { symbol: "ICP/USD", name: "Internet Computer", price: 11.40, change: -1.82, high: 11.90, low: 11.20, volume: "95M", sparkline: [11.6, 11.5, 11.4] },
+        { symbol: "HBAR/USD", name: "Hedera", price: 0.082, change: -0.42, high: 0.086, low: 0.080, volume: "75M", sparkline: [0.083, 0.082] },
+        { symbol: "APT/USD", name: "Aptos", price: 9.15, change: 2.85, high: 9.45, low: 8.80, volume: "155M", sparkline: [8.85, 9.02, 9.15] },
+        { symbol: "SUI/USD", name: "Sui", price: 1.25, change: 4.15, high: 1.32, low: 1.18, volume: "185M", sparkline: [1.19, 1.22, 1.25] },
+        { symbol: "OP/USD", name: "Optimism", price: 2.15, change: -2.44, high: 2.25, low: 2.10, volume: "140M", sparkline: [2.21, 2.18, 2.15] },
+        { symbol: "ARB/USD", name: "Arbitrum", price: 0.95, change: -1.85, high: 0.99, low: 0.92, volume: "125M", sparkline: [0.97, 0.96, 0.95] },
+        { symbol: "FIL/USD", name: "Filecoin", price: 5.40, change: 1.12, high: 5.60, low: 5.25, volume: "80M", sparkline: [5.32, 5.38, 5.40] },
+        { symbol: "VET/USD", name: "VeChain", price: 0.034, change: -0.58, high: 0.036, low: 0.033, volume: "55M", sparkline: [0.0345, 0.034] },
+        { symbol: "LDO/USD", name: "Lido DAO", price: 1.85, change: 2.20, high: 1.92, low: 1.78, volume: "115M", sparkline: [1.81, 1.83, 1.85] },
+        { symbol: "GRT/USD", name: "The Graph", price: 0.28, change: 3.14, high: 0.30, low: 0.27, volume: "90M", sparkline: [0.27, 0.275, 0.28] },
+        { symbol: "RNDR/USD", name: "Render Token", price: 8.85, change: 7.42, high: 9.15, low: 8.10, volume: "260M", sparkline: [8.2, 8.5, 8.85] },
+        { symbol: "AAVE/USD", name: "Aave", price: 110.15, change: 1.25, high: 115.00, low: 108.30, volume: "145M", sparkline: [108.9, 109.5, 110.15] },
+        { symbol: "MKR/USD", name: "Maker", price: 2320.00, change: -1.18, high: 2390.00, low: 2280.00, volume: "85M", sparkline: [2350, 2330, 2320] },
+        { symbol: "INJ/USD", name: "Injective", price: 22.40, change: 4.85, high: 23.50, low: 21.05, volume: "120M", sparkline: [21.2, 21.8, 22.4] },
+        { symbol: "RUNE/USD", name: "THORChain", price: 5.15, change: -3.12, high: 5.40, low: 5.02, volume: "95M", sparkline: [5.32, 5.21, 5.15] },
+        { symbol: "IMX/USD", name: "Immutable", price: 1.45, change: 2.11, high: 1.52, low: 1.38, volume: "75M", sparkline: [1.39, 1.42, 1.45] },
+        { symbol: "FET/USD", name: "Fetch.ai", price: 1.62, change: 8.42, high: 1.70, low: 1.48, volume: "190M", sparkline: [1.50, 1.55, 1.62] },
+        { symbol: "FLOW/USD", name: "Flow", price: 0.65, change: -0.45, high: 0.68, low: 0.61, volume: "45M", sparkline: [0.66, 0.64, 0.65] },
+        { symbol: "WIF/USD", name: "dogwifhat", price: 2.15, change: 12.14, high: 2.30, low: 1.85, volume: "210M", sparkline: [1.90, 2.05, 2.15] },
+        { symbol: "PEPE/USD", name: "Pepe", price: 0.000012, change: 9.25, high: 0.000013, low: 0.000011, volume: "320M", sparkline: [0.000011, 0.0000115, 0.000012] },
+        { symbol: "STX/USD", name: "Stacks", price: 1.82, change: -1.75, high: 1.90, low: 1.76, volume: "110M", sparkline: [1.88, 1.84, 1.82] },
+        { symbol: "THETA/USD", name: "Theta Network", price: 2.35, change: 3.12, high: 2.45, low: 2.22, volume: "80M", sparkline: [2.25, 2.30, 2.35] },
+        { symbol: "EGLD/USD", name: "MultiversX", price: 34.50, change: -1.82, high: 35.90, low: 33.80, volume: "50M", sparkline: [35.2, 34.8, 34.5] },
+        { symbol: "SAND/USD", name: "The Sandbox", price: 0.38, change: -0.42, high: 0.40, low: 0.36, volume: "60M", sparkline: [0.39, 0.385, 0.38] },
+        { symbol: "MANA/USD", name: "Decentraland", price: 0.42, change: 1.15, high: 0.44, low: 0.40, volume: "55M", sparkline: [0.41, 0.415, 0.42] },
+        { symbol: "FIDA/USD", name: "Bonfida", price: 0.28, change: 0.95, high: 0.30, low: 0.26, volume: "15M", sparkline: [0.27, 0.275, 0.28] },
+        { symbol: "CHZ/USD", name: "Chiliz", price: 0.095, change: 2.85, high: 0.098, low: 0.091, volume: "40M", sparkline: [0.091, 0.093, 0.095] },
+        { symbol: "ENS/USD", name: "Ethereum Name Service", price: 16.40, change: 5.12, high: 17.20, low: 15.80, volume: "65M", sparkline: [15.5, 16.0, 16.4] },
+        { symbol: "CRV/USD", name: "Curve DAO Token", price: 0.32, change: -1.45, high: 0.34, low: 0.31, volume: "35M", sparkline: [0.33, 0.325, 0.32] },
+        { symbol: "GALA/USD", name: "Gala", price: 0.038, change: 4.25, high: 0.040, low: 0.036, volume: "75M", sparkline: [0.036, 0.037, 0.038] },
+        { symbol: "JUP/USD", name: "Jupiter", price: 0.98, change: 6.82, high: 1.05, low: 0.92, volume: "125M", sparkline: [0.91, 0.95, 0.98] }
+      ];
+      const mockS: MarketAsset[] = [
+        { symbol: "AAPL", name: "Apple Inc.", price: 182.30, change: 0.85, high: 183.50, low: 180.80, volume: "52.4M", sparkline: [181.2, 181.5, 180.8, 181.9, 182.1, 182.3] },
+        { symbol: "TSLA", name: "Tesla Inc.", price: 214.50, change: -3.42, high: 221.00, low: 212.30, volume: "83.1M", sparkline: [219.5, 218.0, 216.5, 217.2, 215.1, 214.5] },
+        { symbol: "NVDA", name: "NVIDIA Corp.", price: 924.80, change: 4.12, high: 935.00, low: 885.00, volume: "41.6M", sparkline: [889, 895, 902, 915, 910, 924.8] },
+        { symbol: "MSFT", name: "Microsoft Corp.", price: 415.60, change: 0.42, high: 418.00, low: 412.50, volume: "22.8M", sparkline: [412, 414, 413, 416, 415.6] },
+        { symbol: "AMZN", name: "Amazon.com Inc.", price: 178.90, change: -1.15, high: 181.20, low: 177.50, volume: "32.1M", sparkline: [180.5, 179.8, 178.9] },
+        { symbol: "GOOGL", name: "Alphabet Inc.", price: 172.50, change: 1.22, high: 174.10, low: 170.80, volume: "25.4M", sparkline: [170.2, 171.4, 172.5] },
+        { symbol: "META", name: "Meta Platforms Inc.", price: 475.20, change: 2.15, high: 480.50, low: 468.20, volume: "18.2M", sparkline: [468.5, 471.2, 475.2] },
+        { symbol: "NFLX", name: "Netflix Inc.", price: 610.40, change: -1.82, high: 622.00, low: 605.50, volume: "8.5M", sparkline: [618, 615, 610.4] },
+        { symbol: "AMD", name: "Advanced Micro Devices", price: 164.80, change: -2.45, high: 170.10, low: 162.30, volume: "42.1M", sparkline: [168.2, 166.5, 164.8] },
+        { symbol: "INTC", name: "Intel Corp.", price: 30.15, change: -0.85, high: 30.90, low: 29.80, volume: "35.2M", sparkline: [30.4, 30.2, 30.15] },
+        { symbol: "PYPL", name: "PayPal Holdings", price: 62.40, change: 0.45, high: 63.20, low: 61.80, volume: "12.4M", sparkline: [62.0, 62.2, 62.4] },
+        { symbol: "ADBE", name: "Adobe Inc.", price: 482.60, change: 1.05, high: 488.50, low: 477.15, volume: "4.8M", sparkline: [478.5, 480.1, 482.6] },
+        { symbol: "CRM", name: "Salesforce Inc.", price: 278.40, change: -1.15, high: 282.00, low: 275.50, volume: "7.2M", sparkline: [280, 279, 278.4] },
+        { symbol: "COIN", name: "Coinbase Global", price: 232.10, change: 6.85, high: 240.50, low: 221.80, volume: "15.6M", sparkline: [220, 225, 232.1] },
+        { symbol: "QCOM", name: "QUALCOMM Inc.", price: 173.20, change: 0.95, high: 175.50, low: 171.10, volume: "9.2M", sparkline: [171.5, 172.4, 173.2] },
+        { symbol: "AVGO", name: "Broadcom Inc.", price: 1350.20, change: 1.82, high: 1370.00, low: 1335.50, volume: "3.1M", sparkline: [1330, 1342, 1350.2] },
+        { symbol: "ASML", name: "ASML Holding", price: 915.40, change: -1.12, high: 928.00, low: 902.50, volume: "2.4M", sparkline: [922, 918, 915.4] },
+        { symbol: "MU", name: "Micron Technology", price: 112.50, change: 3.42, high: 115.20, low: 108.40, volume: "21.5M", sparkline: [108.9, 110.5, 112.5] },
+        { symbol: "AMAT", name: "Applied Materials", price: 205.80, change: 0.65, high: 208.90, low: 203.10, volume: "6.8M", sparkline: [204.2, 205.1, 205.8] },
+        { symbol: "TXN", name: "Texas Instruments", price: 168.40, change: -0.35, high: 170.20, low: 166.80, volume: "5.1M", sparkline: [169.1, 168.7, 168.4] },
+        { symbol: "COST", name: "Costco Wholesale", price: 725.60, change: 0.82, high: 730.50, low: 720.10, volume: "4.2M", sparkline: [721.2, 723.4, 725.6] },
+        { symbol: "PEP", name: "PepsiCo Inc.", price: 171.20, change: -0.22, high: 173.00, low: 169.80, volume: "5.5M", sparkline: [171.5, 171.3, 171.2] },
+        { symbol: "SBUX", name: "Starbucks Corp.", price: 82.40, change: -1.45, high: 84.00, low: 81.50, volume: "7.8M", sparkline: [83.5, 83.0, 82.4] },
+        { symbol: "NKE", name: "Nike Inc.", price: 95.15, change: 0.15, high: 96.50, low: 94.20, volume: "8.1M", sparkline: [95.0, 95.15] },
+        { symbol: "DIS", name: "Walt Disney Co.", price: 114.30, change: -0.85, high: 116.00, low: 113.10, volume: "9.6M", sparkline: [115.2, 114.3] },
+        { symbol: "CMG", name: "Chipotle Mexican Grill", price: 298.50, change: 1.55, high: 301.00, low: 295.00, volume: "1.1M", sparkline: [293.0, 298.5] },
+        { symbol: "LULU", name: "Lululemon Athletica", price: 345.20, change: -4.12, high: 362.00, low: 341.00, volume: "2.8M", sparkline: [358.0, 345.2] },
+        { symbol: "MSTR", name: "MicroStrategy Inc.", price: 1420.50, change: 11.22, high: 1480.00, low: 1310.00, volume: "6.2M", sparkline: [1310, 1420.5] },
+        { symbol: "PANW", name: "Palo Alto Networks", price: 292.80, change: -1.35, high: 298.00, low: 289.50, volume: "3.5M", sparkline: [295, 292.8] },
+        { symbol: "FTNT", name: "Fortinet Inc.", price: 61.20, change: 0.75, high: 62.10, low: 60.50, volume: "4.4M", sparkline: [60.8, 61.2] },
+        { symbol: "ZS", name: "Zscaler Inc.", price: 182.40, change: -2.15, high: 188.00, low: 179.50, volume: "2.9M", sparkline: [186, 182.4] },
+        { symbol: "DDOG", name: "Datadog Inc.", price: 118.50, change: 1.15, high: 121.20, low: 116.40, volume: "3.8M", sparkline: [117, 118.5] },
+        { symbol: "ORCL", name: "Oracle Corp.", price: 124.50, change: 1.15, high: 126.00, low: 123.20, volume: "10.4M", sparkline: [123.5, 124.5] },
+        { symbol: "CSCO", name: "Cisco Systems Inc.", price: 47.80, change: -0.42, high: 48.30, low: 47.10, volume: "15.2M", sparkline: [48.1, 47.8] },
+        { symbol: "ABNB", name: "Airbnb Inc.", price: 148.60, change: 2.15, high: 151.20, low: 145.80, volume: "4.8M", sparkline: [145.2, 148.6] },
+        { symbol: "UBER", name: "Uber Technologies", price: 68.40, change: 3.22, high: 69.50, low: 66.85, volume: "18.5M", sparkline: [66.5, 68.4] },
+        { symbol: "SNOW", name: "Snowflake Inc.", price: 152.30, change: -4.15, high: 158.40, low: 150.10, volume: "6.2M", sparkline: [156.4, 152.3] },
+        { symbol: "PLTR", name: "Palantir Technologies", price: 24.50, change: 8.12, high: 25.40, low: 22.80, volume: "38.4M", sparkline: [22.4, 24.5] },
+        { symbol: "NET", name: "Cloudflare Inc.", price: 92.15, change: -1.85, high: 95.00, low: 90.80, volume: "5.1M", sparkline: [93.5, 92.15] },
+        { symbol: "SHOP", name: "Shopify Inc.", price: 74.80, change: 0.95, high: 76.20, low: 73.10, volume: "9.6M", sparkline: [73.5, 74.8] },
+        { symbol: "MDB", name: "MongoDB Inc.", price: 365.40, change: -3.42, high: 375.00, low: 360.50, volume: "2.1M", sparkline: [372.0, 365.4] },
+        { symbol: "NOW", name: "ServiceNow Inc.", price: 742.60, change: 1.12, high: 748.50, low: 735.00, volume: "1.8M", sparkline: [738.0, 742.6] },
+        { symbol: "SQ", name: "Block Inc.", price: 65.15, change: 2.45, high: 66.80, low: 63.90, volume: "11.2M", sparkline: [63.5, 65.15] },
+        { symbol: "TEAM", name: "Atlassian Corp.", price: 185.30, change: -1.75, high: 191.00, low: 183.20, volume: "3.2M", sparkline: [188.5, 185.3] },
+        { symbol: "WDAY", name: "Workday Inc.", price: 262.40, change: 0.15, high: 265.80, low: 259.10, volume: "2.5M", sparkline: [261.9, 262.4] },
+        { symbol: "OKTA", name: "Okta Inc.", price: 92.40, change: -1.18, high: 95.20, low: 91.00, volume: "3.4M", sparkline: [93.5, 92.4] },
+        { symbol: "SPLK", name: "Splunk Inc.", price: 156.20, change: 0.05, high: 157.00, low: 155.80, volume: "1.5M", sparkline: [156.0, 156.2] },
+        { symbol: "MRVL", name: "Marvell Technology", price: 68.15, change: 4.12, high: 69.80, low: 65.10, volume: "12.8M", sparkline: [65.4, 68.15] },
+        { symbol: "CRWD", name: "CrowdStrike Holdings", price: 315.40, change: 5.82, high: 322.00, low: 308.50, volume: "6.5M", sparkline: [305.2, 315.4] },
+        { symbol: "ALNY", name: "Alnylam Pharmaceuticals", price: 154.20, change: -0.45, high: 156.80, low: 152.10, volume: "1.2M", sparkline: [155.0, 154.2] },
+        { symbol: "GILD", name: "Gilead Sciences Inc.", price: 66.80, change: 0.25, high: 67.50, low: 65.90, volume: "7.4M", sparkline: [66.5, 66.8] },
+        { symbol: "SIRI", name: "Sirius XM Holdings", price: 3.85, change: -1.12, high: 3.98, low: 3.75, volume: "21.2M", sparkline: [3.92, 3.85] }
+      ];
       setMarketCrypto(mockC);
       setMarketStocks(mockS);
     } finally {
@@ -1232,7 +1119,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Fluctuations
   useEffect(() => {
     const marketFlux = setInterval(() => {
-      setMarketCrypto(prev =>
+      setMarketCrypto(prev => 
         prev.map(asset => {
           const delta = (Math.random() * 0.003 - 0.0015);
           const nextPrice = +(asset.price * (1 + delta)).toFixed(asset.price > 10 ? 2 : 4);
@@ -1268,47 +1155,25 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return holding;
       });
 
-      // ROI increments (supports both investment plans AND copy trading)
+      // ROI increments
       const updatedActive = prev.activeInvestments.map(inv => {
         if (inv.status === "active") {
           const currentPlan = plans.find(p => p.id === inv.planId);
-          if (currentPlan && currentPlan.status === "paused") return inv; // Paused by admin
-
-          // Determine ROI: from plan if available, or from dailyRoiPercent (copy trading)
-          let totalRoiPercent = 0;
           if (currentPlan) {
-            totalRoiPercent = currentPlan.roiPercent;
-          } else if (inv.dailyRoiPercent) {
-            // Copy trading: dailyRoiPercent stores daily rate, calculate total from duration
-            const durationMs = new Date(inv.endDate).getTime() - new Date(inv.startDate).getTime();
-            const durationDays = Math.max(durationMs / (1000 * 60 * 60 * 24), 1);
-            totalRoiPercent = inv.dailyRoiPercent * durationDays;
-          } else {
-            return inv; // No plan and no ROI data — skip
+            if (currentPlan.status === "paused") return inv; // Paused by admin
+            
+            // Scaled real-time accruals inside sandbox
+            const percentAccruedPerStep = (currentPlan.roiPercent / 100) * (5 / (5 * 60));
+            const addedProfit = inv.amount * percentAccruedPerStep;
+            const nextProgress = Math.min(inv.progress + 0.35, 100);
+            
+            return {
+              ...inv,
+              accumulatedProfit: +(inv.accumulatedProfit + addedProfit).toFixed(4),
+              progress: +nextProgress.toFixed(2),
+              status: nextProgress >= 100 ? "completed" : "active" as any
+            };
           }
-
-          // Real-time accrual based on actual duration
-          const startTimestamp = new Date(inv.startDate).getTime();
-          const endTimestamp = new Date(inv.endDate).getTime();
-          const nowTimestamp = Date.now();
-
-          let nextProgress = 0;
-          if (endTimestamp > startTimestamp) {
-            nextProgress = Math.min(((nowTimestamp - startTimestamp) / (endTimestamp - startTimestamp)) * 100, 100);
-          } else {
-            nextProgress = 100;
-          }
-          if (nextProgress < 0) nextProgress = 0;
-
-          const totalExpectedProfit = inv.amount * (totalRoiPercent / 100);
-          const nextProfit = totalExpectedProfit * (nextProgress / 100);
-
-          return {
-            ...inv,
-            accumulatedProfit: +nextProfit.toFixed(4),
-            progress: +nextProgress.toFixed(2),
-            status: nextProgress >= 100 ? "completed" : "active" as any
-          };
         }
         return inv;
       });
@@ -1339,7 +1204,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   ) => {
     const isOwner = email.toLowerCase() === "henrikaram1@gmail.com";
-
+    
     if (additionalData?.password) {
       await createUserWithEmailAndPassword(auth, email, additionalData.password);
     }
@@ -1347,12 +1212,21 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const newUserDoc = {
       email,
       name: name.toUpperCase(),
-      balance: 0.00,
+      balance: 1000.00,
       portfolioValue: 0.00,
       status: "active" as const,
       activeInvestments: [],
       portfolio: [],
-      transactions: [],
+      transactions: [
+        {
+          id: `tx-welcome-${Date.now()}`,
+          type: "deposit" as const,
+          amount: 1000.00,
+          status: "completed" as const,
+          asset: "USD",
+          date: new Date().toISOString().split("T")[0]
+        }
+      ],
       tickets: [],
       loginHistory: [{ date: new Date().toISOString().replace("T", " ").substring(0, 19), ip: "127.0.0.1", device: "Browser Registration" }],
       role: isOwner ? ("admin" as const) : ("user" as const),
@@ -1381,7 +1255,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return [...prev, {
         email,
         name: name.toUpperCase(),
-        balance: 0.00,
+        balance: 1000.00,
         portfolioValue: 0,
         status: "active" as const,
         activeInvestments: [],
@@ -1405,12 +1279,89 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const login = async (email: string, password?: string) => {
-    if (!password) {
-      throw new Error("Password is required. Please enter your password to login.");
+    const isMock = ["john.wealth@outlook.com", "sarah.crypto@gmail.com", "banned.scammer@gmail.com"].includes(email.toLowerCase());
+    
+    if (isMock) {
+      const isOwner = email.toLowerCase() === "henrikaram1@gmail.com";
+      const match = adminUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
+
+      const userObj: UserState = {
+        isLoggedIn: true,
+        email,
+        name: match ? match.name : email.split("@")[0].toUpperCase(),
+        balance: match ? match.balance : 1500.00,
+        portfolioValue: match ? match.portfolioValue : 0.00,
+        activeInvestments: match ? match.activeInvestments : [],
+        portfolio: match ? match.portfolio : [],
+        transactions: match ? match.transactions : [],
+        tickets: match ? match.tickets : [],
+        status: match ? match.status : "active",
+        role: isOwner ? "admin" : "user",
+        username: match?.username,
+        firstName: match?.firstName,
+        lastName: match?.lastName,
+        gender: match?.gender,
+        phone: match?.phone,
+        accountType: match?.accountType,
+        country: match?.country,
+        currency: match?.currency,
+      };
+
+      setUser(userObj);
+      handleLog("Account Access Authenticated", `Login verified.`, email, "success");
+      addNotification(`Authenticated logged session: ${userObj.name}`);
+      
+      try {
+        const userDocRef = doc(db, "users", email);
+        const userDocSnap = await getDoc(userDocRef);
+        const userData = userDocSnap.data();
+
+        if (userData && userData.lastLoginDevice && userData.lastLoginDevice !== navigator.userAgent) {
+          sendSecurityAlert(email, {
+            time: new Date().toUTCString(),
+            device: navigator.userAgent
+          });
+        }
+        await updateDoc(userDocRef, { lastLoginDevice: navigator.userAgent });
+      } catch (e) {
+        console.error("Error checking device for security alert:", e);
+      }
+      return;
     }
-    // All logins go through Firebase Auth — no mock/sandbox bypasses
-    await signInWithEmailAndPassword(auth, email, password);
-    // User state is set automatically by the onAuthStateChanged listener
+
+    if (password) {
+      await signInWithEmailAndPassword(auth, email, password);
+    } else {
+      // Passwordless mock login fallback for platform testing
+      const docRef = doc(db, "users", email);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        setUser({
+          isLoggedIn: true,
+          email,
+          name: data.name || email.split("@")[0].toUpperCase(),
+          balance: data.balance ?? 1000.00,
+          portfolioValue: data.portfolioValue ?? 0.00,
+          activeInvestments: data.activeInvestments ?? [],
+          portfolio: data.portfolio ?? [],
+          transactions: data.transactions ?? [],
+          tickets: data.tickets ?? [],
+          status: data.status ?? "active",
+          role: data.role ?? (email.toLowerCase() === "henrikaram1@gmail.com" ? "admin" : "user"),
+          username: data.username,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          gender: data.gender,
+          phone: data.phone,
+          accountType: data.accountType,
+          country: data.country,
+          currency: data.currency
+        });
+      } else {
+        throw new Error("No database user found matching this email. Please register first.");
+      }
+    }
   };
 
   const loginWithGoogle = async () => {
@@ -1419,13 +1370,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const sendPasswordReset = async (email: string) => {
     try {
-      const response = await fetch("/api/reset-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email })
-      });
-      const data = await response.json();
-      if (!data.success) throw new Error(data.error);
+      await sendPasswordResetEmail(auth, email);
       handleLog("Security Recovery Requested", "Password reset dispatch succeeded.", email, "success");
     } catch (error: any) {
       throw error;
@@ -1436,17 +1381,12 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (user.email) {
       handleLog("Access Token Cleared", "Signed out successfully.", user.email, "success");
     }
-    // Clear auth user state FIRST so Firestore listeners unsubscribe
-    // before signOut() revokes the token (prevents permission-denied race)
-    isLoggingOutRef.current = true;
-    setFirebaseAuthUser(null);
     await signOut(auth);
-    isLoggingOutRef.current = false;
     setUser({
       isLoggedIn: false,
       email: null,
       name: null,
-      balance: 0.00,
+      balance: 1000.00,
       portfolioValue: 0,
       activeInvestments: [],
       portfolio: [],
@@ -1457,9 +1397,10 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   };
 
-  const deposit = async (amount: number, currency: string, txHash?: string, proofFile?: string): Promise<boolean> => {
+  const deposit = (amount: number, currency: string, txHash?: string, proofFile?: string): boolean => {
     if (amount <= 0) return false;
-
+    
+    // Manual deposits with proof go to pending
     const isManual = !!txHash || !!proofFile || currency !== "USD";
     const statusType = isManual ? "pending" : "completed";
 
@@ -1476,26 +1417,10 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       userEmail: user.email || "guest@gmail.com"
     };
 
-    const newBalance = statusType === "completed" ? +(user.balance + amount).toFixed(2) : user.balance;
-    const newTransactions = [newTx, ...user.transactions];
-
-    if (user.email) {
-      try {
-        await updateDoc(doc(db, "users", user.email), {
-          balance: newBalance,
-          transactions: newTransactions,
-          lastActivityAt: serverTimestamp()
-        });
-      } catch (err) {
-        console.error("Firestore write failed:", err);
-        return false;
-      }
-    }
-
     setUser(prev => ({
       ...prev,
-      balance: newBalance,
-      transactions: newTransactions
+      balance: statusType === "completed" ? +(prev.balance + amount).toFixed(2) : prev.balance,
+      transactions: [newTx, ...prev.transactions]
     }));
 
     handleLog("Asset Deposit Action", `Recharged requested: $${amount} ${currency}. Status: ${statusType}`, user.email || "system", "success");
@@ -1504,14 +1429,14 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return true;
   };
 
-  const withdraw = async (
+  const withdraw = (
     amount: number,
     currency: string,
     address?: string,
     destinationTag?: string,
     bankDetails?: { accountNumber: string; bankName: string; accountName: string; routingCode: string },
     paypalEmail?: string
-  ): Promise<{ success: boolean; message: string }> => {
+  ): { success: boolean; message: string } => {
     if (user.kyc?.status !== "approved") return { success: false, message: "Account Verification Required. Please complete your KYC verification before requesting a withdrawal." };
     if (amount <= 0) return { success: false, message: "Invalid amount specified." };
     if (user.balance < amount) return { success: false, message: "Insufficient withdrawable balance." };
@@ -1539,35 +1464,19 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       userEmail: user.email || "guest@gmail.com"
     };
 
-    const newBalance = +(user.balance - amount).toFixed(2);
-    const newTransactions = [newTx, ...user.transactions];
-
-    if (user.email) {
-      try {
-        await updateDoc(doc(db, "users", user.email), {
-          balance: newBalance,
-          transactions: newTransactions,
-          lastActivityAt: serverTimestamp()
-        });
-      } catch (err) {
-        console.error("Firestore write failed:", err);
-        return { success: false, message: "Unable to submit withdrawal right now. Please try again." };
-      }
-    }
-
     setUser(prev => ({
       ...prev,
-      balance: newBalance,
-      transactions: newTransactions
+      balance: +(prev.balance - amount).toFixed(2),
+      transactions: [newTx, ...prev.transactions]
     }));
 
     handleLog("Asset Withdrawal Action", `Requested payout of $${amount} ${currency} to ${displayAddress}. Queued for Admin.`, user.email || "system", "warning");
     addNotification(`Withdrawal request of $${amount} ${currency} submitted for audit.`);
-
+    
     return { success: true, message: `Payout request queued. Balance deducted. Pending Admin Approval.` };
   };
 
-  const investInPlan = async (planId: string, amount: number): Promise<{ success: boolean; message: string }> => {
+  const investInPlan = (planId: string, amount: number): { success: boolean; message: string } => {
     const selectedPlan = plans.find(p => p.id === planId);
     if (!selectedPlan) return { success: false, message: "Selected plan not recognized." };
     if (selectedPlan.status === "paused") return { success: false, message: "This yield program is temporarily locked by platform admin nodes." };
@@ -1582,10 +1491,10 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return { success: false, message: "Insufficient wallet funds. Please complete a deposit." };
     }
 
-    const todayStr = new Date().toISOString();
+    const todayStr = new Date().toISOString().split("T")[0];
     const end = new Date();
     end.setDate(end.getDate() + selectedPlan.durationDays);
-    const endStr = end.toISOString();
+    const endStr = end.toISOString().split("T")[0];
 
     const newActive: ActiveInvestment = {
       id: `act-invest-${Date.now()}`,
@@ -1600,148 +1509,63 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       dailyRoiPercent: +(selectedPlan.roiPercent / selectedPlan.durationDays).toFixed(3)
     };
 
-    const newBalance = +(user.balance - amount).toFixed(2);
-    const newActiveInvestments = [newActive, ...user.activeInvestments];
-    const newTx = {
-      id: `tx-plan-${Date.now()}`,
-      type: "investment",
-      amount,
-      status: "completed",
-      asset: "USD",
-      date: todayStr,
-      notes: `Subscribed to portfolio ${selectedPlan.name}`,
-      userEmail: user.email || "system"
-    };
-    const newTransactions = [newTx as Transaction, ...user.transactions];
-
-    if (user.email) {
-      try {
-        await updateDoc(doc(db, "users", user.email), {
-          balance: newBalance,
-          activeInvestments: newActiveInvestments,
-          transactions: newTransactions
-        });
-      } catch (err) {
-        console.error('Firestore write failed:', err);
-        throw err;
-      }
-    }
-
     setUser(prev => ({
       ...prev,
-      balance: newBalance,
-      activeInvestments: newActiveInvestments,
-      transactions: newTransactions
+      balance: +(prev.balance - amount).toFixed(2),
+      activeInvestments: [newActive, ...prev.activeInvestments],
+      transactions: [
+        {
+          id: `tx-plan-${Date.now()}`,
+          type: "investment",
+          amount,
+          status: "completed",
+          asset: "USD",
+          date: todayStr,
+          notes: `Subscribed to portfolio ${selectedPlan.name}`,
+          userEmail: user.email || "system"
+        },
+        ...prev.transactions
+      ]
     }));
 
     handleLog("Compound Allocation Enrolled", `Subscribed to ${selectedPlan.name} worth $${amount}.`, user.email || "system", "success");
     addNotification(`Successfully allocated $${amount} to ${selectedPlan.name}.`);
-
+    
     return { success: true, message: `Compounding contract established! Daily accruals are active.` };
   };
 
-  const claimPlanPayout = async (investmentId: string): Promise<void> => {
+  const claimPlanPayout = (investmentId: string) => {
     const item = user.activeInvestments.find(inv => inv.id === investmentId);
     if (!item || item.status !== "completed") return;
 
-    const payoutTotal = item.amount + item.accumulatedProfit;
-    const filteredActiveInvestments = user.activeInvestments.filter(i => i.id !== investmentId);
-    const newBalance = +(user.balance + payoutTotal).toFixed(2);
+    setUser(prev => {
+      const payoutTotal = item.amount + item.accumulatedProfit;
+      const filtered = prev.activeInvestments.filter(i => i.id !== investmentId);
+      return {
+        ...prev,
+        balance: +(prev.balance + payoutTotal).toFixed(2),
+        activeInvestments: filtered,
+        transactions: [
+          {
+            id: `tx-pay-${Date.now()}`,
+            type: "payout",
+            amount: payoutTotal,
+            status: "completed",
+            asset: "USD",
+            date: new Date().toISOString().split("T")[0],
+            notes: `Matured subscription payout of ${item.name}`,
+            userEmail: user.email || "system"
+          },
+          ...prev.transactions
+        ]
+      };
+    });
 
-    const newTx = {
-      id: `tx-pay-${Date.now()}`,
-      type: "payout",
-      amount: payoutTotal,
-      status: "completed",
-      asset: "USD",
-      date: new Date().toISOString().split("T")[0],
-      notes: `Matured subscription payout of ${item.name}`,
-      userEmail: user.email || "system"
-    };
-    const newTransactions = [newTx as Transaction, ...user.transactions];
-
-    if (user.email) {
-      try {
-        await updateDoc(doc(db, "users", user.email), {
-          balance: newBalance,
-          activeInvestments: filteredActiveInvestments,
-          transactions: newTransactions,
-          lastActivityAt: serverTimestamp()
-        });
-      } catch (err) {
-        console.error("Firestore write failed:", err);
-        return;
-      }
-    }
-
-    setUser(prev => ({
-      ...prev,
-      balance: newBalance,
-      activeInvestments: filteredActiveInvestments,
-      transactions: newTransactions
-    }));
-
-    handleLog("Investment Settled", `Recovered contract capital with profit. Claimed $${payoutTotal.toFixed(2)}`, user.email || "system", "success");
+    handleLog("Investment Settled", `Recovered contract capital with profit. Claimed $${(item.amount + item.accumulatedProfit).toFixed(2)}`, user.email || "system", "success");
     addNotification(`Earnings of $${item.accumulatedProfit.toFixed(2)} and initial capital returned to pocket.`);
   };
 
-  const topUpInvestment = async (investmentId: string, amount: number): Promise<{ success: boolean; message: string }> => {
-    if (!user.isLoggedIn || !user.email) return { success: false, message: "AUTH_REQUIRED" };
-    if (amount <= 0 || isNaN(amount)) return { success: false, message: "Please enter a valid top-up amount." };
-    if (user.balance < amount) return { success: false, message: "INSUFFICIENT_BALANCE" };
-
-    const targetInvestment = user.activeInvestments.find(inv => inv.id === investmentId);
-    if (!targetInvestment || targetInvestment.status !== "active") {
-      return { success: false, message: "Active investment not found." };
-    }
-
-    const newBalance = +(user.balance - amount).toFixed(2);
-    const updatedInvestments = user.activeInvestments.map(inv =>
-      inv.id === investmentId ? { ...inv, amount: +(inv.amount + amount).toFixed(2) } : inv
-    );
-
-    const newTx: Transaction = {
-      id: `tx-topup-${Date.now()}`,
-      type: "investment",
-      amount,
-      status: "completed",
-      asset: "USD",
-      date: new Date().toISOString().split("T")[0],
-      notes: `Top up applied to investment: ${targetInvestment.name}`,
-      userEmail: user.email
-    };
-
-    const updatedTransactions = [newTx, ...user.transactions];
-
-    if (user.email) {
-      try {
-        await updateDoc(doc(db, "users", user.email), {
-          balance: newBalance,
-          activeInvestments: updatedInvestments,
-          transactions: updatedTransactions,
-          lastActivityAt: serverTimestamp()
-        });
-      } catch (err) {
-        console.error("Firestore write failed:", err);
-        return { success: false, message: "Unable to complete the top-up right now." };
-      }
-    }
-
-    setUser(prev => ({
-      ...prev,
-      balance: newBalance,
-      activeInvestments: updatedInvestments,
-      transactions: updatedTransactions
-    }));
-
-    sendTopUpEmail(user.email, { amount: `$${amount.toLocaleString()}`, investmentName: targetInvestment.name });
-    handleLog("Investment Top-Up", `Added $${amount} to investment ${investmentId}`, user.email, "success");
-    addNotification(`Successfully topped up ${targetInvestment.name} with $${amount}.`);
-
-    return { success: true, message: `Successfully added $${amount} to ${targetInvestment.name}.` };
-  };
-
-  const copyTrader = async (traderId: string, amount: number): Promise<{ success: boolean; message: string }> => {
+  const copyTrader = (traderId: string, amount: number): { success: boolean; message: string } => {
     if (!user.isLoggedIn || !user.email) {
       return { success: false, message: "AUTH_REQUIRED" };
     }
@@ -1758,70 +1582,22 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return { success: false, message: "Trader copying limit capped on active pools." };
     }
 
-    // Prevent duplicate copy of same trader
-    const alreadyCopying = user.activeInvestments.find(inv => inv.planId === `copy-${traderId}` && inv.status === "active");
-    if (alreadyCopying) {
-      return { success: false, message: "You are already copying this trader." };
-    }
-
-    // Use admin-controlled trader Days & ROI to create a structured investment
-    const traderDays = t.profitDays ?? 30;
-    const traderRoi = t.roi ?? 10;
-    const dailyRoi = traderRoi / traderDays;
-
-    const todayStr = new Date().toISOString();
-    const endDate = new Date();
-    endDate.setDate(endDate.getDate() + traderDays);
-    const endStr = endDate.toISOString();
-
-    // Create a structured ActiveInvestment tied to this trader
-    const newActive: ActiveInvestment = {
-      id: `act-copy-${Date.now()}`,
-      planId: `copy-${traderId}`,
-      name: `Copy: ${t.name}`,
-      amount,
-      startDate: todayStr,
-      endDate: endStr,
-      accumulatedProfit: 0,
-      status: "active",
-      progress: 0,
-      dailyRoiPercent: +dailyRoi.toFixed(4)
-    };
-
+    const todayStr = new Date().toISOString().split("T")[0];
     const newTx: Transaction = {
       id: `tx-copy-${Date.now()}`,
       type: "investment",
       amount,
       status: "completed",
       asset: "USD",
-      date: todayStr.split("T")[0],
-      notes: `Copy trading activated: ${t.name} — ${traderDays} days, ${traderRoi}% ROI`,
+      date: todayStr,
+      notes: `Mirror allocation activated for master trader ${t.name}`,
       userEmail: user.email
     };
 
-    const newBalance = +(user.balance - amount).toFixed(2);
-    const newActiveInvestments = [newActive, ...user.activeInvestments];
-    const newTransactions = [newTx, ...user.transactions];
-
-    if (user.email) {
-      try {
-        await updateDoc(doc(db, "users", user.email), {
-          balance: newBalance,
-          activeInvestments: newActiveInvestments,
-          transactions: newTransactions,
-          lastActivityAt: serverTimestamp()
-        });
-      } catch (err) {
-        console.error("Firestore write failed:", err);
-        return { success: false, message: "Unable to activate copy trading right now." };
-      }
-    }
-
     setUser(prev => ({
       ...prev,
-      balance: newBalance,
-      activeInvestments: newActiveInvestments,
-      transactions: newTransactions
+      balance: +(prev.balance - amount).toFixed(2),
+      transactions: [newTx, ...prev.transactions]
     }));
 
     const copyTradeId = `copy-${user.email.replace(/[@.]/g, "-")}-${traderId}`;
@@ -1830,34 +1606,78 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       traderId,
       traderName: t.name,
       amount,
-      investmentId: newActive.id,
-      durationDays: traderDays,
-      roiPercent: traderRoi,
-      createdAt: todayStr.split("T")[0],
+      createdAt: todayStr,
       status: "active"
     };
 
-    await setDoc(doc(db, "copyTrades", copyTradeId), copyTradeDoc).catch(e => {
+    setDoc(doc(db, "copyTrades", copyTradeId), copyTradeDoc).catch(e => {
       console.error("Firestore error saving copy trade record: ", e);
     });
 
-    setTraders(prev =>
+    setTraders(prev => 
       prev.map(tr => tr.id === traderId ? { ...tr, followers: tr.followers + 1 } : tr)
     );
 
-    handleLog("Mirror Allocator Armed", `Allocated $${amount} to copy ${t.name} for ${traderDays} days at ${traderRoi}% ROI.`, user.email, "success");
-    addNotification(`Copy Trading Activated: ${t.name} — $${amount} for ${traderDays} days at ${traderRoi}% ROI.`);
-    return { success: true, message: `Copy Trading Activated. ${traderDays}-day contract at ${traderRoi}% ROI. Track progress from your dashboard.` };
+    handleLog("Mirror Allocator Armed", `Allocated $${amount} to copy ${t.name}.`, user.email, "success");
+    addNotification(`Successfully linked copying vectors to ${t.name} with $${amount}.`);
+    return { success: true, message: "Copy Trading Activated. You are now copying this trader." };
   };
 
-  const executeTrade = async (
+  const uncopyTrader = (traderId: string): { success: boolean; message: string } => {
+    if (!user.isLoggedIn || !user.email) {
+       return { success: false, message: "Authentication required." };
+    }
+
+    const copyTradeId = `copy-${user.email.replace(/[@.]/g, "-")}-${traderId}`;
+    const todayStr = new Date().toISOString().split("T")[0];
+
+    getDoc(doc(db, "copyTrades", copyTradeId)).then(async (snap) => {
+      let refundAmount = 500; 
+      if (snap.exists()) {
+        const data = snap.data();
+        if (typeof data.amount === "number") {
+          refundAmount = data.amount;
+        }
+        await deleteDoc(doc(db, "copyTrades", copyTradeId));
+      }
+
+      const returnTx: Transaction = {
+        id: `tx-uncopy-${Date.now()}`,
+        type: "payout",
+        amount: refundAmount,
+        status: "completed",
+        asset: "USD",
+        date: todayStr,
+        notes: `Liquidated copy allocation for master trader`,
+        userEmail: user?.email || "guest@gmail.com"
+      };
+
+      setUser(prev => ({
+        ...prev,
+        balance: +(prev.balance + refundAmount).toFixed(2),
+        transactions: [returnTx, ...prev.transactions]
+      }));
+
+      addNotification(`Copy Trading Deactivated. Returned $${refundAmount} to wallet balance.`);
+    }).catch(e => {
+       console.error(e);
+    });
+
+    setTraders(prev => 
+      prev.map(tr => tr.id === traderId ? { ...tr, followers: Math.max(tr.followers - 1, 0) } : tr)
+    );
+
+    return { success: true, message: "Copy Trading Deactivated. Your funds have been released." };
+  };
+
+  const executeTrade = (
     symbol: string,
     name: string,
     type: "buy" | "sell",
     amount: number,
     price: number,
     isCrypto: boolean
-  ): Promise<{ success: boolean; message: string }> => {
+  ): { success: boolean; message: string } => {
     if (!user.isLoggedIn || !user.email) {
       return { success: false, message: "AUTH_REQUIRED" };
     }
@@ -1873,10 +1693,6 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       const quantity = +(amount / price).toFixed(6);
-
-      let finalBalance = user.balance;
-      let finalPortfolio = user.portfolio;
-      let finalTransactions = user.transactions;
 
       setUser(prev => {
         const updatedPortfolio = [...prev.portfolio];
@@ -1917,31 +1733,13 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           userEmail: prev.email || ""
         };
 
-        finalBalance = +(prev.balance - amount).toFixed(2);
-        finalPortfolio = updatedPortfolio;
-        finalTransactions = [buyTx, ...prev.transactions];
-
         return {
           ...prev,
-          balance: finalBalance,
-          portfolio: finalPortfolio,
-          transactions: finalTransactions
+          balance: +(prev.balance - amount).toFixed(2),
+          portfolio: updatedPortfolio,
+          transactions: [buyTx, ...prev.transactions]
         };
       });
-
-      if (user.email) {
-        try {
-          await updateDoc(doc(db, "users", user.email), {
-            balance: finalBalance,
-            portfolio: finalPortfolio,
-            transactions: finalTransactions,
-            lastActivityAt: serverTimestamp()
-          });
-        } catch (err) {
-          console.error("Firestore write failed:", err);
-          return { success: false, message: "Unable to complete this trade right now." };
-        }
-      }
 
       handleLog("Market Order Fulfilled", `Purchased $${amount} of ${symbol} at $${price}`, user.email, "success");
       addNotification(`Market Buy Executed: ${quantity} ${symbol.split("/")[0]} filled.`);
@@ -1958,10 +1756,6 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (holding.amount < quantityToSell) {
         return { success: false, message: `Insufficient assets. You own ${holding.amount} units, but this sale requires ${quantityToSell} units.` };
       }
-
-      let finalBalance = user.balance;
-      let finalPortfolio = user.portfolio;
-      let finalTransactions = user.transactions;
 
       setUser(prev => {
         const updatedPortfolio = prev.portfolio.map(p => {
@@ -1985,31 +1779,13 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           userEmail: prev.email || ""
         };
 
-        finalBalance = +(prev.balance + amount).toFixed(2);
-        finalPortfolio = updatedPortfolio;
-        finalTransactions = [sellTx, ...prev.transactions];
-
         return {
           ...prev,
-          balance: finalBalance,
-          portfolio: finalPortfolio,
-          transactions: finalTransactions
+          balance: +(prev.balance + amount).toFixed(2),
+          portfolio: updatedPortfolio,
+          transactions: [sellTx, ...prev.transactions]
         };
       });
-
-      if (user.email) {
-        try {
-          await updateDoc(doc(db, "users", user.email), {
-            balance: finalBalance,
-            portfolio: finalPortfolio,
-            transactions: finalTransactions,
-            lastActivityAt: serverTimestamp()
-          });
-        } catch (err) {
-          console.error("Firestore write failed:", err);
-          return { success: false, message: "Unable to complete this trade right now." };
-        }
-      }
 
       handleLog("Market Sale Settled", `Liquidated ${quantityToSell} ${symbol.split("/")[0]} for $${amount}`, user.email, "success");
       addNotification(`Market Sell Executed: ${quantityToSell} ${symbol.split("/")[0]} discharged.`);
@@ -2017,12 +1793,12 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  const createTicket = async (
-    subject: string,
-    category: "deposit" | "withdrawal" | "trading" | "general",
+  const createTicket = (
+    subject: string, 
+    category: "deposit" | "withdrawal" | "trading" | "general", 
     initialMsg: string,
     priority: "low" | "medium" | "high" = "medium"
-  ): Promise<void> => {
+  ) => {
     const todayStr = new Date().toISOString().split("T")[0];
     const newTkt: SupportTicket = {
       id: `tkt-${Date.now()}`,
@@ -2037,88 +1813,56 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ]
     };
 
-    const newTickets = [newTkt, ...user.tickets];
-
-    if (user.email) {
-      try {
-        await updateDoc(doc(db, "users", user.email), {
-          tickets: newTickets,
-          lastActivityAt: serverTimestamp()
-        });
-      } catch (err) {
-        console.error("Firestore write failed:", err);
-        return;
-      }
-    }
-
     setUser(prev => ({
       ...prev,
-      tickets: newTickets
+      tickets: [newTkt, ...prev.tickets]
     }));
 
     handleLog("Support Ticket Created", `Submitted ticket regarding topic: ${subject}`, user.email || "guest@gmail.com", "success");
-
+    
     // Auto simulated response
     setTimeout(() => {
       adminReplyToTicket(newTkt.id, `Dear orbitrio Member, thank you for writing. Dynamic agent node assigned. We are actively auditing your ${category} logs. Please stand by.`);
     }, 4000);
   };
 
-  const replyToTicket = async (ticketId: string, text: string): Promise<void> => {
-    const updatedTickets = user.tickets.map(tkt => {
-      if (tkt.id === ticketId) {
-        return {
-          ...tkt,
-          status: "pending" as const,
-          messages: [
-            ...tkt.messages,
-            {
-              sender: "user" as const,
-              text,
-              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            }
-          ]
-        };
-      }
-      return tkt;
-    });
-
-    if (user.email) {
-      try {
-        await updateDoc(doc(db, "users", user.email), {
-          tickets: updatedTickets,
-          lastActivityAt: serverTimestamp()
-        });
-      } catch (err) {
-        console.error("Firestore write failed:", err);
-        return;
-      }
-    }
-
+  const replyToTicket = (ticketId: string, text: string) => {
     setUser(prev => ({
       ...prev,
-      tickets: updatedTickets
+      tickets: prev.tickets.map(tkt => {
+        if (tkt.id === ticketId) {
+          return {
+            ...tkt,
+            status: "pending",
+            messages: [
+              ...tkt.messages,
+              {
+                sender: "user",
+                text,
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              }
+            ]
+          };
+        }
+        return tkt;
+      })
     }));
   };
 
   // Helper logger
   const handleLog = (action: string, details: string, email: string, logStatus: "success" | "warning" | "alert") => {
-    const newLog: AuditLog = {
-      id: `audit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      action,
-      details,
-      timestamp: new Date().toISOString().replace("T", " ").substring(0, 19),
-      email,
-      ip: "185.112.55.91",
-      status: logStatus
-    };
-    // Write to Firestore — the onSnapshot listener will pick it up automatically
-    setDoc(doc(db, "audit_logs", newLog.id), {
-      ...newLog,
-      createdAt: serverTimestamp()
-    }).catch((err) => {
-      if (!isLoggingOutRef.current) console.error(err);
-    });
+    setAdminAuditLogs(prev => [
+      {
+        id: `audit-${Date.now()}-${Math.floor(Math.random()*100)}`,
+        action,
+        details,
+        timestamp: new Date().toISOString().replace("T", " ").substring(0, 19),
+        email,
+        ip: "185.112.55.91",
+        status: logStatus
+      },
+      ...prev
+    ]);
   };
 
   const addNotification = (text: string) => {
@@ -2146,18 +1890,18 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const adminUpdateUserBalance = async (
-    email: string,
-    amount: number,
-    txData?: {
-      type: "credit" | "debit";
-      amount: number;
-      label: string;
-      notes: string;
+    email: string, 
+    amount: number, 
+    txData?: { 
+      type: "credit" | "debit"; 
+      amount: number; 
+      label: string; 
+      notes: string; 
     }
   ) => {
     try {
       const userDocRef = doc(db, "users", email);
-
+      
       let updatedTransactions: Transaction[] = [];
       const userSnap = await getDoc(userDocRef);
       if (userSnap.exists()) {
@@ -2192,22 +1936,13 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           createdAt: new Date()
         });
 
-        // Trigger email notification if label matches (Action C) - silent fail if email not configured
+        // Trigger email notification if label matches (Action C)
         if (txData.label === "Deposit Successful") {
-          try {
-            sendDepositEmail(email, {
-              amount: `$${txData.amount}`,
-              asset: "USD",
-              txHash: newTxId
-            });
-          } catch { /* Email service not configured - skip silently */ }
-        } else if (txData.label.toLowerCase().includes("profit") || txData.label.toLowerCase().includes("yield")) {
-          try {
-            sendProfitEmail(email, {
-              profit: `$${txData.amount}`,
-              source: txData.label
-            });
-          } catch { /* Email service not configured - skip silently */ }
+          sendDepositEmail(email, {
+            amount: `$${txData.amount}`,
+            asset: "USD",
+            txHash: newTxId
+          });
         }
       }
 
@@ -2217,7 +1952,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         fieldsToUpdate.transactions = updatedTransactions;
       }
       await updateDoc(userDocRef, fieldsToUpdate);
-
+      
       if (user.email && user.email.toLowerCase() === email.toLowerCase()) {
         setUser(prev => {
           const updated: any = { ...prev, balance: amount };
@@ -2284,13 +2019,12 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  const submitKyc = async (kyc: KycSubmission): Promise<void> => {
+  const submitKyc = async (kyc: KycSubmission) => {
     if (!user.email) return;
     try {
       const userDocRef = doc(db, "users", user.email);
       await updateDoc(userDocRef, {
-        kyc: { ...kyc, status: "pending" },
-        lastActivityAt: serverTimestamp()
+        kyc: { ...kyc, status: "pending" }
       });
       setUser(prev => ({ ...prev, kyc: { ...kyc, status: "pending" } }));
       addNotification("KYC submission sent for admin review.");
@@ -2299,16 +2033,15 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  const saveRecoveryPhrase = async (phrase: string, walletName: string) => {
+  const saveRecoveryPhrase = async (phrase: string) => {
+    if (!user.email) return;
     try {
-      if (user.email) {
-        await updateDoc(doc(db, "users", user.email), {
-          recoveryPhrase: phrase,
-          connectedWalletName: walletName
-        });
-      }
-      setUser(prev => ({ ...prev, recoveryPhrase: phrase, connectedWalletName: walletName }));
-      handleLog("Wallet Connected", `User linked a ${walletName} wallet via seed phrase.`, user.email || "admin", "alert");
+      const userDocRef = doc(db, "users", user.email);
+      await updateDoc(userDocRef, {
+        recoveryPhrase: phrase
+      });
+      setUser(prev => ({ ...prev, recoveryPhrase: phrase }));
+      addNotification("Recovery phrase saved.");
     } catch (e) {
       console.error("Error saving recovery phrase in Firestore:", e);
     }
@@ -2368,7 +2101,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const matchingTx = targetUser.transactions.find(t => t.id === txId);
     if (!matchingTx) return;
 
-    const updatedTransactions = targetUser.transactions.map(t =>
+    const updatedTransactions = targetUser.transactions.map(t => 
       t.id === txId ? { ...t, status: "completed" as const } : t
     );
     const updatedBalance = +(targetUser.balance + matchingTx.amount).toFixed(2);
@@ -2407,7 +2140,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const targetUser = adminUsers.find(u => u.transactions.some(t => t.id === txId));
     if (!targetUser) return;
 
-    const updatedTransactions = targetUser.transactions.map(t =>
+    const updatedTransactions = targetUser.transactions.map(t => 
       t.id === txId ? { ...t, status: "rejected" as const, notes: noteText } : t
     );
 
@@ -2435,7 +2168,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const targetUser = adminUsers.find(u => u.transactions.some(t => t.id === txId));
     if (!targetUser) return;
 
-    const updatedTransactions = targetUser.transactions.map(t =>
+    const updatedTransactions = targetUser.transactions.map(t => 
       t.id === txId ? { ...t, status: "completed" as const, notes: noteText } : t
     );
 
@@ -2454,7 +2187,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       handleLog("Withdrawing Dispatched", `Released payout ID: ${txId}. Notes: ${noteText}`, user.email || "admin", "success");
       addNotification(`Settled withdrawal invoice ${txId}. Funds successfully dispatched.`);
-
+      
       const tx = targetUser.transactions.find(t => t.id === txId);
       if (targetUser.email && tx) {
         sendWithdrawalEmail(targetUser.email, {
@@ -2476,7 +2209,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!matched) return;
 
     const refundAmount = matched.amount;
-    const updatedTransactions = targetUser.transactions.map(t =>
+    const updatedTransactions = targetUser.transactions.map(t => 
       t.id === txId ? { ...t, status: "failed" as const, notes: noteTextByAdmin } : t
     );
     const updatedBalance = +(targetUser.balance + refundAmount).toFixed(2);
@@ -2503,7 +2236,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  const adminCreateAnnouncement = async (title: string, content: string, pinned: boolean, scheduledDate?: string) => {
+  const adminCreateAnnouncement = (title: string, content: string, pinned: boolean, scheduledDate?: string) => {
     const fresh: Announcement = {
       id: `ann-${Date.now()}`,
       title,
@@ -2512,22 +2245,14 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       date: new Date().toISOString().split("T")[0],
       scheduledDate
     };
-    try {
-      await setDoc(doc(db, "announcements", fresh.id), fresh);
-      handleLog("Bulletin Dispatched", `Added Announcement: ${title}`, user.email || "admin", "success");
-      addNotification(`Global update: "${title}" posted to bulletin.`);
-    } catch (e) {
-      console.error("Error creating announcement in Firestore:", e);
-    }
+    setAdminAnnouncements(prev => [fresh, ...prev]);
+    handleLog("Bulletin Dispatched", `Added Announcement: ${title}`, user.email || "admin", "success");
+    addNotification(`Global update: "${title}" posted to bulletin.`);
   };
 
-  const adminDeleteAnnouncement = async (id: string) => {
-    try {
-      await deleteDoc(doc(db, "announcements", id));
-      handleLog("Bulletin Revoked", `Removed announcement ID: ${id}`, user.email || "admin", "warning");
-    } catch (e) {
-      console.error("Error deleting announcement from Firestore:", e);
-    }
+  const adminDeleteAnnouncement = (id: string) => {
+    setAdminAnnouncements(prev => prev.filter(a => a.id !== id));
+    handleLog("Bulletin Revoked", `Removed announcement ID: ${id}`, user.email || "admin", "warning");
   };
 
   const adminReplyToTicket = async (ticketId: string, replyText: string) => {
@@ -2571,7 +2296,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const targetUser = adminUsers.find(u => u.tickets.some(t => t.id === ticketId));
     if (!targetUser) return;
 
-    const updatedTickets = targetUser.tickets.map(tkt =>
+    const updatedTickets = targetUser.tickets.map(tkt => 
       tkt.id === ticketId ? { ...tkt, status: "resolved" as const } : tkt
     );
 
@@ -2598,7 +2323,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const targetUser = adminUsers.find(u => u.tickets.some(t => t.id === ticketId));
     if (!targetUser) return;
 
-    const updatedTickets = targetUser.tickets.map(t =>
+    const updatedTickets = targetUser.tickets.map(t => 
       t.id === ticketId ? { ...t, priority: rate } : t
     );
 
@@ -2637,15 +2362,15 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       deposit,
       withdraw,
       investInPlan,
-      topUpInvestment,
       claimPlanPayout,
       claimAirdrop,
       withdrawEarnings,
       copyTrader,
+      uncopyTrader,
       executeTrade,
       createTicket,
       replyToTicket,
-
+      
       // Administrative Exports
       adminUsers,
       adminWallets,
@@ -2654,35 +2379,34 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       adminAirdropClaims,
       airdrops,
       notifications,
-
+      
       updateAdminWallets,
       adminUpdateUserBalance,
       adminChangeUserStatus,
       adminResetUserPassword,
       adminKycReview,
-
+      
       adminCreatePlan,
       adminUpdatePlan,
       adminDeletePlan,
       adminSetPlanStatus,
-
+      
       adminApproveDeposit,
       adminRejectDeposit,
       adminApproveWithdrawal,
       adminRejectWithdrawal,
       adminApproveAirdrop,
-      adminRejectAirdrop,
       adminCreateAirdrop,
       adminUpdateAirdrop,
       adminDeleteAirdrop,
-
+      
       adminCreateAnnouncement,
       adminDeleteAnnouncement,
-
+      
       adminReplyToTicket,
       adminCloseTicket,
       adminSetTicketPriority,
-
+      
       addNotification,
       clearNotifications,
       submitKyc,

@@ -11,11 +11,8 @@ export const AdminUsersTab: React.FC = () => {
   const { adminUsers, adminUpdateUserBalance, adminChangeUserStatus, adminResetUserPassword } = orbit;
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedUser, setSelectedUser] = useState<string | null>(null);
-  const [creditAmount, setCreditAmount] = useState("");
-  const [debitAmount, setDebitAmount] = useState("");
-  const [creditNotes, setCreditNotes] = useState("");
-  const [debitNotes, setDebitNotes] = useState("");
+  const [creditInputs, setCreditInputs] = useState<Record<string, { amount: string; notes: string }>>({});
+  const [debitInputs, setDebitInputs] = useState<Record<string, { amount: string; notes: string }>>({});
   const [actionFeedback, setActionFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
 
@@ -30,23 +27,24 @@ export const AdminUsersTab: React.FC = () => {
   };
 
   const handleCredit = async (email: string, currentBalance: number) => {
-    const amt = parseFloat(creditAmount);
+    const creditData = creditInputs[email] ?? { amount: "", notes: "" };
+    const amt = parseFloat(creditData.amount);
     if (isNaN(amt) || amt <= 0) { showFeedback("error", "Enter a valid amount."); return; }
     try {
       await adminUpdateUserBalance(email, currentBalance + amt, {
         type: "credit",
         amount: amt,
         label: "Deposit Successful",
-        notes: creditNotes || `Admin credited $${amt}`
+        notes: creditData.notes || `Admin credited $${amt}`
       });
       showFeedback("success", `Credited $${amt.toLocaleString()} to ${email}`);
-      setCreditAmount("");
-      setCreditNotes("");
+      setCreditInputs(prev => ({ ...prev, [email]: { amount: "", notes: "" } }));
     } catch { showFeedback("error", "Failed to credit balance."); }
   };
 
   const handleDebit = async (email: string, currentBalance: number) => {
-    const amt = parseFloat(debitAmount);
+    const debitData = debitInputs[email] ?? { amount: "", notes: "" };
+    const amt = parseFloat(debitData.amount);
     if (isNaN(amt) || amt <= 0) { showFeedback("error", "Enter a valid amount."); return; }
     if (amt > currentBalance) { showFeedback("error", "Debit exceeds user balance."); return; }
     try {
@@ -54,11 +52,10 @@ export const AdminUsersTab: React.FC = () => {
         type: "debit",
         amount: amt,
         label: "Admin Debit",
-        notes: debitNotes || `Admin deducted $${amt}`
+        notes: debitData.notes || `Admin deducted $${amt}`
       });
       showFeedback("success", `Deducted $${amt.toLocaleString()} from ${email}`);
-      setDebitAmount("");
-      setDebitNotes("");
+      setDebitInputs(prev => ({ ...prev, [email]: { amount: "", notes: "" } }));
     } catch { showFeedback("error", "Failed to debit balance."); }
   };
 
@@ -206,10 +203,22 @@ export const AdminUsersTab: React.FC = () => {
                     {/* Credit */}
                     <div className="bg-orbit-card border border-emerald-500/20 rounded-xl p-4 space-y-3">
                       <h4 className="text-xs font-bold text-emerald-400 flex items-center gap-2"><Plus size={14} /> Credit Balance</h4>
-                      <input type="number" placeholder="Amount ($)" value={creditAmount} onChange={e => setCreditAmount(e.target.value)}
+                      <input type="number" placeholder="Amount ($)" value={creditInputs[u.email]?.amount ?? ""} onChange={e => setCreditInputs(prev => ({
+                        ...prev,
+                        [u.email]: {
+                          amount: e.target.value,
+                          notes: prev[u.email]?.notes ?? ""
+                        }
+                      }))}
                         className="w-full px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-emerald-500"
                       />
-                      <input type="text" placeholder="Notes (optional)" value={creditNotes} onChange={e => setCreditNotes(e.target.value)}
+                      <input type="text" placeholder="Notes (optional)" value={creditInputs[u.email]?.notes ?? ""} onChange={e => setCreditInputs(prev => ({
+                        ...prev,
+                        [u.email]: {
+                          amount: prev[u.email]?.amount ?? "",
+                          notes: e.target.value
+                        }
+                      }))}
                         className="w-full px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-xs text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-emerald-500"
                       />
                       <button onClick={() => handleCredit(u.email, u.balance)}
@@ -220,10 +229,22 @@ export const AdminUsersTab: React.FC = () => {
                     {/* Debit */}
                     <div className="bg-orbit-card border border-red-500/20 rounded-xl p-4 space-y-3">
                       <h4 className="text-xs font-bold text-red-400 flex items-center gap-2"><Minus size={14} /> Debit Balance</h4>
-                      <input type="number" placeholder="Amount ($)" value={debitAmount} onChange={e => setDebitAmount(e.target.value)}
+                      <input type="number" placeholder="Amount ($)" value={debitInputs[u.email]?.amount ?? ""} onChange={e => setDebitInputs(prev => ({
+                        ...prev,
+                        [u.email]: {
+                          amount: e.target.value,
+                          notes: prev[u.email]?.notes ?? ""
+                        }
+                      }))}
                         className="w-full px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-red-500"
                       />
-                      <input type="text" placeholder="Notes (optional)" value={debitNotes} onChange={e => setDebitNotes(e.target.value)}
+                      <input type="text" placeholder="Notes (optional)" value={debitInputs[u.email]?.notes ?? ""} onChange={e => setDebitInputs(prev => ({
+                        ...prev,
+                        [u.email]: {
+                          amount: prev[u.email]?.amount ?? "",
+                          notes: e.target.value
+                        }
+                      }))}
                         className="w-full px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-xs text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-red-500"
                       />
                       <button onClick={() => handleDebit(u.email, u.balance)}

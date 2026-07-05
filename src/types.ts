@@ -172,6 +172,7 @@ export interface UserState {
   tickets: SupportTicket[];
   status?: "active" | "suspended" | "banned";
   role?: "admin" | "user";
+  isAdmin?: boolean;
   username?: string;
   firstName?: string;
   lastName?: string;
