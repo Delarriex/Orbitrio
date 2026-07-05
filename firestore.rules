@@ -1,65 +1,93 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper functions to check auth and admin access
-    function isAdmin() {
-      return request.auth != null && request.auth.token.email != null && 
-             (request.auth.token.email.toLowerCase() == "henrikaram1@gmail.com" || 
-              get(/databases/$(database)/documents/users/$(request.auth.token.email.toLowerCase())).data.get('role', false) == "admin");
+    function isAuthenticated() {
+      return request.auth != null && request.auth.token.email != null;
     }
 
     function isOwner(email) {
-      return request.auth != null && request.auth.token.email != null && request.auth.token.email.toLowerCase() == email.toLowerCase();
+      return isAuthenticated() && request.auth.token.email.toLowerCase() == email.toLowerCase();
     }
 
-    // Public site content texts read access, write limited to admin
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.token.email));
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email.toLowerCase() == "henrikaram1@gmail.com" ||
+        (userDoc().exists() && userDoc().data.role == "admin")
+      );
+    }
+
     match /site_content/texts {
       allow read: if true;
       allow write: if isAdmin();
     }
 
-    // Public master traders read access, write limited to admin
     match /traders/{traderId} {
       allow read: if true;
       allow write: if isAdmin();
     }
-    
-    // Investment Plans
+
     match /investment_plans/{planId} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
-    // User profile matching document read/write access
     match /users/{email} {
       allow get: if isOwner(email) || isAdmin();
       allow list: if isAdmin();
-      allow create, update, delete: if isOwner(email) || isAdmin();
+      allow create: if isOwner(email) || isAdmin();
+      allow update: if isAdmin() || (
+        isOwner(email) &&
+        request.resource.data.role == resource.data.role &&
+        request.resource.data.status == resource.data.status &&
+        request.resource.data.isAdmin == resource.data.isAdmin
+      );
+      allow delete: if isAdmin();
     }
 
     match /admin_settings/{settingId} {
-      allow read: if request.auth != null;
+      allow read: if isAuthenticated();
       allow write: if isAdmin();
     }
-    
-    match /audit_logs/{logId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null;
+
+    match /transactions/{txId} {
+      allow read, write: if isAdmin();
     }
-    
+
+    match /copyTrades/{tradeId} {
+      allow create: if isAuthenticated() && request.resource.data.uid.toLowerCase() == request.auth.token.email.toLowerCase();
+      allow get, delete: if isAuthenticated() && resource.data.uid.toLowerCase() == request.auth.token.email.toLowerCase();
+      allow update: if false;
+      allow list: if isAdmin();
+    }
+
     match /airdrops/{airdropId} {
-      allow read: if request.auth != null;
+      allow read: if isAuthenticated();
       allow write: if isAdmin();
     }
 
     match /airdrop_claims/{claimId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null;
+      allow create: if isAuthenticated() && request.resource.data.userEmail.toLowerCase() == request.auth.token.email.toLowerCase();
+      allow get: if isAdmin() || (isAuthenticated() && resource.data.userEmail.toLowerCase() == request.auth.token.email.toLowerCase());
+      allow list: if isAdmin();
+      allow update: if isAdmin() || (
+        isAuthenticated() &&
+        resource.data.userEmail.toLowerCase() == request.auth.token.email.toLowerCase() &&
+        request.resource.data.status == resource.data.status
+      );
+      allow delete: if isAdmin();
     }
 
     match /announcements/{annId} {
-      allow read: if request.auth != null;
+      allow read: if isAuthenticated();
       allow write: if isAdmin();
+    }
+
+    match /audit_logs/{logId} {
+      allow read, write: if isAdmin();
     }
   }
 }

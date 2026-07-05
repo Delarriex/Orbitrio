@@ -18,10 +18,15 @@ export const DashboardKYC: React.FC = () => {
   const [frontFile, setFrontFile] = useState<File | null>(null);
   const [backFile, setBackFile] = useState<File | null>(null);
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
   const kyc = user.kyc || { status: "unverified", idType: "", idNumber: "", dob: "", address: "", city: "", country: "", frontImage: "", backImage: "" };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
+    setSubmitError(null);
     let frontUrl = frontImage;
     let backUrl = backImage;
 
@@ -36,21 +41,24 @@ export const DashboardKYC: React.FC = () => {
         await uploadBytes(storageRef, backFile);
         backUrl = await getDownloadURL(storageRef);
       }
-    } catch (err) {
-      console.error("Error uploading KYC documents:", err);
+      
+      await submitKyc({
+        idType,
+        idNumber,
+        dob,
+        address,
+        city,
+        country,
+        frontImage: frontUrl,
+        backImage: backUrl,
+        status: "pending",
+      });
+    } catch (err: any) {
+      console.error("Error submitting KYC:", err);
+      setSubmitError("Failed to submit verification. Please check your connection and try again.");
+    } finally {
+      setIsSubmitting(false);
     }
-
-    submitKyc({
-      idType,
-      idNumber,
-      dob,
-      address,
-      city,
-      country,
-      frontImage: frontUrl,
-      backImage: backUrl,
-      status: "pending",
-    });
   };
 
   return (
@@ -129,8 +137,18 @@ export const DashboardKYC: React.FC = () => {
                     />
                 </label>
             </div>
-            
-            <button type="submit" className="w-full bg-orbit-accent text-orbit-bg font-bold p-3 rounded-lg hover:opacity-90">Submit Verification</button>
+            {submitError && (
+              <div className="p-3 bg-red-500/10 border border-red-500/50 rounded-lg text-red-500 text-sm">
+                {submitError}
+              </div>
+            )}
+            <button 
+              type="submit" 
+              disabled={isSubmitting}
+              className="w-full bg-orbit-accent text-orbit-bg font-bold p-3 rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSubmitting ? "Submitting..." : "Submit Verification"}
+            </button>
           </form>
         ) : (
             <p className="text-sm text-orbit-gray-text">Your submission is under review.</p>

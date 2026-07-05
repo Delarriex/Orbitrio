@@ -1,6 +1,6 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState } from "react";
 import { useOrbit } from "../context/OrbitContext";
-import { Menu, X, User, LogOut, LayoutDashboard, Coins, Briefcase, Wallet2, TrendingUp, LogIn, UserPlus, History, Gift, Share2, Shield, CheckCircle2, ChevronDown } from "lucide-react";
+import { Menu, X, User, LogOut, LayoutDashboard, Coins, Briefcase, Wallet2, TrendingUp, LogIn, UserPlus, History, Gift, Share2, Shield, CheckCircle2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 interface NavigationProps {
@@ -11,19 +11,6 @@ interface NavigationProps {
 export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate }) => {
   const { user, logout } = useOrbit();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
-  const moreRef = useRef<HTMLDivElement>(null);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (moreRef.current && !moreRef.current.contains(e.target as Node)) {
-        setMoreOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
   const guestLinks = [
     { id: "home", label: "Home" },
@@ -33,42 +20,23 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
     { id: "contact", label: "Contact" }
   ];
 
-  // Primary nav links (always visible on desktop)
-  const primaryAuthLinks = [
-    { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard size={14} /> },
-    { id: "dashboard-trading", label: "Trade", icon: <TrendingUp size={14} /> },
-    { id: "dashboard-wallet", label: "Wallet", icon: <Wallet2 size={14} /> },
-    { id: "dashboard-portfolio", label: "Assets", icon: <Briefcase size={14} /> },
-    { id: "dashboard-plans", label: "Earn", icon: <Coins size={14} /> },
-  ];
-
-  // Secondary nav links (inside "More" dropdown on desktop)
-  const secondaryAuthLinks = [
-    { id: "copy-trading", label: "Copy Trading", icon: <User className="text-violet-400" size={14} /> },
-    { id: "dashboard-wallet-connect", label: "Connect Wallet", icon: <Wallet2 className="text-pink-400" size={14} /> },
-    { id: "dashboard-kyc", label: user.kyc?.status === "approved" ? "Verified ✓" : "Verify Identity", icon: user.kyc?.status === "approved" ? <CheckCircle2 size={14} className="text-emerald-400" /> : <Shield size={14} className="text-amber-400" /> },
-    { id: "dashboard-transactions", label: "Transaction History", icon: <History className="text-gray-400" size={14} /> },
-    { id: "dashboard-airdrops", label: "Airdrop Center", icon: <Gift className="text-rose-400" size={14} /> },
-    { id: "dashboard-referral", label: "Refer & Earn", icon: <Share2 className="text-indigo-400" size={14} /> },
-  ];
-
-  // Combined list for mobile menu
-  const allAuthLinks = [
+  const authLinks = [
     { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard className="text-blue-400" size={14} /> },
-    { id: "dashboard-trading", label: "Trade", icon: <TrendingUp className="text-emerald-400" size={14} /> },
-    { id: "dashboard-wallet", label: "Deposit / Withdraw", icon: <Wallet2 className="text-cyan-400" size={14} /> },
-    { id: "dashboard-portfolio", label: "Assets", icon: <Briefcase className="text-amber-400" size={14} /> },
-    { id: "dashboard-plans", label: "Earn", icon: <Coins className="text-yellow-400" size={14} /> },
-    { id: "copy-trading", label: "Copy Trading", icon: <User className="text-violet-400" size={14} /> },
     { id: "dashboard-wallet-connect", label: "Connect Wallet", icon: <Wallet2 className="text-pink-400" size={14} /> },
     { id: "dashboard-kyc", label: user.kyc?.status === "approved" ? "Verified" : "Verify Identity", icon: user.kyc?.status === "approved" ? <CheckCircle2 size={14} className="text-emerald-400" /> : <Shield size={14} className="text-amber-400" /> },
+    { id: "dashboard-trading", label: "Trade", icon: <TrendingUp className="text-emerald-400" size={14} /> },
+    { id: "copy-trading", label: "Copy Trading", icon: <User className="text-violet-400" size={14} /> },
+    { id: "dashboard-portfolio", label: "Assets", icon: <Briefcase className="text-amber-400" size={14} /> },
+    { id: "dashboard-wallet", label: "Deposit / Withdraw", icon: <Wallet2 className="text-cyan-400" size={14} /> },
     { id: "dashboard-transactions", label: "Transaction History", icon: <History className="text-gray-400" size={14} /> },
     { id: "dashboard-airdrops", label: "Airdrop", icon: <Gift className="text-rose-400" size={14} /> },
     { id: "dashboard-referral", label: "Refer & Earn", icon: <Share2 className="text-indigo-400" size={14} /> },
+    { id: "dashboard-plans", label: "Earn", icon: <Coins className="text-yellow-400" size={14} /> }
   ];
 
   const getUID = (email: string | null) => {
     if (!email) return "0000000";
+    // Stable numeric UID derived from email hash (7 digits)
     let hash = 0;
     for (let i = 0; i < email.length; i++) {
       hash = (email.charCodeAt(i) + ((hash << 5) - hash)) | 0;
@@ -78,51 +46,58 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
   };
 
   const isLinkActive = (id: string) => {
-    if (id === "home") return currentView === "home" || currentView === "";
-    return currentView === id;
-  };
-
-  const handleGuestLinkClick = (linkId: string) => {
-    if (linkId === "about-us" || linkId === "contact") {
-      if (window.location.pathname === '/') {
-        const el = document.getElementById(linkId);
-        if (el) el.scrollIntoView({ behavior: 'smooth' });
-        window.history.pushState(null, '', `/#${linkId}`);
-      } else {
-        onNavigate("home#"+linkId);
-      }
-    } else {
-      onNavigate(linkId);
+    if (id === "home") {
+      return currentView === "home" || currentView === "";
     }
-    setMobileMenuOpen(false);
+    return currentView === id;
   };
 
   return (
     <>
-      <nav role="navigation" aria-label="Main navigation" className="fixed top-0 left-0 right-0 w-full h-16 bg-[#07090E]/95 backdrop-blur-md border-b border-orbit-border/40 z-50 shadow-[0_4px_30px_rgba(0,0,0,0.4)]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between">
+      <nav role="navigation" aria-label="Main navigation" className="fixed top-0 left-0 right-0 w-full h-16 sm:h-20 bg-[#07090E]/85 backdrop-blur-xl border-b border-orbit-border/80 z-50 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-6 lg:py-4 flex items-center justify-between">
           
-          {/* Logo */}
+          {/* Logo Brand Title (Upper Hemisphere Orange-Gold, Bottom Metallic White) */}
           <div 
             onClick={() => onNavigate(user.isLoggedIn ? "dashboard" : "home")}
-            className="flex items-center gap-2.5 cursor-pointer group shrink-0"
+            className="flex items-center gap-3 cursor-pointer group"
           >
-            <svg className="w-[30px] h-[30px] sm:w-[34px] sm:h-[34px] transform group-hover:rotate-12 transition-transform duration-500 filter drop-shadow-[0_2px_8px_rgba(247,147,26,0.2)]" viewBox="0 0 100 100">
+            {/* SVG high-fidelity Orbitrio brand replica */}
+            <svg className="w-[32px] h-[32px] sm:w-[38px] sm:h-[38px] transform group-hover:rotate-12 transition-transform duration-500 filter drop-shadow-[0_2px_8px_rgba(247,147,26,0.2)]" viewBox="0 0 100 100">
               <defs>
+                {/* Original Gold/Orange Gradient */}
                 <linearGradient id="navGoldGrad" x1="0%" y1="100%" x2="100%" y2="0%">
                   <stop offset="0%" stopColor="#E05B00" />
                   <stop offset="45%" stopColor="#F7931A" />
                   <stop offset="100%" stopColor="#FFBA3B" />
                 </linearGradient>
+                {/* Original Metallic Silver/White Gradient */}
                 <linearGradient id="navSilverGrad" x1="0%" y1="0%" x2="100%" y2="100%">
                   <stop offset="0%" stopColor="#FFFFFF" />
                   <stop offset="50%" stopColor="#E6E8EF" />
                   <stop offset="100%" stopColor="#A3AABF" />
                 </linearGradient>
               </defs>
-              <path d="M 18,50 A 30,30 0 0,1 78,28 L 71,35 A 20,20 0 0,0 26,50 Z" fill="url(#navGoldGrad)" />
-              <path d="M 18,50 C 23,48 45,38 78,28 C 65,37 40,45 18,50" fill="url(#navGoldGrad)" />
-              <path d="M 23,55 A 30,30 0 0,0 82,50 A 30,30 0 0,0 78,28 L 71,35 A 20,20 0 0,1 74,50 A 20,20 0 0,1 28,54 Z" fill="url(#navSilverGrad)" />
+              
+              {/* Top-left Orange Crescent loop */}
+              <path 
+                d="M 18,50 A 30,30 0 0,1 78,28 L 71,35 A 20,20 0 0,0 26,50 Z" 
+                fill="url(#navGoldGrad)" 
+              />
+              
+              {/* Diagonal premium sweeping logo slash */}
+              <path 
+                d="M 18,50 C 23,48 45,38 78,28 C 65,37 40,45 18,50" 
+                fill="url(#navGoldGrad)" 
+              />
+
+              {/* Bottom-right Silver/White Crescent loop */}
+              <path 
+                d="M 23,55 A 30,30 0 0,0 82,50 A 30,30 0 0,0 78,28 L 71,35 A 20,20 0 0,1 74,50 A 20,20 0 0,1 28,54 Z" 
+                fill="url(#navSilverGrad)" 
+              />
+
+              {/* Top right orange brand accent satellite dot */}
               <circle cx="85" cy="22" r="5.5" fill="#F7931A" />
             </svg>
             
@@ -130,24 +105,37 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
               <span className="font-brand font-bold tracking-[0.02em] text-lg sm:text-xl text-orbit-white block leading-none lowercase">
                 orbit<span className="text-orbit-accent">rio</span>
               </span>
-              <span className="text-[6px] sm:text-[7px] font-mono tracking-[0.25em] text-orbit-gray-text/60 block mt-0.5">
+              <span className="text-[6.5px] sm:text-[7.5px] font-mono tracking-[0.25em] text-orbit-gray-text block mt-1">
                 TRADE. ELEVATE. ORBIT.
               </span>
             </div>
           </div>
 
-          {/* Desktop Links */}
-          <div className="hidden lg:flex items-center gap-1 text-[11px] text-orbit-gray-text font-medium">
+          {/* Desktop Links (Public + Live states) */}
+          <div className="hidden lg:flex items-center gap-6 text-xs text-orbit-gray-text font-medium">
             {!user.isLoggedIn ? (
               <>
-                <div className="flex gap-0.5">
+                <div className="flex gap-1.5 border-r border-orbit-border/50 pr-6">
                   {guestLinks.map((link) => (
                     <button
                       key={link.id}
-                      onClick={() => handleGuestLinkClick(link.id)}
-                      className={`px-3 py-2 rounded-lg transition-all duration-200 cursor-pointer ${
+                      onClick={() => {
+                        if (link.id === "about-us" || link.id === "contact") {
+                          if (window.location.pathname === '/') {
+                            const el = document.getElementById(link.id);
+                            if (el) el.scrollIntoView({ behavior: 'smooth' });
+                            window.history.pushState(null, '', `/#${link.id}`);
+                          } else {
+                            onNavigate("home#"+link.id);
+                          }
+                        } else {
+                           onNavigate(link.id);
+                        }
+                        setMobileMenuOpen(false);
+                      }}
+                      className={`px-3.5 py-1.5 rounded-lg transition-all duration-200 cursor-pointer ${
                         isLinkActive(link.id)
-                          ? "text-orbit-accent bg-orbit-accent/8 font-bold"
+                          ? "text-orbit-accent bg-orbit-accent/10 font-bold shadow-inner shadow-orbit-accent/10"
                           : "hover:text-orbit-white hover:bg-white/5"
                       }`}
                     >
@@ -156,18 +144,22 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
                   ))}
                 </div>
 
-                <div className="w-px h-5 bg-orbit-border/40 mx-3" />
-
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   <button
-                    onClick={() => { window.scrollTo({ top: 0, behavior: 'instant' }); onNavigate("login"); }}
-                    className="px-4 py-2 hover:text-orbit-white transition-colors cursor-pointer rounded-lg hover:bg-white/5"
+                    onClick={() => {
+                      window.scrollTo({ top: 0, behavior: 'instant' });
+                      onNavigate("login");
+                    }}
+                    className="px-4 py-2 hover:text-orbit-white transition-colors cursor-pointer"
                   >
                     Sign In
                   </button>
                   <button
-                    onClick={() => { window.scrollTo({ top: 0, behavior: 'instant' }); onNavigate("register"); }}
-                    className="px-5 py-2 rounded-lg bg-orbit-accent text-orbit-bg font-bold hover:bg-orbit-accent/90 transition-all cursor-pointer"
+                    onClick={() => {
+                      window.scrollTo({ top: 0, behavior: 'instant' });
+                      onNavigate("register");
+                    }}
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-orbit-accent to-[#FF7F00] text-orbit-bg font-bold shadow-md shadow-orbit-accent/10 hover:opacity-95 transition-all cursor-pointer"
                   >
                     Register
                   </button>
@@ -175,76 +167,33 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
               </>
             ) : (
               <>
-                {/* Primary links - always visible */}
-                <div className="flex gap-0.5">
-                  {primaryAuthLinks.map((link) => (
+                {/* Authenticated Desktop Links */}
+                <div className="flex gap-1.5 border-r border-orbit-border/50 pr-6">
+                  {authLinks.map((link) => (
                     <button
                       key={link.id}
-                      onClick={() => onNavigate(link.id)}
-                      className={`flex items-center gap-1.5 px-3 py-2 rounded-lg transition-all duration-200 cursor-pointer ${
+                      onClick={() => { 
+                          if (link.id === 'dashboard-kyc' && user.kyc?.status === 'approved') return;
+                          onNavigate(link.id); setMobileMenuOpen(false); 
+                      }}
+                      className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg transition-all duration-200 cursor-pointer ${
                         isLinkActive(link.id)
-                          ? "text-orbit-accent bg-orbit-accent/8 font-bold"
+                          ? "text-orbit-accent bg-orbit-accent/10 font-bold shadow-inner shadow-orbit-accent/10"
                           : "hover:text-orbit-white hover:bg-white/5"
                       }`}
                     >
-                      <span className={isLinkActive(link.id) ? "text-orbit-accent" : "text-orbit-gray-text"}>{link.icon}</span>
+                      {link.icon}
                       <span>{link.label}</span>
                     </button>
                   ))}
-
-                  {/* More dropdown */}
-                  <div className="relative" ref={moreRef}>
-                    <button
-                      onClick={() => setMoreOpen(!moreOpen)}
-                      className={`flex items-center gap-1 px-3 py-2 rounded-lg transition-all duration-200 cursor-pointer ${
-                        moreOpen ? "text-orbit-accent bg-orbit-accent/8" : "hover:text-orbit-white hover:bg-white/5"
-                      }`}
-                    >
-                      <span>More</span>
-                      <ChevronDown size={12} className={`transition-transform ${moreOpen ? "rotate-180" : ""}`} />
-                    </button>
-                    
-                    <AnimatePresence>
-                      {moreOpen && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 8, scale: 0.96 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: 8, scale: 0.96 }}
-                          transition={{ duration: 0.15 }}
-                          className="absolute right-0 top-full mt-2 w-56 bg-[#0D1117] border border-orbit-border/60 rounded-xl shadow-2xl shadow-black/50 overflow-hidden py-1.5 z-50"
-                        >
-                          {secondaryAuthLinks.map((link) => (
-                            <button
-                              key={link.id}
-                              onClick={() => {
-                                if (link.id === 'dashboard-kyc' && user.kyc?.status === 'approved') return;
-                                onNavigate(link.id);
-                                setMoreOpen(false);
-                              }}
-                              className={`w-full flex items-center gap-3 px-4 py-2.5 text-left text-[11px] transition-all cursor-pointer ${
-                                isLinkActive(link.id)
-                                  ? "text-orbit-accent bg-orbit-accent/8 font-bold"
-                                  : "text-orbit-gray-text hover:text-orbit-white hover:bg-white/5"
-                              }`}
-                            >
-                              {link.icon}
-                              <span>{link.label}</span>
-                            </button>
-                          ))}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
                 </div>
 
-                <div className="w-px h-5 bg-orbit-border/40 mx-3" />
-
-                {/* User section */}
-                <div className="flex items-center gap-3">
+                {/* User details and exit button */}
+                <div className="flex items-center gap-4">
                   {user.role === "admin" && (
                     <button
                       onClick={() => onNavigate("dashboard-admin")}
-                      className="py-1.5 px-3 rounded-lg text-[10px] bg-orbit-accent text-orbit-bg font-black uppercase tracking-wider cursor-pointer hover:bg-orbit-accent/90 transition-all"
+                      className="py-1.5 px-3 rounded text-[10px] bg-gradient-to-r from-orbit-accent to-[#FF7F00] text-orbit-bg font-black uppercase tracking-widest cursor-pointer shadow hover:opacity-95"
                     >
                       Admin
                     </button>
@@ -254,24 +203,24 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
                     <span className="text-[10px] font-mono text-orbit-white font-bold leading-none">
                       UID: {getUID(user.email)}
                     </span>
-                    <span className="text-[9px] text-orbit-gray-text font-mono mt-0.5 truncate max-w-[100px]" title={user.username || user.name || user.email || ""}>
+                    <span className="text-[9px] text-orbit-gray-text font-mono mt-0.5 truncate max-w-[120px]" title={user.username || user.name || user.email || ""}>
                       {user.username || user.name || user.email}
                     </span>
                   </div>
 
                   <button
                     onClick={() => { logout(); onNavigate("home"); }}
-                    className="p-1.5 text-orbit-gray-text hover:text-orbit-red transition-all cursor-pointer rounded-lg hover:bg-orbit-red/10"
+                    className="p-1.5 text-orbit-gray-text hover:text-orbit-red transition-all cursor-pointer rounded hover:bg-orbit-red/10 animate-pulse hover:animate-none"
                     title="Sign Out"
                   >
-                    <LogOut size={15} />
+                    <LogOut size={16} />
                   </button>
                 </div>
               </>
             )}
           </div>
 
-          {/* Mobile hamburger */}
+          {/* Mobile Activator hamburger */}
           <button 
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="lg:hidden p-2 text-orbit-gray-text hover:text-orbit-white cursor-pointer"
@@ -282,7 +231,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
         </div>
       </nav>
 
-      {/* Mobile slide-out drawer */}
+      {/* Mobile drop-down drawer overlay */}
       <AnimatePresence>
         {mobileMenuOpen && (
           <motion.div 
@@ -290,12 +239,13 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="lg:hidden fixed inset-0 bg-[#07090E]/98 backdrop-blur-md z-[100] overflow-y-auto px-5 py-5 flex flex-col pb-24 shadow-2xl border-l border-orbit-border/30"
+            className="lg:hidden fixed inset-0 bg-[#07090E]/95 backdrop-blur-xl z-[100] overflow-y-auto px-5 py-5 flex flex-col pb-24 shadow-2xl border-l border-orbit-border/30"
           >
             
             <div className="flex flex-col space-y-6 min-h-full">
-              {/* Mobile Header */}
+              {/* Mobile Header Bar inside overlay */}
               <div className="flex items-center justify-between border-b border-orbit-border/50 pb-4 shrink-0">
+                {/* Logo Brand Title */}
                 <div 
                   onClick={() => { onNavigate(user.isLoggedIn ? "dashboard" : "home"); setMobileMenuOpen(false); }}
                   className="flex items-center gap-3 cursor-pointer group"
@@ -313,9 +263,18 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
                         <stop offset="100%" stopColor="#A3AABF" />
                       </linearGradient>
                     </defs>
-                    <path d="M 18,50 A 30,30 0 0,1 78,28 L 71,35 A 20,20 0 0,0 26,50 Z" fill="url(#navGoldGradMenu)" />
-                    <path d="M 18,50 C 23,48 45,38 78,28 C 65,37 40,45 18,50" fill="url(#navGoldGradMenu)" />
-                    <path d="M 23,55 A 30,30 0 0,0 82,50 A 30,30 0 0,0 78,28 L 71,35 A 20,20 0 0,1 74,50 A 20,20 0 0,1 28,54 Z" fill="url(#navSilverGradMenu)" />
+                    <path 
+                      d="M 18,50 A 30,30 0 0,1 78,28 L 71,35 A 20,20 0 0,0 26,50 Z" 
+                      fill="url(#navGoldGradMenu)" 
+                    />
+                    <path 
+                      d="M 18,50 C 23,48 45,38 78,28 C 65,37 40,45 18,50" 
+                      fill="url(#navGoldGradMenu)" 
+                    />
+                    <path 
+                      d="M 23,55 A 30,30 0 0,0 82,50 A 30,30 0 0,0 78,28 L 71,35 A 20,20 0 0,1 74,50 A 20,20 0 0,1 28,54 Z" 
+                      fill="url(#navSilverGradMenu)" 
+                    />
                     <circle cx="85" cy="22" r="5.5" fill="#F7931A" />
                   </svg>
                   <div>
@@ -336,14 +295,28 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
                 </button>
               </div>
 
-              {/* Mobile Menu Items */}
+            {/* Dynamic Navigation Menu Items inside list */}
               <div className="flex flex-col space-y-1 flex-1">
                 {!user.isLoggedIn ? (
+                  // Guest Menu Items: Home, Markets, Earn, About, Contact
                   <>
                     {guestLinks.map((link) => (
                       <button
                         key={link.id}
-                        onClick={() => handleGuestLinkClick(link.id)}
+                        onClick={() => {
+                          if (link.id === "about-us" || link.id === "contact") {
+                            if (window.location.pathname === '/' || window.location.pathname === '') {
+                              const el = document.getElementById(link.id);
+                              if (el) el.scrollIntoView({ behavior: 'smooth' });
+                              window.history.pushState(null, '', `/#${link.id}`);
+                            } else {
+                              onNavigate("home#"+link.id);
+                            }
+                          } else {
+                             onNavigate(link.id);
+                          }
+                          setMobileMenuOpen(false);
+                        }}
                         className={`py-3.5 px-4 rounded-xl text-left text-sm font-medium transition-all flex items-center justify-between cursor-pointer ${
                           isLinkActive(link.id)
                             ? "text-orbit-accent bg-orbit-accent/10 border-l-[3px] border-orbit-accent font-bold pl-4 shadow-inner"
@@ -354,30 +327,43 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
                       </button>
                     ))}
                     
+                    {/* Spacer to push auth buttons down */}
                     <div className="mt-auto pt-6 pb-2" />
-                    <div className="w-full h-[1px] bg-orbit-border/30 mb-6" />
                     
+                    {/* Divider */}
+                    <div className="w-full h-[1px] bg-neutral-900/60 mb-6" />
+                    
+                    {/* Auth Buttons */}
                     <div className="grid grid-cols-2 gap-4">
                       <button
                         type="button"
-                        onClick={() => { window.scrollTo({ top: 0, behavior: 'instant' }); onNavigate("login"); setMobileMenuOpen(false); }}
+                        onClick={() => {
+                          window.scrollTo({ top: 0, behavior: 'instant' });
+                          onNavigate("login");
+                          setMobileMenuOpen(false);
+                        }}
                         className="w-full py-3.5 rounded-xl border border-orbit-border text-center text-xs font-bold font-subheading text-orbit-white hover:bg-orbit-card/80 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
                       >
                         <LogIn size={14} /> Sign In
                       </button>
                       <button
                         type="button"
-                        onClick={() => { window.scrollTo({ top: 0, behavior: 'instant' }); onNavigate("register"); setMobileMenuOpen(false); }}
-                        className="w-full py-3.5 rounded-xl bg-orbit-accent text-orbit-bg font-bold text-center text-xs font-subheading hover:opacity-95 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-orbit-accent/20"
+                        onClick={() => {
+                          window.scrollTo({ top: 0, behavior: 'instant' });
+                          onNavigate("register");
+                          setMobileMenuOpen(false);
+                        }}
+                        className="w-full py-3.5 rounded-xl bg-gradient-to-r from-orbit-accent to-[#FF7F00] text-orbit-bg font-bold text-center text-xs font-subheading hover:opacity-95 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-orbit-accent/20"
                       >
                         <UserPlus size={14} /> Register
                       </button>
                     </div>
                   </>
                 ) : (
+                  // Authenticated Menu Items: Dashboard, Trade, Copy Trading, Assets, Deposit / Withdraw, Earn
                   <>
                     <div className="space-y-1 overflow-y-auto pr-2 pb-6 max-h-[60vh] scrollbar-thin scrollbar-thumb-orbit-border/50 scrollbar-track-transparent">
-                      {allAuthLinks.map((link) => (
+                      {authLinks.map((link) => (
                         <button
                           key={link.id}
                           onClick={() => { 
@@ -398,9 +384,9 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
                       ))}
                     </div>
                     
-                    {/* Authenticated User Profile & Sign Out */}
+                    {/* Authenticated User Profile & Sign Out - Integrated Flow */}
                     <div className="mt-auto pt-2">
-                      <div className="w-full h-[1px] bg-orbit-border/30 mb-4" />
+                      <div className="w-full h-[1px] bg-neutral-900/60 mb-4" />
                       <div className="flex flex-col gap-4 px-2">
                         <div className="flex items-center justify-between p-3 rounded-xl bg-orbit-card/30 border border-orbit-border/40">
                           <div className="flex flex-col text-left">
@@ -415,7 +401,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
                           {user.role === "admin" && (
                             <button
                               onClick={() => { onNavigate("dashboard-admin"); setMobileMenuOpen(false); }}
-                              className="py-1 px-2.5 rounded text-[9px] bg-orbit-accent text-orbit-bg font-black uppercase tracking-widest cursor-pointer shadow shrink-0"
+                              className="py-1 px-2.5 rounded text-[9px] bg-gradient-to-r from-orbit-accent to-[#FF7F00] text-orbit-bg font-black uppercase tracking-widest cursor-pointer shadow shrink-0"
                             >
                               Admin
                             </button>

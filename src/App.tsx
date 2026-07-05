@@ -43,17 +43,10 @@ function MainAppContent() {
     window.scrollTo({ top: 0, left: 0, behavior: "instant" as ScrollBehavior });
   }, [currentView]);
 
-  // Auto-redirect logged-in users to dashboard if they are on auth or home pages
+  // Auto-redirect logged-in users to dashboard if they are on the auth page
   useEffect(() => {
-    if (user.isLoggedIn && (currentView === "auth" || currentView === "home")) {
+    if (user.isLoggedIn && currentView === "auth") {
       setCurrentView("dashboard");
-    }
-  }, [user.isLoggedIn, currentView]);
-
-  // Auto-redirect logged-out users to home if they are on a dashboard page
-  useEffect(() => {
-    if (!user.isLoggedIn && currentView.startsWith("dashboard")) {
-      setCurrentView("home");
     }
   }, [user.isLoggedIn, currentView]);
 
@@ -83,11 +76,6 @@ function MainAppContent() {
   }, [user.isLoggedIn, user.role]);
 
   const handleNavigate = (view: string, assetSymbol?: string) => {
-    // If the user tries to go home but they are logged in, send them to dashboard
-    if (view === "home" && user.isLoggedIn) {
-      view = "dashboard";
-    }
-
     if (view.startsWith("dashboard") && !user.isLoggedIn) {
       setCurrentView("auth");
       return;
@@ -177,25 +165,15 @@ function MainAppContent() {
   };
 
   return (
-    <div className={`relative flex flex-col min-h-screen bg-orbit-bg text-[#F5F6F8] font-sans overflow-hidden ${
-      currentView === "home"
-        ? "pt-0"
-        : currentView === "dashboard-admin"
-        ? "pt-0"
-        : "pt-16 sm:pt-20"
-    }`}>
-      {currentView !== "dashboard-admin" && <ScrollAnimatedBackground />}
+    <div className={`relative flex flex-col min-h-screen bg-orbit-bg text-[#F5F6F8] font-sans overflow-hidden pt-16 sm:pt-20`}>
+      <ScrollAnimatedBackground />
       
       {/* Dynamic top bar links */}
-      {currentView !== "dashboard-admin" && (
-        <Navigation currentView={currentView} onNavigate={handleNavigate} />
-      )}
+      <Navigation currentView={currentView} onNavigate={handleNavigate} />
 
       {/* Primary content area container */}
       <main className={`relative z-10 flex-grow ${
         currentView === "home"
-          ? "w-full pb-32"
-          : currentView === "dashboard-admin"
           ? "w-full pb-32"
           : "max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 mt-4 pb-32"
       }`}>

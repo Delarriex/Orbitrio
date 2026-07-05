@@ -69,22 +69,24 @@ export const TradeFeaturesChart: React.FC<TradeFeaturesChartProps> = ({ onNaviga
       setHasChartSize(node.clientWidth > 0 && node.clientHeight > 0);
     };
 
-    updateSize();
-    const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateSize) : null;
+    const rafId = window.requestAnimationFrame(updateSize);
+    const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => window.requestAnimationFrame(updateSize)) : null;
 
     if (resizeObserver) {
       resizeObserver.observe(node);
     } else {
-      const timeoutId = window.setTimeout(updateSize, 0);
+      const timeoutId = window.setTimeout(updateSize, 50);
       window.addEventListener("resize", updateSize);
       return () => {
         window.clearTimeout(timeoutId);
         window.removeEventListener("resize", updateSize);
+        window.cancelAnimationFrame(rafId);
       };
     }
 
     return () => {
       resizeObserver?.disconnect();
+      window.cancelAnimationFrame(rafId);
     };
   }, []);
 
@@ -287,7 +289,7 @@ export const TradeFeaturesChart: React.FC<TradeFeaturesChartProps> = ({ onNaviga
           </div>
           
           {/* Volume Chart (Optional) */}
-          {showVolume && (
+          {showVolume && hasChartSize && (
             <div className="px-4 pb-4 h-[80px] w-full mt-[-20px]">
               <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                 <ComposedChart data={chartData} margin={{ top: 0, right: 10, left: -20, bottom: 0 }}>
