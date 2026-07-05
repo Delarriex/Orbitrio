@@ -72,44 +72,51 @@ export const AdminTradersTab: React.FC = () => {
   };
 
   const handleCreate = async () => {
-    if (!form.name) return;
-    if (!form.avatar) {
-      alert("Please upload a profile photo for the trader.");
+    if (!form.name || !form.avatar) {
+      alert("Please enter a name and upload a profile photo.");
       return;
     }
-    await adminCreateTrader({
-      name: form.name,
-      avatar: form.avatar,
-      roi: form.roi !== "" ? parseFloat(form.roi) : 0,
-      winRate: form.winRate !== "" ? parseFloat(form.winRate) : 0,
-      followers: form.followers !== "" ? parseInt(form.followers) : 0,
-      maxFollowers: form.maxFollowers !== "" ? parseInt(form.maxFollowers) : 500,
-      assetsUnderManagement: form.assetsUnderManagement || "$0",
-      riskScore: form.riskScore !== "" ? parseInt(form.riskScore) : 2,
-      profitDays: form.profitDays !== "" ? parseInt(form.profitDays) : 0,
-      chartData: Array.from({ length: 10 }, () => Math.random() * 100)
-    });
-    setFeedback(`Created trader: ${form.name}`);
-    resetForm();
-    setTimeout(() => setFeedback(null), 3000);
+    try {
+      await adminCreateTrader({
+        name: form.name,
+        avatar: form.avatar,
+        roi: form.roi !== "" ? parseFloat(form.roi) : 0,
+        winRate: form.winRate !== "" ? parseFloat(form.winRate) : 0,
+        followers: form.followers !== "" ? parseInt(form.followers) : 0,
+        maxFollowers: form.maxFollowers !== "" ? parseInt(form.maxFollowers) : 500,
+        assetsUnderManagement: form.assetsUnderManagement || "$0",
+        riskScore: form.riskScore !== "" ? parseInt(form.riskScore) : 2,
+        profitDays: form.profitDays !== "" ? parseInt(form.profitDays) : 0,
+        chartData: Array.from({ length: 10 }, () => Math.random() * 100)
+      });
+      setFeedback(`Created trader: ${form.name}`);
+      resetForm();
+    } catch (e: any) {
+      setFeedback(`Failed to create trader: ${e.message}`);
+    }
+    setTimeout(() => setFeedback(null), 5000);
   };
 
   const handleUpdate = async () => {
     if (!editingId) return;
-    await adminUpdateTrader(editingId, {
-      name: form.name,
-      avatar: form.avatar,
-      roi: form.roi !== "" ? parseFloat(form.roi) : 0,
-      winRate: form.winRate !== "" ? parseFloat(form.winRate) : 0,
-      followers: form.followers !== "" ? parseInt(form.followers) : 0,
-      maxFollowers: form.maxFollowers !== "" ? parseInt(form.maxFollowers) : 500,
-      assetsUnderManagement: form.assetsUnderManagement,
-      riskScore: form.riskScore !== "" ? parseInt(form.riskScore) : 2,
-      profitDays: form.profitDays !== "" ? parseInt(form.profitDays) : 0,
-    });
-    setFeedback(`Updated trader: ${form.name}`);
-    resetForm();
-    setTimeout(() => setFeedback(null), 3000);
+    try {
+      await adminUpdateTrader(editingId, {
+        name: form.name,
+        avatar: form.avatar,
+        roi: form.roi !== "" ? parseFloat(form.roi) : 0,
+        winRate: form.winRate !== "" ? parseFloat(form.winRate) : 0,
+        followers: form.followers !== "" ? parseInt(form.followers) : 0,
+        maxFollowers: form.maxFollowers !== "" ? parseInt(form.maxFollowers) : 500,
+        assetsUnderManagement: form.assetsUnderManagement,
+        riskScore: form.riskScore !== "" ? parseInt(form.riskScore) : 2,
+        profitDays: form.profitDays !== "" ? parseInt(form.profitDays) : 0,
+      });
+      setFeedback(`Updated trader: ${form.name}`);
+      resetForm();
+    } catch (e: any) {
+      setFeedback(`Failed to update trader: ${e.message}`);
+    }
+    setTimeout(() => setFeedback(null), 5000);
   };
 
   return (

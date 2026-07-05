@@ -16,20 +16,28 @@ export const AdminAirdropsTab: React.FC = () => {
 
   const handleCreate = async () => {
     if (!form.title || !form.token || !form.rewardAmount) return;
-    await adminCreateAirdrop({ title: form.title, token: form.token, rewardAmount: form.rewardAmount, status: "Live" });
-    setFeedback(`Created airdrop: ${form.title}`);
-    resetForm();
-    setTimeout(() => setFeedback(null), 3000);
+    try {
+      await adminCreateAirdrop({ title: form.title, token: form.token, rewardAmount: form.rewardAmount, status: "Live" });
+      setFeedback(`Created airdrop: ${form.title}`);
+      resetForm();
+    } catch (e: any) {
+      setFeedback(`Failed to create airdrop: ${e.message}`);
+    }
+    setTimeout(() => setFeedback(null), 5000);
   };
 
   const handleUpdate = async () => {
     if (!editingId) return;
     const existing = airdrops.find(a => a.id === editingId);
     if (!existing) return;
-    await adminUpdateAirdrop({ ...existing, ...form });
-    setFeedback(`Updated airdrop: ${form.title}`);
-    resetForm();
-    setTimeout(() => setFeedback(null), 3000);
+    try {
+      await adminUpdateAirdrop({ ...existing, ...form });
+      setFeedback(`Updated airdrop: ${form.title}`);
+      resetForm();
+    } catch (e: any) {
+      setFeedback(`Failed to update airdrop: ${e.message}`);
+    }
+    setTimeout(() => setFeedback(null), 5000);
   };
 
   const startEdit = (a: Airdrop) => {

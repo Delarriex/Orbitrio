@@ -38,25 +38,30 @@ export const AdminInvestmentsTab: React.FC = () => {
     resetForm();
   };
 
-  const handleUpdate = () => {
+  const handleUpdate = async () => {
     if (!editingPlan) return;
     const updatedRoi = formData.roiPercent !== "" ? parseFloat(formData.roiPercent) : editingPlan.roiPercent;
     const updatedDays = formData.durationDays !== "" ? parseInt(formData.durationDays) : editingPlan.durationDays;
     if (updatedRoi <= 0) return showFeedback("ROI must be greater than 0.");
     if (updatedDays <= 0) return showFeedback("Duration must be at least 1 day.");
     const updatedName = formData.name || editingPlan.name;
-    adminUpdatePlan({
-      ...editingPlan,
-      name: updatedName,
-      minDeposit: formData.minDeposit !== "" ? parseFloat(formData.minDeposit) : editingPlan.minDeposit,
-      maxDeposit: formData.maxDeposit !== "" ? parseFloat(formData.maxDeposit) : editingPlan.maxDeposit,
-      durationDays: updatedDays,
-      roiPercent: updatedRoi,
-      roiCapPercent: editingPlan.roiCapPercent ?? updatedRoi,
-      description: formData.description || editingPlan.description
-    });
-    showFeedback(`Updated plan: ${updatedName} — ROI ${updatedRoi}%, ${updatedDays} days`);
-    resetForm();
+    
+    try {
+      await adminUpdatePlan({
+        ...editingPlan,
+        name: updatedName,
+        minDeposit: formData.minDeposit !== "" ? parseFloat(formData.minDeposit) : editingPlan.minDeposit,
+        maxDeposit: formData.maxDeposit !== "" ? parseFloat(formData.maxDeposit) : editingPlan.maxDeposit,
+        durationDays: updatedDays,
+        roiPercent: updatedRoi,
+        roiCapPercent: editingPlan.roiCapPercent ?? updatedRoi,
+        description: formData.description || editingPlan.description
+      });
+      showFeedback(`Updated plan: ${updatedName} — ROI ${updatedRoi}%, ${updatedDays} days`);
+      resetForm();
+    } catch (e: any) {
+      showFeedback(`Failed to update plan: ${e.message}`);
+    }
   };
 
   const startEdit = (plan: InvestmentPlan) => {
