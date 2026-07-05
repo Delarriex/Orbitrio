@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useOrbit } from "../../../context/OrbitContext";
 import { InvestmentPlan } from "../../../types";
 import { motion } from "motion/react";
@@ -8,6 +8,57 @@ import {
   Key, Database, Search, Plus, Trash2, FileText, Lock, Compass, DollarSign, Award, Gift
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, LineChart, Line } from "recharts";
+
+const AdminVolumeChart: React.FC<{ chartData: any[] }> = ({ chartData }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [hasSize, setHasSize] = useState(false);
+
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+    const updateSize = () => setHasSize(node.clientWidth > 0 && node.clientHeight > 0);
+    updateSize();
+    const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateSize) : null;
+    if (resizeObserver) {
+      resizeObserver.observe(node);
+    } else {
+      const timeoutId = window.setTimeout(updateSize, 0);
+      window.addEventListener("resize", updateSize);
+      return () => {
+        window.clearTimeout(timeoutId);
+        window.removeEventListener("resize", updateSize);
+      };
+    }
+    return () => resizeObserver?.disconnect();
+  }, []);
+
+  return (
+    <div className="bg-orbit-card border border-orbit-border rounded-2xl p-5 flex flex-col justify-between">
+      <div>
+        <h3 className="text-sm font-bold text-orbit-white">In/Out Volume Breakdown</h3>
+        <p className="text-[10px] text-orbit-gray-text mt-1">Comparisons of total accepted deposits against total settled withdrawals.</p>
+      </div>
+      <div ref={containerRef} className="h-[200px] mt-4 w-full">
+        {hasSize ? (
+          <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+            <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 30, left: 30, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#222" horizontal={false} />
+              <XAxis type="number" stroke="#666" tick={{ fill: "#666", fontSize: 10 }} />
+              <YAxis dataKey="name" type="category" stroke="#666" tick={{ fill: "#ccc", fontSize: 10 }} />
+              <Tooltip 
+                contentStyle={{ backgroundColor: "#111", borderColor: "#333", borderRadius: "8px", fontSize: "12px" }} 
+                itemStyle={{ color: "#fff" }}
+                formatter={(val: any) => `$${Number(val).toLocaleString()}`}
+              />
+              <Bar dataKey="volume" fill="#FF7F00" radius={[0, 4, 4, 0]} barSize={20} />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : null}
+      </div>
+    </div>
+  );
+};
+
 
 export const AdminOverviewTab: React.FC = () => {
   const orbit = useOrbit();
@@ -145,27 +196,7 @@ export const AdminOverviewTab: React.FC = () => {
               </div>
 
               {/* Added Recharts Graph */}
-              <div className="bg-orbit-card border border-orbit-border rounded-2xl p-5 flex flex-col justify-between">
-                <div>
-                  <h3 className="text-sm font-bold text-orbit-white">In/Out Volume Breakdown</h3>
-                  <p className="text-[10px] text-orbit-gray-text mt-1">Comparisons of total accepted deposits against total settled withdrawals.</p>
-                </div>
-                <div className="h-[200px] mt-4">
-                  <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-                    <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 30, left: 30, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#222" horizontal={false} />
-                      <XAxis type="number" stroke="#666" tick={{ fill: "#666", fontSize: 10 }} />
-                      <YAxis dataKey="name" type="category" stroke="#666" tick={{ fill: "#ccc", fontSize: 10 }} />
-                      <Tooltip 
-                        contentStyle={{ backgroundColor: "#111", borderColor: "#333", borderRadius: "8px", fontSize: "12px" }} 
-                        itemStyle={{ color: "#fff" }}
-                        formatter={(val) => `$${Number(val).toLocaleString()}`}
-                      />
-                      <Bar dataKey="volume" fill="#FF7F00" radius={[0, 4, 4, 0]} barSize={20} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
+              <AdminVolumeChart chartData={chartData} />
 
             </div>
           </div>
