@@ -104,6 +104,56 @@ export const query = (collectionRef: any, ...filters: any[]) => {
   return localDev ? createLocalQueryRef(collectionRef, filters) : firebaseQuery(collectionRef, ...filters);
 };
 
+const isPlainRecord = (value: any) => {
+  if (!value || typeof value !== "object") return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+};
+
+const sanitizeFirestoreData = (value: any): any => {
+  if (value === undefined) return undefined;
+  if (Array.isArray(value)) {
+    return value.map((item) => item === undefined ? null : sanitizeFirestoreData(item));
+  }
+  if (isPlainRecord(value)) {
+    return Object.entries(value).reduce<Record<string, any>>((acc, [key, item]) => {
+      if (item === undefined) return acc;
+      acc[key] = sanitizeFirestoreData(item);
+      return acc;
+    }, {});
+  }
+  return value;
+};
+
+const getRefPath = (ref: any): string | null => {
+  if (!ref) return null;
+  if (typeof ref.path === "string") return ref.path;
+  if (typeof ref._key?.path?.canonicalString === "function") return ref._key.path.canonicalString();
+  if (typeof ref._query?.path?.canonicalString === "function") return ref._query.path.canonicalString();
+  if (typeof ref._path?.canonicalString === "function") return ref._path.canonicalString();
+  if (ref.collection && ref.id) return `${ref.collection}/${ref.id}`;
+  if (ref.collection) return ref.collection;
+  return null;
+};
+
+const getDocIdFromPath = (path: string | null) => {
+  if (!path) return null;
+  const parts = normalizeFirestorePath(path).split("/").filter(Boolean);
+  return parts.length % 2 === 0 ? parts[parts.length - 1] : null;
+};
+
+const getCollectionPathFromPath = (path: string | null) => {
+  if (!path) return null;
+  const parts = normalizeFirestorePath(path).split("/").filter(Boolean);
+  if (parts.length % 2 === 0) return parts.slice(0, -1).join("/");
+  return parts.join("/");
+};
+
+const normalizeFirestorePath = (path: string) => {
+  const documentsMarker = "/documents/";
+  const documentsIndex = path.indexOf(documentsMarker);
+  return documentsIndex === -1 ? path : path.slice(documentsIndex + documentsMarker.length);
+};
 const createLocalDocSnapshot = (data: any, id: string) => ({
   exists: () => data !== null && data !== undefined,
   data: () => data,
@@ -118,7 +168,12 @@ const createLocalCollectionSnapshot = (docs: Array<{ id: string; data: any }>) =
 
 export const getDoc = async (docRef: any) => {
   if (!localDev) {
-    return firebaseGetDoc(docRef);
+    try {
+      return await firebaseGetDoc(docRef);
+    } catch (error) {
+      logFirestoreError(error, OperationType.GET, getRefPath(docRef));
+      throw error;
+    }
   }
   const dbData = getLocalDb();
   const collectionStore = dbData[docRef.collection] || {};
@@ -127,32 +182,49 @@ export const getDoc = async (docRef: any) => {
 };
 
 export const setDoc = async (docRef: any, data: any, options?: { merge?: boolean }) => {
+  const sanitizedData = sanitizeFirestoreData(data);
   if (!localDev) {
-    return firebaseSetDoc(docRef, data, options);
+    try {
+      return await firebaseSetDoc(docRef, sanitizedData, options);
+    } catch (error) {
+      logFirestoreError(error, options?.merge ? OperationType.UPDATE : OperationType.CREATE, getRefPath(docRef));
+      throw error;
+    }
   }
   const dbData = getLocalDb();
   const collectionStore = dbData[docRef.collection] || {};
   const existing = collectionStore[docRef.id] || {};
-  collectionStore[docRef.id] = options?.merge ? { ...existing, ...data } : data;
+  collectionStore[docRef.id] = options?.merge ? { ...existing, ...sanitizedData } : sanitizedData;
   dbData[docRef.collection] = collectionStore;
   setLocalDb(dbData);
 };
 
 export const updateDoc = async (docRef: any, update: any) => {
+  const sanitizedUpdate = sanitizeFirestoreData(update);
   if (!localDev) {
-    return firebaseUpdateDoc(docRef, update);
+    try {
+      return await firebaseUpdateDoc(docRef, sanitizedUpdate);
+    } catch (error) {
+      logFirestoreError(error, OperationType.UPDATE, getRefPath(docRef));
+      throw error;
+    }
   }
   const dbData = getLocalDb();
   const collectionStore = dbData[docRef.collection] || {};
   const existing = collectionStore[docRef.id] || {};
-  collectionStore[docRef.id] = { ...existing, ...update };
+  collectionStore[docRef.id] = { ...existing, ...sanitizedUpdate };
   dbData[docRef.collection] = collectionStore;
   setLocalDb(dbData);
 };
 
 export const deleteDoc = async (docRef: any) => {
   if (!localDev) {
-    return firebaseDeleteDoc(docRef);
+    try {
+      return await firebaseDeleteDoc(docRef);
+    } catch (error) {
+      logFirestoreError(error, OperationType.DELETE, getRefPath(docRef));
+      throw error;
+    }
   }
   const dbData = getLocalDb();
   const collectionStore = dbData[docRef.collection] || {};
@@ -163,7 +235,10 @@ export const deleteDoc = async (docRef: any) => {
 
 export const onSnapshot = (ref: any, callback: (snapshot: any) => void, onError?: (error: any) => void) => {
   if (!localDev) {
-    return firebaseOnSnapshot(ref, callback, onError);
+    return firebaseOnSnapshot(ref, callback, (error) => {
+      logFirestoreError(error, getDocIdFromPath(getRefPath(ref)) ? OperationType.GET : OperationType.LIST, getRefPath(ref));
+      if (onError) onError(error);
+    });
   }
   try {
     const dbData = getLocalDb();
@@ -270,8 +345,12 @@ export enum OperationType {
 
 export interface FirestoreErrorInfo {
   error: string;
+  code?: string | null;
   operationType: OperationType;
   path: string | null;
+  collectionPath: string | null;
+  documentId: string | null;
+  currentUserEmail: string | null;
   authInfo: {
     userId?: string | null;
     email?: string | null;
@@ -285,12 +364,16 @@ export interface FirestoreErrorInfo {
   };
 }
 
-export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
-  const errInfo: FirestoreErrorInfo = {
+const buildFirestoreErrorInfo = (error: unknown, operationType: OperationType, path: string | null): FirestoreErrorInfo => {
+  const currentUserEmail = auth.currentUser?.email || null;
+  const errorCode = typeof error === "object" && error !== null && "code" in error ? String((error as { code?: unknown }).code) : null;
+  const normalizedPath = path ? normalizeFirestorePath(path) : null;
+  return {
     error: error instanceof Error ? error.message : String(error),
+    code: errorCode,
     authInfo: {
       userId: auth.currentUser?.uid || null,
-      email: auth.currentUser?.email || null,
+      email: currentUserEmail,
       emailVerified: auth.currentUser?.emailVerified || null,
       isAnonymous: auth.currentUser?.isAnonymous || null,
       tenantId: auth.currentUser?.tenantId || null,
@@ -300,14 +383,24 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
       })) || []
     },
     operationType,
-    path
+    path: normalizedPath,
+    collectionPath: getCollectionPathFromPath(normalizedPath),
+    documentId: getDocIdFromPath(normalizedPath),
+    currentUserEmail
   };
-  console.error("Firestore Error: ", JSON.stringify(errInfo));
+};
+
+export const logFirestoreError = (error: unknown, operationType: OperationType, path: string | null) => {
+  const errInfo = buildFirestoreErrorInfo(error, operationType, path);
+  const label = errInfo.code === "permission-denied"
+    ? "Firestore permission-denied:"
+    : "Firestore Error:";
+  console.error(label, JSON.stringify(errInfo));
+};
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
+  const errInfo = buildFirestoreErrorInfo(error, operationType, path);
+  console.error("Firestore Error:", JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
-
-
-
-
-
 

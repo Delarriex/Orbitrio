@@ -35,6 +35,7 @@ import {
   signOut,
   db,
   handleFirestoreError,
+  logFirestoreError,
   OperationType
 } from "../lib/firebase";
 import {
@@ -1369,7 +1370,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         lastTickSyncRef.current = now;
       })
       .catch(err => {
-        console.error("Failed to sync state to Firestore:", err);
+        logFirestoreError(err, OperationType.UPDATE, `users/${user.email}`);
       });
   }, [user]);
 
@@ -3149,5 +3150,4 @@ export const useOrbit = () => {
   }
   return context;
 };
-
 

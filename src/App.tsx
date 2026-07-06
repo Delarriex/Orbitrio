@@ -34,7 +34,6 @@ const AUTHENTICATED_PUBLIC_REDIRECT_VIEWS = new Set([
   "home",
   "markets",
   "plans",
-  "copy-trading",
   "auth",
   "login",
   "register",
@@ -369,6 +368,4 @@ export default function App() {
     </OrbitProvider>
   );
 }
-
-
 
