@@ -1,59 +1,93 @@
 import React, { useState } from "react";
 import { useOrbit } from "../context/OrbitContext";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { storage } from "../lib/firebase";
-import { Shield, Upload, CheckCircle2, AlertTriangle, X } from "lucide-react";
-import { KycSubmission } from "../types";
+import { ref, uploadBytes, getDownloadURL, storage } from "../lib/firebase";
+import { Shield, Upload, CheckCircle2, AlertTriangle, Clock, FileText, XCircle } from "lucide-react";
+import { KYC_DOCUMENT_TYPES } from "../services";
+import type { KycSubmission } from "../types";
+
+const emptyKyc: KycSubmission = {
+  status: "unverified",
+  idType: "Government ID",
+  documentType: "Government ID",
+  idNumber: "",
+  dob: "",
+  address: "",
+  city: "",
+  country: "",
+  frontImage: "",
+  backImage: ""
+};
+
+const formatDate = (value?: string) => {
+  if (!value) return "Not submitted";
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return value;
+  return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(parsed));
+};
+
+const uploadKycFile = async (email: string | null, label: string, file: File | null) => {
+  if (!file) return "";
+  const safeEmail = (email || "guest").replace(/[^a-z0-9@._-]/gi, "_");
+  const storageRef = ref(storage, `kyc/${safeEmail}_${Date.now()}_${label}_${file.name}`);
+  await uploadBytes(storageRef, file);
+  return getDownloadURL(storageRef);
+};
+
+const StatusIcon: React.FC<{ status: KycSubmission["status"] }> = ({ status }) => {
+  if (status === "approved") return <CheckCircle2 size={14} />;
+  if (status === "pending") return <Clock size={14} />;
+  if (status === "rejected") return <XCircle size={14} />;
+  return <AlertTriangle size={14} />;
+};
 
 export const DashboardKYC: React.FC = () => {
   const { user, submitKyc } = useOrbit();
-  const [idType, setIdType] = useState("International Passport");
-  const [idNumber, setIdNumber] = useState("");
-  const [dob, setDob] = useState("");
-  const [address, setAddress] = useState("");
-  const [city, setCity] = useState("");
-  const [country, setCountry] = useState("");
-  const [frontImage, setFrontImage] = useState("");
-  const [backImage, setBackImage] = useState("");
+  const currentKyc = user.kyc || emptyKyc;
+  const [documentType, setDocumentType] = useState(currentKyc.documentType || currentKyc.idType || "Government ID");
+  const [idNumber, setIdNumber] = useState(currentKyc.status === "rejected" ? currentKyc.idNumber || "" : "");
+  const [dob, setDob] = useState(currentKyc.status === "rejected" ? currentKyc.dob || "" : "");
+  const [address, setAddress] = useState(currentKyc.status === "rejected" ? currentKyc.address || "" : "");
+  const [city, setCity] = useState(currentKyc.status === "rejected" ? currentKyc.city || "" : "");
+  const [country, setCountry] = useState(currentKyc.status === "rejected" ? currentKyc.country || "" : "");
   const [frontFile, setFrontFile] = useState<File | null>(null);
   const [backFile, setBackFile] = useState<File | null>(null);
-
+  const [proofFile, setProofFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const kyc = user.kyc || { status: "unverified", idType: "", idNumber: "", dob: "", address: "", city: "", country: "", frontImage: "", backImage: "" };
+  const canSubmit = currentKyc.status === "unverified" || currentKyc.status === "rejected";
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     setSubmitError(null);
-    let frontUrl = frontImage;
-    let backUrl = backImage;
 
+    if (!frontFile) {
+      setSubmitError("Upload the front page or primary image of your selected identity document.");
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
-      if (frontFile) {
-        const storageRef = ref(storage, `kyc/${user.email}_${Date.now()}_front_${frontFile.name}`);
-        await uploadBytes(storageRef, frontFile);
-        frontUrl = await getDownloadURL(storageRef);
-      }
-      if (backFile) {
-        const storageRef = ref(storage, `kyc/${user.email}_${Date.now()}_back_${backFile.name}`);
-        await uploadBytes(storageRef, backFile);
-        backUrl = await getDownloadURL(storageRef);
-      }
-      
+      const [frontImage, backImage, proofOfAddressImage] = await Promise.all([
+        uploadKycFile(user.email, "front", frontFile),
+        uploadKycFile(user.email, "back", backFile),
+        uploadKycFile(user.email, "proof_of_address", proofFile)
+      ]);
+
       await submitKyc({
-        idType,
+        idType: documentType,
+        documentType,
         idNumber,
         dob,
         address,
         city,
         country,
-        frontImage: frontUrl,
-        backImage: backUrl,
-        status: "pending",
+        frontImage,
+        backImage,
+        proofOfAddressImage: proofOfAddressImage || undefined,
+        status: "pending"
       });
-    } catch (err: any) {
+    } catch (err) {
       console.error("Error submitting KYC:", err);
       setSubmitError("Failed to submit verification. Please check your connection and try again.");
     } finally {
@@ -62,98 +96,95 @@ export const DashboardKYC: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8 pb-20">
+    <div className="space-y-4 pb-4 sm:pb-6">
       <div className="flex items-center gap-3 border-b border-orbit-border/50 pb-6">
         <Shield size={24} className="text-orbit-accent" />
-        <h1 className="text-2xl font-bold text-orbit-white">Identity Verification (KYC)</h1>
+        <h1 className="text-2xl font-bold text-orbit-white">Identity Verification</h1>
       </div>
 
-      <div className="bg-orbit-card border border-orbit-border rounded-xl p-6">
-        <div className="flex items-center justify-between gap-4 mb-6">
-            <h2 className="text-lg font-bold text-orbit-white">Verification Status</h2>
-            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold ${
-                kyc.status === "approved" ? "bg-emerald-500/10 text-emerald-500" :
-                kyc.status === "rejected" ? "bg-orbit-red/10 text-orbit-red" :
-                "bg-orbit-border text-orbit-gray-text"
-            }`}>
-                {kyc.status === "approved" && <CheckCircle2 size={14} />}
-                {kyc.status === "rejected" && <AlertTriangle size={14} />}
-                {kyc.status === "approved" ? "VERIFIED" : 
-                 kyc.status === "rejected" ? "REJECTED" : "UNVERIFIED"}
-            </div>
+      <div className="bg-orbit-card border border-orbit-border rounded-2xl p-4 sm:p-5 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-bold text-orbit-white">Current KYC Status</h2>
+            <p className="text-xs text-orbit-gray-text mt-1">Submission date: {formatDate(currentKyc.submissionDate)}</p>
+          </div>
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border w-fit ${
+            currentKyc.status === "approved" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" :
+            currentKyc.status === "pending" ? "bg-yellow-500/10 text-yellow-400 border-yellow-500/30" :
+            currentKyc.status === "rejected" ? "bg-orbit-red/10 text-orbit-red border-orbit-red/30" :
+            "bg-orbit-border/40 text-orbit-gray-text border-orbit-border"
+          }`}>
+            <StatusIcon status={currentKyc.status} /> {currentKyc.status.toUpperCase()}
+          </div>
         </div>
 
-        {kyc.status === "unverified" || kyc.status === "rejected" ? (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {kyc.status === "rejected" && (
-                <div className="p-4 bg-orbit-red/10 border border-orbit-red/20 text-orbit-red text-xs rounded-lg">
-                    <strong>Rejection Reason:</strong> {kyc.rejectionReason}
-                </div>
-            )}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <select value={idType} onChange={(e) => setIdType(e.target.value)} className="bg-orbit-bg border border-orbit-border rounded-lg p-2.5 text-xs text-orbit-white">
-                    <option>International Passport</option>
-                    <option>National ID Card</option>
-                    <option>Driver's License</option>
-                </select>
-                <input type="text" placeholder="ID Number" value={idNumber} onChange={(e) => setIdNumber(e.target.value)} className="bg-orbit-bg border border-orbit-border rounded-lg p-2.5 text-xs text-orbit-white" />
-                <input type="date" placeholder="Date of Birth" value={dob} onChange={(e) => setDob(e.target.value)} className="bg-orbit-bg border border-orbit-border rounded-lg p-2.5 text-xs text-orbit-white" />
-                <input type="text" placeholder="Address" value={address} onChange={(e) => setAddress(e.target.value)} className="bg-orbit-bg border border-orbit-border rounded-lg p-2.5 text-xs text-orbit-white" />
-                <input type="text" placeholder="City" value={city} onChange={(e) => setCity(e.target.value)} className="bg-orbit-bg border border-orbit-border rounded-lg p-2.5 text-xs text-orbit-white" />
-                <input type="text" placeholder="Country" value={country} onChange={(e) => setCountry(e.target.value)} className="bg-orbit-bg border border-orbit-border rounded-lg p-2.5 text-xs text-orbit-white" />
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <label className="border-2 border-dashed border-orbit-border rounded-lg p-6 text-center text-orbit-gray-text hover:border-orbit-accent cursor-pointer block">
-                    <Upload className="mx-auto mb-2" />
-                    <p className="text-xs">{frontImage ? "Front Image Selected" : "Upload Front ID Image"}</p>
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      className="hidden" 
-                      onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                              setFrontFile(file);
-                              setFrontImage(file.name);
-                          }
-                      }}
-                    />
-                </label>
-                <label className="border-2 border-dashed border-orbit-border rounded-lg p-6 text-center text-orbit-gray-text hover:border-orbit-accent cursor-pointer block">
-                    <Upload className="mx-auto mb-2" />
-                    <p className="text-xs">{backImage ? "Back Image Selected" : "Upload Back ID Image"}</p>
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      className="hidden" 
-                      onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                              setBackFile(file);
-                              setBackImage(file.name);
-                          }
-                      }}
-                    />
-                </label>
-            </div>
-            {submitError && (
-              <div className="p-3 bg-red-500/10 border border-red-500/50 rounded-lg text-red-500 text-sm">
-                {submitError}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+          <Info label="Document Type" value={currentKyc.documentType || currentKyc.idType || "Not submitted"} />
+          <Info label="Reviewed" value={formatDate(currentKyc.reviewedAt)} />
+          <Info label="Admin Notes" value={currentKyc.adminNotes || currentKyc.rejectionReason || "No notes yet"} />
+        </div>
+
+        {currentKyc.status === "approved" && (
+          <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-sm text-emerald-400">
+            Your identity profile is verified. Withdrawal access and verified-account features are enabled.
+          </div>
+        )}
+
+        {currentKyc.status === "pending" && (
+          <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-xl text-sm text-yellow-300">
+            Your documents are under admin review. You can monitor the status here.
+          </div>
+        )}
+
+        {canSubmit && (
+          <form onSubmit={handleSubmit} className="space-y-4 border-t border-orbit-border pt-5">
+            {currentKyc.status === "rejected" && (
+              <div className="p-4 bg-orbit-red/10 border border-orbit-red/20 text-orbit-red text-xs rounded-lg">
+                <strong>Rejection Reason:</strong> {currentKyc.rejectionReason || currentKyc.adminNotes || "Please resubmit clearer documents."}
               </div>
             )}
-            <button 
-              type="submit" 
-              disabled={isSubmitting}
-              className="w-full bg-orbit-accent text-orbit-bg font-bold p-3 rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSubmitting ? "Submitting..." : "Submit Verification"}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <select value={documentType} onChange={(event) => setDocumentType(event.target.value)} className="bg-orbit-bg border border-orbit-border rounded-lg p-2.5 text-xs text-orbit-white">
+                {KYC_DOCUMENT_TYPES.map(type => <option key={type}>{type}</option>)}
+              </select>
+              <input required type="text" placeholder="Document Number" value={idNumber} onChange={(event) => setIdNumber(event.target.value)} className="bg-orbit-bg border border-orbit-border rounded-lg p-2.5 text-xs text-orbit-white" />
+              <input required type="date" value={dob} onChange={(event) => setDob(event.target.value)} className="bg-orbit-bg border border-orbit-border rounded-lg p-2.5 text-xs text-orbit-white" />
+              <input required type="text" placeholder="Residential Address" value={address} onChange={(event) => setAddress(event.target.value)} className="bg-orbit-bg border border-orbit-border rounded-lg p-2.5 text-xs text-orbit-white" />
+              <input required type="text" placeholder="City" value={city} onChange={(event) => setCity(event.target.value)} className="bg-orbit-bg border border-orbit-border rounded-lg p-2.5 text-xs text-orbit-white" />
+              <input required type="text" placeholder="Country" value={country} onChange={(event) => setCountry(event.target.value)} className="bg-orbit-bg border border-orbit-border rounded-lg p-2.5 text-xs text-orbit-white" />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <UploadTile label="Primary document image" file={frontFile} required onFile={setFrontFile} />
+              <UploadTile label="Back image" file={backFile} onFile={setBackFile} />
+              <UploadTile label="Proof of address" file={proofFile} onFile={setProofFile} />
+            </div>
+
+            {submitError && <div className="p-3 bg-red-500/10 border border-red-500/50 rounded-lg text-red-500 text-sm">{submitError}</div>}
+
+            <button type="submit" disabled={isSubmitting} className="w-full bg-orbit-accent text-orbit-bg font-bold p-3 rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed">
+              {isSubmitting ? "Submitting..." : currentKyc.status === "rejected" ? "Resubmit Verification" : "Submit Verification"}
             </button>
           </form>
-        ) : (
-            <p className="text-sm text-orbit-gray-text">Your submission is under review.</p>
         )}
       </div>
     </div>
   );
 };
+
+const Info: React.FC<{ label: string; value: string }> = ({ label, value }) => (
+  <div className="bg-orbit-bg border border-orbit-border rounded-xl p-3">
+    <p className="text-[10px] uppercase tracking-wider text-orbit-gray-text font-bold">{label}</p>
+    <p className="mt-1 text-orbit-white font-bold break-words">{value}</p>
+  </div>
+);
+
+const UploadTile: React.FC<{ label: string; file: File | null; required?: boolean; onFile: (file: File | null) => void }> = ({ label, file, required, onFile }) => (
+  <label className="border-2 border-dashed border-orbit-border rounded-lg p-5 text-center text-orbit-gray-text hover:border-orbit-accent cursor-pointer block min-h-[132px] flex flex-col items-center justify-center">
+    {file ? <FileText className="mx-auto mb-2 text-orbit-accent" /> : <Upload className="mx-auto mb-2" />}
+    <p className="text-xs font-bold text-orbit-white">{file ? file.name : label}</p>
+    <p className="text-[10px] mt-1">{required ? "Required" : "Optional"}</p>
+    <input type="file" accept="image/*,.pdf" required={required} className="hidden" onChange={(event) => onFile(event.target.files?.[0] || null)} />
+  </label>
+);

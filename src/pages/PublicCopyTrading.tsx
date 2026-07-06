@@ -13,11 +13,9 @@ export const PublicCopyTrading: React.FC<PublicCopyTradingProps> = ({ onNavigate
   const [allocateAmt, setAllocateAmt] = useState("");
   const [allocateLoading, setAllocateLoading] = useState(false);
 
-  // Keep track of which traders are being copied using simple state simulation in localStorage
-  const [copiedIds, setCopiedIds] = useState<string[]>(() => {
-    const saved = localStorage.getItem("orbit_copied_traders");
-    return saved ? JSON.parse(saved) : [];
-  });
+  const activeCopiedIds = user.copyTrades
+    .filter(trade => trade.status === "Running")
+    .map(trade => trade.traderId);
 
   const handleCopyClick = (traderId: string, traderName: string) => {
     if (!user.isLoggedIn) {
@@ -25,13 +23,13 @@ export const PublicCopyTrading: React.FC<PublicCopyTradingProps> = ({ onNavigate
       return;
     }
 
-    if (copiedIds.includes(traderId)) {
+    if (activeCopiedIds.includes(traderId)) {
       triggerFeedback(`You are already copying ${traderName}.`);
     } else {
       const selected = traders.find(t => t.id === traderId);
       if (selected) {
         setAllocatingTrader(selected);
-        setAllocateAmt("500");
+        setAllocateAmt(String(selected.minimumCopyAmount ?? 500));
       }
     }
   };
@@ -46,9 +44,20 @@ export const PublicCopyTrading: React.FC<PublicCopyTradingProps> = ({ onNavigate
       return;
     }
 
+    if (allocatingTrader.minimumCopyAmount && amt < allocatingTrader.minimumCopyAmount) {
+      triggerFeedback(`Minimum copy amount for ${allocatingTrader.name} is $${allocatingTrader.minimumCopyAmount.toLocaleString()}.`);
+      return;
+    }
+
+    if (allocatingTrader.maximumCopyAmount && amt > allocatingTrader.maximumCopyAmount) {
+      triggerFeedback(`Maximum copy amount for ${allocatingTrader.name} is $${allocatingTrader.maximumCopyAmount.toLocaleString()}.`);
+      return;
+    }
+
     if (amt > user.balance) {
       setAllocatingTrader(null);
       setInsufficientBalanceOpen(true);
+      onNavigate("dashboard-wallet");
       return;
     }
 
@@ -59,12 +68,13 @@ export const PublicCopyTrading: React.FC<PublicCopyTradingProps> = ({ onNavigate
       setAllocateLoading(false);
 
       if (res.success) {
-        const next = [...copiedIds, allocatingTrader.id];
-        setCopiedIds(next);
-        localStorage.setItem("orbit_copied_traders", JSON.stringify(next));
         triggerFeedback(`Successfully linked $${amt} mirror allocation to ${allocatingTrader.name}!`);
         setAllocatingTrader(null);
         setAllocateAmt("");
+      } else if (res.message === "INSUFFICIENT_BALANCE") {
+        setAllocatingTrader(null);
+        setInsufficientBalanceOpen(true);
+        onNavigate("dashboard-wallet");
       } else {
         triggerFeedback(res.message);
       }
@@ -116,7 +126,7 @@ export const PublicCopyTrading: React.FC<PublicCopyTradingProps> = ({ onNavigate
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 font-sans">
           {traders.map((trader) => {
-            const isCopying = copiedIds.includes(trader.id);
+            const isCopying = activeCopiedIds.includes(trader.id);
             return (
               <div 
                 key={trader.id}
@@ -290,7 +300,7 @@ export const PublicCopyTrading: React.FC<PublicCopyTradingProps> = ({ onNavigate
                     value={allocateAmt}
                     onChange={(e) => setAllocateAmt(e.target.value)}
                     placeholder="Enter investment amount"
-                    min="10"
+                    min={allocatingTrader.minimumCopyAmount ?? 10}
                     step="any"
                     required
                     className="w-full bg-[#121318] border border-orbit-border/80 focus:border-orbit-accent focus:ring-1 focus:ring-orbit-accent rounded-xl py-2.5 pl-8 pr-4 text-xs text-orbit-white font-mono font-extrabold outline-none"
@@ -301,7 +311,7 @@ export const PublicCopyTrading: React.FC<PublicCopyTradingProps> = ({ onNavigate
               <div className="p-3 text-[11px] leading-relaxed text-zinc-400 bg-orbit-card/50 border border-orbit-border/30 rounded-xl flex items-start gap-2.5">
                 <Info size={14} className="text-orbit-accent shrink-0 mt-0.5" />
                 <span>
-                  The allocated capital will be temporarily frozen for replication purposes and returns will accrue based on {allocatingTrader.name}'s performance.
+                  Copy range: ${(allocatingTrader.minimumCopyAmount ?? 10).toLocaleString()} - {allocatingTrader.maximumCopyAmount ? `$${allocatingTrader.maximumCopyAmount.toLocaleString()}` : "No max"}. ROI is locked at confirmation and paid from the stored total return at maturity.
                 </span>
               </div>
 

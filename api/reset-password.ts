@@ -1,6 +1,49 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import crypto from "crypto";
 
+
+const escapeHtml = (value: unknown) => String(value ?? "")
+  .replace(/&/g, "&amp;")
+  .replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;")
+  .replace(/'/g, "&#039;");
+
+const getHeaderValue = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] : value;
+
+const normalizeOrigin = (value: string | undefined) => {
+  if (!value) return "";
+  try {
+    return new URL(value).origin.toLowerCase();
+  } catch {
+    return value.trim().replace(/\/$/, "").toLowerCase();
+  }
+};
+
+const isAllowedOrigin = (req: VercelRequest) => {
+  const origin = normalizeOrigin(getHeaderValue(req.headers.origin));
+  if (!origin) return true;
+
+  const host = getHeaderValue(req.headers["x-forwarded-host"]) || getHeaderValue(req.headers.host);
+  const protocol = getHeaderValue(req.headers["x-forwarded-proto"]) || "https";
+  const sameHostOrigin = host ? normalizeOrigin(`${protocol}://${host}`) : "";
+  const configuredOrigins = String(process.env.ORBITRIO_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map(item => normalizeOrigin(item))
+    .filter(Boolean);
+
+  return origin === sameHostOrigin || configuredOrigins.includes(origin);
+};
+
+const isValidEmail = (value: unknown) => typeof value === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
+const isReasonableMetadata = (value: unknown) => {
+  try {
+    return JSON.stringify(value ?? {}).length <= 8000;
+  } catch {
+    return false;
+  }
+};
 // Helper function to generate an OAuth2 Access Token from a Service Account Key
 async function getFirebaseAccessToken(serviceAccount: any): Promise<string> {
   const header = { alg: "RS256", typ: "JWT" };
@@ -39,10 +82,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method !== "POST") {
       return res.status(405).json({ success: false, error: "Method not allowed" });
     }
+    if (!isAllowedOrigin(req)) {
+      return res.status(403).json({ success: false, error: "Origin not allowed" });
+    }
 
-    const { email } = req.body || {};
-    if (!email) {
-      return res.status(400).json({ success: false, error: "Email is required" });
+    const { email, metadata = {} } = req.body || {};
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ success: false, error: "A valid email is required" });
+    }
+    if (!isReasonableMetadata(metadata)) {
+      return res.status(400).json({ success: false, error: "Metadata payload is too large or invalid." });
     }
 
     // 1. We completely bypassed firebase-admin to avoid Vercel Serverless ESM crashes!
@@ -95,9 +144,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const resend = new Resend(resendApiKey);
-    const sender = process.env.RESEND_FROM_EMAIL || "Orbitrio Trades <onboarding@resend.dev>";
+    const companyName = metadata.companyName || process.env.ORBITRIO_COMPANY_NAME || "Orbitrio Trades";
+    const supportEmail = metadata.supportEmail || process.env.ORBITRIO_SUPPORT_EMAIL || "support@orbitriotrades.com";
+    const senderName = metadata.senderName || companyName;
+    const sender = process.env.RESEND_FROM_EMAIL || `${senderName} <onboarding@resend.dev>`;
     const recipient = email;
-    const subject = "Password Reset Request - Orbitrio Trades";
+    const subject = `Password Reset Request - ${escapeHtml(companyName)}`;
 
     const html = `
       <!DOCTYPE html>
@@ -115,7 +167,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 <tr>
                   <td style="padding: 40px 40px 20px 40px; text-align: center;">
                     <div style="font-size: 26px; font-weight: 800; letter-spacing: -0.5px; color: #ffffff;">
-                      orbit<span style="color: #F7931A;">rio</span>trades
+                      ${escapeHtml(companyName)}
                     </div>
                   </td>
                 </tr>
@@ -124,7 +176,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                   <td style="padding: 10px 40px 30px 40px;">
                     <h1 style="color: #f8fafc; font-size: 20px; font-weight: 700; margin: 0 0 16px 0; text-align: center;">Reset your password</h1>
                     <p style="color: #94a3b8; font-size: 15px; line-height: 24px; margin: 0 0 24px 0; text-align: center;">
-                      A request to reset the password for <strong style="color: #e2e8f0; font-weight: 600;">${email}</strong> has been initiated from a terminal node.
+                      Hello <strong style="color: #e2e8f0; font-weight: 600;">${escapeHtml(metadata.name || "Trader")}</strong>, a request to reset the password for <strong style="color: #e2e8f0; font-weight: 600;">${escapeHtml(email)}</strong> has been initiated.
                     </p>
                     <p style="color: #94a3b8; font-size: 15px; line-height: 24px; margin: 0 0 32px 0; text-align: center;">
                       Use the secure link below to authenticate your identity and configure a new access key.
@@ -155,7 +207,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                       <a href="${resetLink}" style="color: #3b82f6; word-break: break-all; text-decoration: underline;">Copy this secure manual link</a>
                     </p>
                     <p style="color: #475569; font-size: 12px; margin: 24px 0 0 0;">
-                      &copy; ${new Date().getFullYear()} Orbitrio Trades. Automated Cryptographic Subsystem.
+                      Need help? Contact <a href="mailto:${escapeHtml(supportEmail)}" style="color: #F7931A; text-decoration: none;">${escapeHtml(supportEmail)}</a>.<br/>
+                      &copy; ${new Date().getFullYear()} ${escapeHtml(companyName)}. This message was sent by ${escapeHtml(senderName)}.
                     </p>
                   </td>
                 </tr>
@@ -172,6 +225,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       to: [recipient],
       subject,
       html,
+      ...(metadata.replyToEmail || supportEmail ? { replyTo: metadata.replyToEmail || supportEmail } : {})
     });
 
     return res.status(200).json({ success: true, message: "Password reset email dispatched successfully.", data: emailResponse });
@@ -181,3 +235,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ success: false, error: String(error.message || error) });
   }
 }
+
+

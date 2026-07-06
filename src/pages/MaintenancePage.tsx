@@ -1,6 +1,9 @@
 import React from "react";
+import { useOrbit } from "../context/OrbitContext";
 
 export const MaintenancePage: React.FC = () => {
+  const { appSettings } = useOrbit();
+
   return (
     <div className="relative min-h-screen bg-[#03060d] text-white flex items-center justify-center px-6 py-12">
       <div className="relative max-w-3xl w-full rounded-3xl border border-white/10 bg-slate-950/80 p-10 shadow-[0_30px_90px_rgba(15,23,42,0.35)] backdrop-blur-xl">
@@ -18,7 +21,7 @@ export const MaintenancePage: React.FC = () => {
 
         <div className="mt-10 grid gap-4 sm:grid-cols-2">
           <a
-            href="mailto:support@orbitrio.com"
+            href={`mailto:${appSettings.supportEmail}`}
             className="inline-flex items-center justify-center rounded-2xl bg-[#F7931A] px-6 py-3 text-sm font-semibold text-slate-950 transition hover:bg-[#ffb86c]"
           >
             Contact support
@@ -39,3 +42,6 @@ export const MaintenancePage: React.FC = () => {
     </div>
   );
 };
+
+
+

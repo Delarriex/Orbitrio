@@ -5,59 +5,21 @@ import { useOrbit } from '../../context/OrbitContext';
 
 // Investment Plans Section (matching reference image precisely with floating transparent cards, gold-orange theme, and scroll entrance effects)
 export const InvestmentPlansSection = ({ onNavigate }: { onNavigate: (view: string) => void }) => {
-  const { user } = useOrbit();
-  const plansList = [
-    {
-      name: "BRONZE PLAN",
-      roi: "12.00%",
-      min: "$100.00",
-      max: "$999.00",
-      duration: "7 Days",
-      icon: Sparkles,
-      colorClass: "text-[#CD7F32] bg-[#CD7F32]/10 border-[#CD7F32]/20",
-      glowClass: "via-[#CD7F32]/30"
-    },
-    {
-      name: "SILVER PLAN",
-      roi: "18.00%",
-      min: "$1,000.00",
-      max: "$4,999.00",
-      duration: "10 Days",
-      icon: Shield,
-      colorClass: "text-blue-400 bg-blue-400/10 border-blue-400/20",
-      glowClass: "via-blue-400/30"
-    },
-    {
-      name: "GOLD PLAN",
-      roi: "24.00%",
-      min: "$5,000.00",
-      max: "$9,999.00",
-      duration: "14 Days",
-      icon: Layers,
-      colorClass: "text-[#FFB11A] bg-[#FFB11A]/10 border-[#FFB11A]/20",
-      glowClass: "via-[#FFB11A]/30"
-    },
-    {
-      name: "PLATINUM PLAN",
-      roi: "36.00%",
-      min: "$10,000.00",
-      max: "$49,999.00",
-      duration: "21 Days",
-      icon: Zap,
-      colorClass: "text-indigo-400 bg-indigo-400/10 border-indigo-400/20",
-      glowClass: "via-indigo-400/30"
-    },
-    {
-      name: "DIAMOND PLAN",
-      roi: "48.00%",
-      min: "$50,000.00",
-      max: "Unlimited",
-      duration: "30 Days",
-      icon: Target,
-      colorClass: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
-      glowClass: "via-emerald-400/30"
-    }
-  ];
+  const { plans, user } = useOrbit();
+  const plansList = plans
+    .filter((plan) => plan.enabled && plan.status === "active")
+    .sort((a, b) => a.displayOrder - b.displayOrder || a.minDeposit - b.minDeposit)
+    .map((plan, index) => {
+      const icons = [Sparkles, Shield, Layers, Zap, Target];
+      const color = plan.accentColor || "#FFB11A";
+      return {
+        ...plan,
+        icon: icons[index % icons.length],
+        colorClass: "",
+        glowClass: "via-amber-400/30",
+        color
+      };
+    });
 
   return (
     <section className="pt-12 pb-10 px-4 bg-[#0B0E11]/30 border-t border-[#2B3139]/10 relative overflow-hidden" id="investment-plans">
@@ -118,7 +80,7 @@ export const InvestmentPlansSection = ({ onNavigate }: { onNavigate: (view: stri
                 
                 <div className="space-y-6 relative z-10">
                   {/* Colorful Plan Icon */}
-                  <div className={`p-3 border rounded-2xl w-12 h-12 flex items-center justify-center group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300 ${plan.colorClass}`}>
+                  <div className="p-3 border rounded-2xl w-12 h-12 flex items-center justify-center group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300" style={{ color: plan.color, backgroundColor: `${plan.color}1A`, borderColor: `${plan.color}33` }}>
                     <PlanIcon className="w-6 h-6" />
                   </div>
                   
@@ -128,11 +90,14 @@ export const InvestmentPlansSection = ({ onNavigate }: { onNavigate: (view: stri
                     </h3>
                     
                     <div className="space-y-2">
+                      <p className="text-neutral-400 font-bybit text-xs leading-relaxed line-clamp-2">
+                        {plan.description}
+                      </p>
                       <p className="text-neutral-400 font-bybit text-xs leading-relaxed">
-                        Expected return: <span className="font-semibold text-white">{plan.roi}</span>
+                        Expected return: <span className="font-semibold text-white">{plan.roiPercent}%</span>
                       </p>
                       <p className="text-neutral-500 font-bybit text-[11px] leading-relaxed">
-                        Min: {plan.min} | Max: {plan.max}
+                        Min: ${plan.minDeposit.toLocaleString()} | Max: {plan.maxDeposit >= 10000000 ? "Unlimited" : `${plan.maxDeposit.toLocaleString()}`}
                       </p>
                     </div>
                   </div>
@@ -140,7 +105,7 @@ export const InvestmentPlansSection = ({ onNavigate }: { onNavigate: (view: stri
 
                 <div className="mt-8 border-t border-neutral-900/40 pt-4 relative z-10">
                   <p className="text-neutral-400 font-bybit text-xs">
-                    Duration: <span className="font-semibold text-white">{plan.duration}</span>
+                    Duration: <span className="font-semibold text-white">{plan.durationDays} Days</span>
                   </p>
                   <button
                     onClick={() => {

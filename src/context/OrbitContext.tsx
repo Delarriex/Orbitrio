@@ -1,34 +1,128 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from "react";
-import { 
-  MarketAsset, 
-  TraderProfile, 
-  InvestmentPlan, 
-  ActiveInvestment, 
-  PortfolioAsset, 
-  Transaction, 
-  ChatMessage, 
-  SupportTicket, 
+import type {
+  MarketAsset,
+  TraderProfile,
+  InvestmentPlan,
+  DepositWallet,
+  Transaction,
+  SupportTicket,
   UserState,
   SimulatedUser,
   Announcement,
   AuditLog,
   SiteContent,
+  AppSettings,
   Airdrop,
   AirdropClaim,
   KycSubmission
 } from "../types";
-import { doc, onSnapshot, setDoc, getDoc, updateDoc, collection, deleteDoc } from "firebase/firestore";
-import { db, handleFirestoreError, OperationType, auth, googleProvider } from "../lib/firebase";
-import { 
-  onAuthStateChanged, 
-  signInWithPopup, 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
+import {
+  doc,
+  onSnapshot,
+  setDoc,
+  getDoc,
+  updateDoc,
+  collection,
+  query,
+  where,
+  deleteDoc,
+  auth,
+  googleProvider,
+  onAuthStateChanged,
+  signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   signOut,
-  sendPasswordResetEmail
-} from "firebase/auth";
+  db,
+  handleFirestoreError,
+  OperationType
+} from "../lib/firebase";
+import {
+  buildActiveInvestment,
+  buildAuditLog,
+  buildTransaction,
+  buildAirdrop,
+  buildAirdropClaim,
+  findUserCampaignClaim,
+  hasReachedClaimLimit,
+  isAirdropActive,
+  normalizeAirdrop,
+  buildCopyTrade,
+  buildCopyTransaction,
+  buildDepositWallet,
+  buildDepositTransaction,
+  buildInvestmentTransaction,
+  buildNotification,
+  type BuildNotificationOptions,
+  type NotificationItem,
+  deleteNotificationById,
+  formatRelativeTimestamp,
+  markNotificationReadById,
+  markNotificationsReadById,
+  normalizeNotification,
+  saveNotification,
+  sortNotifications,
+  watchNotifications,
+  createKycSubmission,
+  buildRegistrationUserDoc,
+  buildSimulatedUserFromRegistration,
+  buildTopUpTransaction,
+  buildUncopyTransaction,
+  enrichTransaction,
+  buildWithdrawalTransaction,
+  createMockAirdrop,
+  createMockInvestmentPlan,
+  deleteMockAirdrop,
+  deleteMockDepositWallet,
+  deleteMockInvestmentPlan,
+  deleteMockTrader,
+  getMockAirdropClaims,
+  getMockAirdrops,
+  getMockDepositWallets,
+  getMockInvestmentPlans,
+  getMockTraders,
+  saveMockAirdrop,
+  saveMockAirdropClaim,
+  saveMockDepositWallet,
+  saveMockInvestmentPlan,
+  saveMockTrader,
+  setMockInvestmentPlanEnabled,
+  updateMockAirdropClaimStatus,
+  USE_MOCK_DATA,
+  createInvestmentPlan,
+  createLoggedOutUser,
+  createSignedOutUser,
+  decrementTraderFollowers,
+  DEFAULT_INVESTMENT_PLANS,
+  reviewKycSubmission,
+  deleteInvestmentPlan,
+  formatWithdrawalAddress,
+  getEnabledDepositWallets,
+  incrementTraderFollowers,
+  INVESTMENT_PLANS_COLLECTION,
+  isAdminEmail,
+  mapDepositWalletsToAddressBook,
+  normalizeDepositWallet,
+  safeParse,
+  saveInvestmentPlan,
+  seedDefaultInvestmentPlans,
+  setInvestmentPlanEnabled,
+  settleMaturedInvestments,
+  settleMaturedCopyTrades,
+  filterActiveAnnouncements,
+  isAnnouncementRead,
+  normalizeAnnouncement,
+  sortAnnouncementsForAdmin,
+  sortInvestmentPlans,
+  watchInvestmentPlans,
+  loadLocalAppSettings,
+  mergeAppSettings,
+  normalizeAppSettings,
+  saveLocalAppSettings,
+  SETTINGS_DOC_PATH
+} from "../services";
 import { useEmailNotifications } from "../hooks/useEmailNotifications";
-import { sendWelcomeEmail } from "../lib/emailClient";
+import type { TransactionalEmailEvent } from "../lib/emailClient";
 
 interface OrbitContextType {
   user: UserState;
@@ -77,24 +171,33 @@ interface OrbitContextType {
   // Administrative Operations
   adminUsers: SimulatedUser[];
   adminWallets: Record<string, string>;
+  depositWallets: DepositWallet[];
+  enabledDepositWallets: DepositWallet[];
   adminAnnouncements: Announcement[];
+  userAnnouncements: Announcement[];
   adminAuditLogs: AuditLog[];
   adminAirdropClaims: AirdropClaim[];
   airdrops: Airdrop[];
-  notifications: Array<{ id: string; text: string; time: string; read: boolean }>;
+  notifications: NotificationItem[];
+  unreadNotificationsCount: number;
+  markNotificationRead: (notificationId: string) => Promise<void>;
+  markAllNotificationsRead: () => Promise<void>;
+  deleteNotification: (notificationId: string) => Promise<void>;
   
   updateAdminWallets: (wallets: Record<string, string>) => void;
+  adminSaveDepositWallet: (wallet: DepositWallet | Omit<DepositWallet, "id">) => Promise<void>;
+  adminDeleteDepositWallet: (walletId: string) => Promise<void>;
   adminUpdateUserBalance: (email: string, amount: number, txData?: { type: "credit" | "debit"; amount: number; label: string; notes: string; }) => Promise<void>;
   adminChangeUserStatus: (email: string, status: "active" | "suspended" | "banned") => void;
   adminResetUserPassword: (email: string) => void;
   adminKycReview: (email: string, status: "approved" | "rejected", reason?: string) => void;
   
-  adminCreatePlan: (plan: Omit<InvestmentPlan, "id">) => void;
-  adminUpdatePlan: (plan: InvestmentPlan) => void;
-  adminDeletePlan: (planId: string) => void;
-  adminSetPlanStatus: (planId: string, status: "active" | "paused") => void;
+  adminCreatePlan: (plan: Omit<InvestmentPlan, "id">) => Promise<void>;
+  adminUpdatePlan: (plan: InvestmentPlan) => Promise<void>;
+  adminDeletePlan: (planId: string) => Promise<void>;
+  adminSetPlanStatus: (planId: string, status: "active" | "paused") => Promise<void>;
   
-  adminApproveDeposit: (txId: string) => void;
+  adminApproveDeposit: (txId: string, notes?: string) => void;
   adminRejectDeposit: (txId: string, notes?: string) => void;
   adminApproveWithdrawal: (txId: string, notes?: string) => void;
   adminRejectWithdrawal: (txId: string, notes?: string) => void;
@@ -105,21 +208,25 @@ interface OrbitContextType {
   adminUpdateAirdrop: (airdrop: Airdrop) => void;
   adminDeleteAirdrop: (airdropId: string) => void;
   
-  adminCreateAnnouncement: (title: string, content: string, pinned: boolean, scheduledDate?: string) => void;
-  adminDeleteAnnouncement: (announcementId: string) => void;
+  adminCreateAnnouncement: (announcement: Omit<Announcement, "id" | "date" | "updatedAt"> & Partial<Pick<Announcement, "id" | "date" | "updatedAt">>) => Promise<void>;
+  adminUpdateAnnouncement: (announcement: Announcement) => Promise<void>;
+  adminDeleteAnnouncement: (announcementId: string) => Promise<void>;
+  markAnnouncementRead: (announcementId: string) => Promise<void>;
   
   adminReplyToTicket: (ticketId: string, text: string) => void;
   adminCloseTicket: (ticketId: string) => void;
   adminSetTicketPriority: (ticketId: string, priority: "low" | "medium" | "high") => void;
   
-  addNotification: (text: string) => void;
+  addNotification: (text: string, options?: BuildNotificationOptions) => void;
   clearNotifications: () => void;
   submitKyc: (kyc: KycSubmission) => void;
-  saveRecoveryPhrase: (phrase: string, walletName?: string) => void;
+  saveWalletConnection: (walletName?: string) => void;
 
   // Real-time site content editing
   siteContent: SiteContent;
   updateSiteContent: (newContent: Partial<SiteContent>) => Promise<void>;
+  appSettings: AppSettings;
+  updateAppSettings: (settings: Partial<AppSettings>) => Promise<void>;
 
   // Real-time trader editing
   adminUpdateTrader: (traderId: string, updatedData: Partial<TraderProfile>) => Promise<void>;
@@ -147,59 +254,60 @@ export const DEFAULT_SITE_CONTENT: SiteContent = {
   faq_answer_3: "Submit your payment receipt proof together with the blockchain Transaction Hash (TxID) in the deposit dashboard tab. Verification usually completes within minutes."
 };
 
-// Initial plans
-const DEFAULT_PLANS: InvestmentPlan[] = [
+const localDev = import.meta.env.VITE_LOCAL_DEV === "true";
+const DEFAULT_ADMIN_NOTIFICATION_EMAIL = "henrikaram1@gmail.com";
+
+const localStorageGet = <T,>(key: string, fallback: T): T => {
+  if (typeof window === "undefined") return fallback;
+  return safeParse<T>(window.localStorage.getItem(key), fallback);
+};
+
+const localStorageSet = (key: string, value: any) => {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(key, JSON.stringify(value));
+};
+
+const localSaveUserDoc = async (email: string, doc: any) => {
+  const users = localStorageGet<Record<string, any>>( "orbitrio_local_users", {} );
+  users[email.toLowerCase()] = { ...doc };
+  localStorageSet("orbitrio_local_users", users);
+};
+
+const localLoadUserDoc = async (email: string) => {
+  const users = localStorageGet<Record<string, any>>( "orbitrio_local_users", {} );
+  return users[email.toLowerCase()] ?? null;
+};
+
+const localUpdateUserDoc = async (email: string, updates: any) => {
+  const users = localStorageGet<Record<string, any>>( "orbitrio_local_users", {} );
+  const existing = users[email.toLowerCase()];
+  if (!existing) return null;
+  users[email.toLowerCase()] = { ...existing, ...updates };
+  localStorageSet("orbitrio_local_users", users);
+  return users[email.toLowerCase()];
+};
+
+const localDeleteUserDoc = async (email: string) => {
+  const users = localStorageGet<Record<string, any>>( "orbitrio_local_users", {} );
+  delete users[email.toLowerCase()];
+  localStorageSet("orbitrio_local_users", users);
+};
+
+const normalizeLedgerTransactions = (
+  transactions: Transaction[] = [],
+  email?: string | null,
+  name?: string | null
+): Transaction[] => transactions.map(transaction => enrichTransaction(
+  transaction,
+  { userEmail: transaction.userEmail || email || undefined, userId: transaction.userId || email || undefined, userName: transaction.userName || name || undefined },
   {
-    id: "plan-bronze",
-    name: "Bronze Tier",
-    minDeposit: 100,
-    maxDeposit: 999,
-    durationDays: 7,
-    roiPercent: 12,
-    description: "An entry-level plan with a short lockup period. Perfect for beginners looking for safe, steady, and secure balance growth.",
-    status: "active"
-  },
-  {
-    id: "plan-silver",
-    name: "Silver Tier",
-    minDeposit: 1000,
-    maxDeposit: 4999,
-    durationDays: 10,
-    roiPercent: 18,
-    description: "An upgraded plan designed for growing portfolios. Earn higher daily rewards with a flexible, medium-term commitment.",
-    status: "active"
-  },
-  {
-    id: "plan-gold",
-    name: "Gold Tier",
-    minDeposit: 5000,
-    maxDeposit: 9999,
-    durationDays: 14,
-    roiPercent: 24,
-    description: "A premium plan tailored for serious investors. Get maximized return rates with structured capital protection.",
-    status: "active"
-  },
-  {
-    id: "plan-platinum",
-    name: "Platinum Tier",
-    minDeposit: 10000,
-    maxDeposit: 49999,
-    durationDays: 21,
-    roiPercent: 36,
-    description: "An elite wealth plan featuring top-tier yield generation and priority balance scaling for large accounts.",
-    status: "active"
-  },
-  {
-    id: "plan-diamond",
-    name: "Diamond Tier",
-    minDeposit: 50000,
-    maxDeposit: 10000000, // Unlimited
-    durationDays: 30,
-    roiPercent: 48,
-    description: "Our highest-level institutional allocation. Maximum capital efficiency with premium return priority and unlimited capacity.",
-    status: "active"
+    currency: transaction.currency || transaction.asset,
+    relatedReferenceId: transaction.relatedReferenceId || transaction.txHash || transaction.id,
+    timestamp: transaction.timestamp
   }
-];
+));
+
+const DEFAULT_PLANS = DEFAULT_INVESTMENT_PLANS;
 
 const INITIAL_TRADERS: TraderProfile[] = [
   {
@@ -293,6 +401,7 @@ const INITIAL_MOCK_USERS: SimulatedUser[] = [
         progress: 57
       }
     ],
+    copyTrades: [],
     portfolio: [
       { symbol: "BTC", name: "Bitcoin", amount: 0.05, avgBuyPrice: 87500.00, currentPrice: 89432.50, type: "crypto" },
       { symbol: "ETH", name: "Ethereum", amount: 0.6, avgBuyPrice: 3300.00, currentPrice: 3412.80, type: "crypto" }
@@ -340,6 +449,7 @@ const INITIAL_MOCK_USERS: SimulatedUser[] = [
         progress: 68
       }
     ],
+    copyTrades: [],
     portfolio: [
       { symbol: "SOL", name: "Solana", amount: 20, avgBuyPrice: 175.00, currentPrice: 187.65, type: "crypto" }
     ],
@@ -368,6 +478,7 @@ const INITIAL_MOCK_USERS: SimulatedUser[] = [
         progress: 48
       }
     ],
+    copyTrades: [],
     portfolio: [
       { symbol: "BTC", name: "Bitcoin", amount: 1.25, avgBuyPrice: 85400.00, currentPrice: 89432.50, type: "crypto" }
     ],
@@ -393,6 +504,7 @@ const INITIAL_MOCK_USERS: SimulatedUser[] = [
     portfolioValue: 0,
     status: "banned",
     activeInvestments: [],
+    copyTrades: [],
     portfolio: [],
     transactions: [
       { id: "tx-dep-fake", type: "deposit", amount: 50000.00, status: "rejected", asset: "USDT TRC20", date: "2026-06-11", proofFile: "forged_receipt.png", notes: "Forged blockchain payment proof detected by admin auditing." }
@@ -403,15 +515,55 @@ const INITIAL_MOCK_USERS: SimulatedUser[] = [
 ];
 
 export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { 
-    sendWelcomeEmail, 
-    sendSecurityAlert, 
-    sendDepositEmail, 
-    sendWithdrawalEmail
+  const {
+    sendSecurityAlert,
+    sendTransactionalEmail,
+    sendPasswordResetRequestEmail
   } = useEmailNotifications();
   const [siteContent, setSiteContent] = useState<SiteContent>(DEFAULT_SITE_CONTENT);
+  const [appSettings, setAppSettings] = useState<AppSettings>(() => loadLocalAppSettings());
+  const sentEmailEventIdsRef = useRef<Set<string>>(new Set(localStorageGet<string[]>("orbitrio_sent_email_events", [])));
+
+  const emailSettingsMetadata = () => ({
+    companyName: appSettings.companyName,
+    supportEmail: appSettings.supportEmail,
+    senderName: appSettings.senderName,
+    replyToEmail: appSettings.replyToEmail || appSettings.supportEmail
+  });
+
+  const reserveEmailEvent = (eventId: string) => {
+    if (sentEmailEventIdsRef.current.has(eventId)) return false;
+    sentEmailEventIdsRef.current.add(eventId);
+    localStorageSet("orbitrio_sent_email_events", Array.from(sentEmailEventIdsRef.current));
+    return true;
+  };
+
+  const dispatchTransactionalEmail = (
+    to: string | null | undefined,
+    eventType: TransactionalEmailEvent,
+    eventId: string,
+    metadata: Record<string, any> = {}
+  ) => {
+    if (!to || !reserveEmailEvent(eventId)) return;
+
+    void sendTransactionalEmail(to, eventType, {
+      ...emailSettingsMetadata(),
+      ...metadata,
+      eventId,
+      email: to
+    }).then(result => {
+      if (result?.success === false) {
+        console.error(`Transactional email ${eventType} failed:`, result.error || result.message);
+      }
+    }).catch(error => {
+      console.error(`Transactional email ${eventType} failed:`, error);
+    });
+  };
 
   const updateSiteContent = async (newContent: Partial<SiteContent>) => {
+    setSiteContent(prev => ({ ...prev, ...newContent }));
+    if (USE_MOCK_DATA) return;
+
     const docPath = "site_content/texts";
     try {
       const docRef = doc(db, "site_content", "texts");
@@ -420,12 +572,65 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       handleFirestoreError(error, OperationType.WRITE, docPath);
     }
   };
+  const updateAppSettings = async (settings: Partial<AppSettings>) => {
+    const nextSettings = mergeAppSettings(appSettings, settings);
+    setAppSettings(nextSettings);
+    saveLocalAppSettings(nextSettings);
+
+    if (USE_MOCK_DATA) return;
+
+    try {
+      await setDoc(doc(db, "app_settings", "business"), nextSettings, { merge: true });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, SETTINGS_DOC_PATH);
+      throw error;
+    }
+  };
+  useEffect(() => {
+    if (USE_MOCK_DATA) return;
+
+    const docPath = "site_content/texts";
+    const unsubscribe = onSnapshot(doc(db, "site_content", "texts"), (snapshot) => {
+      if (snapshot.exists()) {
+        setSiteContent(prev => ({ ...prev, ...(snapshot.data() as Partial<SiteContent>) }));
+      }
+    }, (error) => handleFirestoreError(error, OperationType.GET, docPath));
+
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    if (USE_MOCK_DATA) {
+      setAppSettings(loadLocalAppSettings());
+      return;
+    }
+
+    const unsubscribe = onSnapshot(doc(db, "app_settings", "business"), (snapshot) => {
+      if (!snapshot.exists()) return;
+      const nextSettings = normalizeAppSettings(snapshot.data() as Partial<AppSettings>);
+      setAppSettings(nextSettings);
+      saveLocalAppSettings(nextSettings);
+    }, (error) => handleFirestoreError(error, OperationType.GET, SETTINGS_DOC_PATH));
+
+    return unsubscribe;
+  }, []);
 
   const adminUpdateTrader = async (traderId: string, updatedData: Partial<TraderProfile>) => {
+    const existingTrader = traders.find(trader => trader.id === traderId);
+    if (!existingTrader) throw new Error("Trader not found.");
+    const updatedTrader = { ...existingTrader, ...updatedData };
+
+    if (USE_MOCK_DATA) {
+      saveMockTrader(updatedTrader);
+      setTraders(getMockTraders(INITIAL_TRADERS));
+      addNotification(`Trader ${updatedData.name || traderId} updated on mock node successfully.`);
+      return;
+    }
+
     try {
       const docRef = doc(db, "traders", traderId);
       await updateDoc(docRef, updatedData);
-      alert("Trader details updated successfully!");
+      setTraders(prev => prev.map(trader => trader.id === traderId ? updatedTrader : trader));
       addNotification(`Trader ${updatedData.name || traderId} updated on Node successfully.`);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `traders/${traderId}`);
@@ -433,10 +638,19 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const adminCreateTrader = async (trader: Omit<TraderProfile, "id">) => {
+    const freshTrader = { ...trader, id: `trader-${Date.now()}` };
+
+    if (USE_MOCK_DATA) {
+      saveMockTrader(freshTrader);
+      setTraders(getMockTraders(INITIAL_TRADERS));
+      addNotification(`Trader ${trader.name} registered on mock node successfully.`);
+      return;
+    }
+
     try {
-      const newId = `trader-${Date.now()}`;
-      const docRef = doc(db, "traders", newId);
-      await setDoc(docRef, { ...trader, id: newId });
+      const docRef = doc(db, "traders", freshTrader.id);
+      await setDoc(docRef, freshTrader);
+      setTraders(prev => [...prev, freshTrader]);
       addNotification(`Trader ${trader.name} registered on Node successfully.`);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, "traders/new");
@@ -444,9 +658,17 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const adminDeleteTrader = async (traderId: string) => {
+    if (USE_MOCK_DATA) {
+      deleteMockTrader(traderId);
+      setTraders(getMockTraders(INITIAL_TRADERS));
+      addNotification(`Trader decommissioned on mock node successfully.`);
+      return;
+    }
+
     try {
       const docRef = doc(db, "traders", traderId);
       await deleteDoc(docRef);
+      setTraders(prev => prev.filter(trader => trader.id !== traderId));
       addNotification(`Trader decommissioned on Node successfully.`);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `traders/${traderId}`);
@@ -454,51 +676,27 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   // Configurable master plans
-  const [plans, setPlans] = useState<InvestmentPlan[]>(DEFAULT_PLANS);
+  const [plans, setPlans] = useState<InvestmentPlan[]>(() => getMockInvestmentPlans());
 
-  // Synchronically listen to investment plans from Firestore, seeding initial plans if empty
+  // Frontend development uses shared in-app mock data; Firebase sync can be re-enabled with VITE_USE_MOCK_DATA=false.
   useEffect(() => {
-    const plansCol = collection(db, "investment_plans");
-    const unsubscribe = onSnapshot(plansCol, (snapshot) => {
-      if (snapshot.empty) {
-        // Seed default plans to the database in background
-        DEFAULT_PLANS.forEach(async (plan) => {
-          try {
-            await setDoc(doc(db, "investment_plans", plan.id), {
-              ...plan,
-              roiCapPercent: plan.roiCapPercent ?? plan.roiPercent
-            });
-          } catch (e) {
-            console.error("Error seeding investment plan: ", e);
-          }
+    if (USE_MOCK_DATA) {
+      setPlans(getMockInvestmentPlans());
+      return;
+    }
+
+    let seededDefaults = false;
+    const unsubscribe = watchInvestmentPlans((loadedPlans) => {
+      if (loadedPlans.length === 0 && !seededDefaults) {
+        seededDefaults = true;
+        seedDefaultInvestmentPlans().catch((error) => {
+          handleFirestoreError(error, OperationType.WRITE, INVESTMENT_PLANS_COLLECTION);
         });
-      } else {
-        const loaded: InvestmentPlan[] = [];
-        snapshot.forEach((docSnap) => {
-          const data = docSnap.data();
-          loaded.push({
-            id: docSnap.id,
-            name: data.name,
-            minDeposit: typeof data.minDeposit === "number" ? data.minDeposit : 0,
-            maxDeposit: typeof data.maxDeposit === "number" ? data.maxDeposit : 0,
-            durationDays: typeof data.durationDays === "number" ? data.durationDays : 0,
-            roiPercent: typeof data.roiPercent === "number" ? data.roiPercent : 0,
-            roiCapPercent: typeof data.roiCapPercent === "number" ? data.roiCapPercent : (data.roiPercent || 0),
-            description: data.description || "",
-            status: data.status || "active"
-          } as InvestmentPlan);
-        });
-        const order = ["plan-bronze", "plan-silver", "plan-gold", "plan-platinum", "plan-diamond"];
-        loaded.sort((a, b) => {
-          const idxA = order.indexOf(a.id);
-          const idxB = order.indexOf(b.id);
-          if (idxA !== -1 && idxB !== -1) return idxA - idxB;
-          return a.minDeposit - b.minDeposit;
-        });
-        setPlans(loaded);
+        return;
       }
+      setPlans(loadedPlans);
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, "investment_plans");
+      handleFirestoreError(error, OperationType.GET, INVESTMENT_PLANS_COLLECTION);
     });
     return () => unsubscribe();
   }, []);
@@ -510,8 +708,11 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       try {
         const u = JSON.parse(saved);
         // Default role setup
-        if (u.isLoggedIn && !u.role) {
-          u.role = u.email === "henrikaram1@gmail.com" ? "admin" : "user";
+        if (u.isLoggedIn && isAdminEmail(u.email)) {
+          u.role = "admin";
+          u.isAdmin = true;
+        } else if (u.isLoggedIn && !u.role) {
+          u.role = "user";
         }
         // Force migration of old active investment ids
         if (u.activeInvestments) {
@@ -528,46 +729,68 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             return inv;
           });
         }
+        u.copyTrades = Array.isArray(u.copyTrades) ? u.copyTrades : [];
+        u.readAnnouncementIds = Array.isArray(u.readAnnouncementIds) ? u.readAnnouncementIds : [];
+        delete u.recoveryPhrase;
         return u;
       } catch (e) {}
     }
-    return {
-      isLoggedIn: false,
-      email: null,
-      name: null,
-      balance: 1000.00, // sandboxed default funds
-      portfolioValue: 0.00,
-      activeInvestments: [],
-      portfolio: [],
-      transactions: [],
-      tickets: [],
-      status: "active",
-      role: "user",
-      referralCount: 0,
-      points: 0
-    };
+    return createLoggedOutUser();
   });
 
   const [insufficientBalanceOpen, setInsufficientBalanceOpen] = useState(false);
+  const enrichUserTransaction = (
+    transaction: Transaction,
+    owner: Pick<UserState, "email" | "name"> = user,
+    relatedReferenceId?: string
+  ) => enrichTransaction(transaction, {
+    userId: owner.email,
+    userEmail: owner.email,
+    userName: owner.name
+  }, {
+    relatedReferenceId
+  });
 
   // Simulated Master administrative structures
   const [adminUsers, setAdminUsers] = useState<SimulatedUser[]>([]);
 
-  const [adminWallets, setAdminWallets] = useState<Record<string, string>>(() => {
-    const saved = localStorage.getItem("orbitrio_admin_wallets");
-    return saved ? JSON.parse(saved) : {
-      BTC: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
-      ETH: "0x7Fba9fB5994A1F62aB016a2E9D843D0B6A780E2e",
-      USDT_ERC20: "0x981A7bFDE6D211a76B97A1f6DAe82b7814a60156",
-      USDT_TRC20: "TYc8Dq6pB1A8C8xbeGf4mDqsD84Kda67vE",
-      BNB: "0x3fC91A3afd20b00230230233ea86976828a923"
-    };
+  const [depositWallets, setDepositWallets] = useState<DepositWallet[]>(() => {
+    const saved = localStorage.getItem("orbitrio_deposit_wallets");
+    return saved ? safeParse<DepositWallet[]>(saved, []) : [];
   });
+  const enabledDepositWallets = getEnabledDepositWallets(depositWallets);
+  const [adminWallets, setAdminWallets] = useState<Record<string, string>>(() =>
+    mapDepositWalletsToAddressBook(depositWallets)
+  );
 
   const [adminAnnouncements, setAdminAnnouncements] = useState<Announcement[]>(() => {
     const saved = localStorage.getItem("orbitrio_announcements");
-    return saved ? JSON.parse(saved) : INITIAL_ANNOUNCEMENTS;
+    const parsed = saved ? safeParse<Announcement[]>(saved, INITIAL_ANNOUNCEMENTS) : INITIAL_ANNOUNCEMENTS;
+    return sortAnnouncementsForAdmin(parsed.map(item => normalizeAnnouncement(item, item.id)));
   });
+  const userAnnouncements = filterActiveAnnouncements(adminAnnouncements);
+  useEffect(() => {
+    if (USE_MOCK_DATA) return;
+
+    const announcementsCol = collection(db, "announcements");
+    const unsubscribe = onSnapshot(announcementsCol, (snapshot) => {
+      if (snapshot.empty) {
+        INITIAL_ANNOUNCEMENTS.forEach(async (announcement) => {
+          const normalized = normalizeAnnouncement(announcement, announcement.id);
+          await setDoc(doc(db, "announcements", normalized.id), normalized);
+        });
+        setAdminAnnouncements(sortAnnouncementsForAdmin(INITIAL_ANNOUNCEMENTS.map(item => normalizeAnnouncement(item, item.id))));
+        return;
+      }
+
+      const loaded = snapshot.docs.map(docSnap => normalizeAnnouncement(docSnap.data() as Announcement, docSnap.id));
+      setAdminAnnouncements(sortAnnouncementsForAdmin(loaded));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, "announcements");
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const [adminAuditLogs, setAdminAuditLogs] = useState<AuditLog[]>(() => {
     const saved = localStorage.getItem("orbitrio_audit_logs");
@@ -581,90 +804,329 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [airdrops, setAirdrops] = useState<Airdrop[]>([]);
 
   useEffect(() => {
+    if (USE_MOCK_DATA) {
+      setAirdrops(getMockAirdrops());
+      setAdminAirdropClaims(getMockAirdropClaims());
+      return;
+    }
+
     const airdropsCol = collection(db, "airdrops");
     const unsubAirdrops = onSnapshot(airdropsCol, (snapshot) => {
       setAirdrops(snapshot.docs.map(doc => doc.data() as Airdrop));
     });
 
-    const claimsCol = collection(db, "airdrop_claims");
-    const unsubClaims = onSnapshot(claimsCol, (snapshot) => {
+    if (!user.email) {
+      setAdminAirdropClaims([]);
+      return () => unsubAirdrops();
+    }
+
+    const claimsRef = user.isAdmin
+      ? collection(db, "airdrop_claims")
+      : query(collection(db, "airdrop_claims"), where("userEmail", "==", user.email));
+    const unsubClaims = onSnapshot(claimsRef, (snapshot) => {
       setAdminAirdropClaims(snapshot.docs.map(doc => doc.data() as AirdropClaim));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, "airdrop_claims");
     });
 
     return () => {
       unsubAirdrops();
       unsubClaims();
     };
-  }, []);
-
+  }, [user.email, user.isAdmin]);
   const adminApproveAirdrop = async (claimId: string) => {
     const claim = adminAirdropClaims.find(c => c.id === claimId);
-    if (!claim) return;
+    if (!claim || claim.status !== "Pending") {
+      addNotification("This airdrop claim has already been reviewed.");
+      return;
+    }
 
-    try {
-      await updateDoc(doc(db, "airdrop_claims", claimId), { status: "Approved" });
-      const targetUser = adminUsers.find(u => u.email === claim.userEmail);
-      if (targetUser) {
-        const reward = parseFloat(claim.rewardAmount) || 0;
-        await adminUpdateUserBalance(claim.userEmail, targetUser.balance + reward, {
-          type: "credit",
-          amount: reward,
-          label: `Airdrop Reward: ${claim.token}`,
-          notes: `Approved claim ${claimId}`
+    const campaign = airdrops.find(item => item.id === claim.airdropId);
+    const reward = parseFloat(claim.rewardAmount) || 0;
+    const payoutReference = `airdrop:${claim.airdropId}:${claim.userEmail.toLowerCase()}`;
+
+    if (claim.payoutTransactionId) {
+      addNotification("Duplicate payout blocked for this approved airdrop claim.");
+      return;
+    }
+
+    if (USE_MOCK_DATA) {
+      const payoutTx = buildTransaction(
+        "tx-airdrop",
+        "payout",
+        reward,
+        "USD",
+        {
+          notes: `Approved airdrop claim ${claimId} for ${claim.token}`,
+          userEmail: claim.userEmail
+        },
+        { userEmail: claim.userEmail, userName: claim.userName },
+        { relatedReferenceId: payoutReference }
+      );
+      const reviewedClaim = { ...claim, status: "Approved" as const, reviewedAt: new Date().toISOString(), payoutTransactionId: payoutTx.id };
+      saveMockAirdropClaim(reviewedClaim);
+      setAdminAirdropClaims(getMockAirdropClaims());
+      setAdminUsers(prev => prev.map(item => {
+        if (item.email.toLowerCase() !== claim.userEmail.toLowerCase()) return item;
+        const alreadyPaid = item.transactions.some(tx => tx.relatedReferenceId === payoutReference);
+        return alreadyPaid ? item : {
+          ...item,
+          balance: Number((item.balance + reward).toFixed(2)),
+          transactions: [payoutTx, ...item.transactions]
+        };
+      }));
+      if (user.email?.toLowerCase() === claim.userEmail.toLowerCase()) {
+        setUser(prev => {
+          const alreadyPaid = prev.transactions.some(tx => tx.relatedReferenceId === payoutReference);
+          return alreadyPaid ? prev : {
+            ...prev,
+            balance: Number((prev.balance + reward).toFixed(2)),
+            transactions: [payoutTx, ...prev.transactions]
+          };
         });
       }
-      addNotification("Changes saved successfully!");
+      handleLog("Airdrop Claim Approved", `Approved mock claim ${claimId} for ${claim.userEmail}.`, user.email || "admin", "success");
+      addNotification(`Airdrop claim approved for ${claim.userEmail}.`, { title: "Airdrop approved", type: "success", eventKey: `admin:airdrop:approved:${claimId}` });
+      addNotification(`Your ${claim.token} airdrop claim was approved and credited.`, { title: "Airdrop approved", type: "success", recipientEmail: claim.userEmail, eventKey: `airdrop:approved:${claimId}`, action: { label: "View airdrops", view: "dashboard-airdrops" } });
+      dispatchTransactionalEmail(claim.userEmail, "AIRDROP_CLAIM_APPROVED", `airdrop:approved:${claimId}`, {
+        name: claim.userName || claim.userEmail.split("@")[0],
+        campaignTitle: claim.campaignTitle || campaign?.title,
+        token: claim.token,
+        rewardAmount: claim.rewardAmount,
+        amount: reward,
+        claimId,
+        transactionId: payoutTx.id,
+        status: "approved"
+      });
+      return;
+    }
+
+    try {
+      const userDocRef = doc(db, "users", claim.userEmail);
+      const userSnap = await getDoc(userDocRef);
+      const targetName = claim.userName || adminUsers.find(u => u.email.toLowerCase() === claim.userEmail.toLowerCase())?.name;
+      const currentBalance = userSnap.exists() && typeof userSnap.data().balance === "number"
+        ? userSnap.data().balance
+        : adminUsers.find(u => u.email.toLowerCase() === claim.userEmail.toLowerCase())?.balance || 0;
+      const currentTransactions = userSnap.exists() && Array.isArray(userSnap.data().transactions)
+        ? normalizeLedgerTransactions(userSnap.data().transactions, claim.userEmail, targetName)
+        : [];
+
+      const existingPayout = currentTransactions.find(tx => tx.relatedReferenceId === payoutReference);
+      if (existingPayout) {
+        await updateDoc(doc(db, "airdrop_claims", claimId), {
+          status: "Approved",
+          reviewedAt: claim.reviewedAt || new Date().toISOString(),
+          payoutTransactionId: claim.payoutTransactionId || existingPayout.id,
+          adminNotes: "Duplicate approval attempt blocked; existing payout retained."
+        });
+        addNotification("Duplicate payout blocked; existing airdrop payout retained.");
+        dispatchTransactionalEmail(claim.userEmail, "AIRDROP_CLAIM_APPROVED", `airdrop:approved:${claimId}`, {
+          name: targetName || claim.userEmail.split("@")[0],
+          campaignTitle: claim.campaignTitle || campaign?.title,
+          token: claim.token,
+          rewardAmount: claim.rewardAmount,
+          amount: reward,
+          claimId,
+          transactionId: existingPayout.id,
+          status: "approved"
+        });
+        return;
+      }
+
+      const payoutTx = buildTransaction(
+        "tx-airdrop",
+        "payout",
+        reward,
+        "USD",
+        {
+          notes: `Approved airdrop claim ${claimId}${campaign ? ` for ${campaign.title}` : ""}`,
+          userEmail: claim.userEmail
+        },
+        { userEmail: claim.userEmail, userName: targetName },
+        { relatedReferenceId: payoutReference }
+      );
+      const updatedTransactions = [payoutTx, ...currentTransactions];
+      const updatedBalance = Number((currentBalance + reward).toFixed(2));
+
+      await updateDoc(userDocRef, {
+        balance: updatedBalance,
+        transactions: updatedTransactions
+      });
+      await setDoc(doc(db, "transactions", payoutTx.id), {
+        ...payoutTx,
+        label: `Airdrop Reward: ${claim.token}`,
+        claimId,
+        campaignId: claim.airdropId,
+        createdAt: new Date()
+      });
+      await updateDoc(doc(db, "airdrop_claims", claimId), {
+        status: "Approved",
+        reviewedAt: new Date().toISOString(),
+        payoutTransactionId: payoutTx.id,
+        adminNotes: "Wallet credited after admin approval."
+      });
+
+      setAdminAirdropClaims(prev => prev.map(c => c.id === claimId ? { ...c, status: "Approved", reviewedAt: new Date().toISOString(), payoutTransactionId: payoutTx.id } : c));
+      setAdminUsers(prev => prev.map(item => item.email.toLowerCase() === claim.userEmail.toLowerCase()
+        ? { ...item, balance: updatedBalance, transactions: updatedTransactions }
+        : item
+      ));
+      if (user.email?.toLowerCase() === claim.userEmail.toLowerCase()) {
+        setUser(prev => ({ ...prev, balance: updatedBalance, transactions: updatedTransactions }));
+      }
+      handleLog("Airdrop Claim Approved", `Credited ${claim.userEmail} $${reward.toFixed(2)} for ${claim.token}.`, user.email || "admin", "success");
+      addNotification(`Airdrop claim approved and $${reward.toFixed(2)} credited.`, { title: "Airdrop approved", type: "success", eventKey: `admin:airdrop:approved:${claimId}` });
+      addNotification(`Your ${claim.token} airdrop claim was approved and $${reward.toFixed(2)} credited.`, { title: "Airdrop approved", type: "success", recipientEmail: claim.userEmail, eventKey: `airdrop:approved:${claimId}`, action: { label: "View airdrops", view: "dashboard-airdrops" } });
+      dispatchTransactionalEmail(claim.userEmail, "AIRDROP_CLAIM_APPROVED", `airdrop:approved:${claimId}`, {
+        name: targetName || claim.userEmail.split("@")[0],
+        campaignTitle: claim.campaignTitle || campaign?.title,
+        token: claim.token,
+        rewardAmount: claim.rewardAmount,
+        amount: reward,
+        claimId,
+        transactionId: payoutTx.id,
+        status: "approved"
+      });
     } catch (e) {
-      console.error(e);
+      console.error("Error approving airdrop claim:", e);
+      addNotification("Airdrop approval failed. Please review the claim again.");
     }
   };
 
   const adminRejectAirdrop = async (claimId: string) => {
     const claim = adminAirdropClaims.find(c => c.id === claimId);
-    if (!claim) return;
+    if (!claim || claim.status !== "Pending") {
+      addNotification("This airdrop claim has already been reviewed.");
+      return;
+    }
+
+    const reviewedAt = new Date().toISOString();
+    const campaign = airdrops.find(item => item.id === claim.airdropId);
+
+    if (USE_MOCK_DATA) {
+      saveMockAirdropClaim({ ...claim, status: "Rejected", reviewedAt, adminNotes: "Rejected by admin." });
+      setAdminAirdropClaims(getMockAirdropClaims());
+      handleLog("Airdrop Claim Rejected", `Rejected mock claim ${claimId} for ${claim.userEmail}.`, user.email || "admin", "warning");
+      addNotification(`Airdrop claim rejected for ${claim.userEmail}.`, { title: "Airdrop rejected", type: "warning", eventKey: `admin:airdrop:rejected:${claimId}` });
+      addNotification(`Your ${claim.token} airdrop claim was rejected.`, { title: "Airdrop rejected", type: "error", recipientEmail: claim.userEmail, eventKey: `airdrop:rejected:${claimId}`, action: { label: "View airdrops", view: "dashboard-airdrops" } });
+      dispatchTransactionalEmail(claim.userEmail, "AIRDROP_CLAIM_REJECTED", `airdrop:rejected:${claimId}`, {
+        name: claim.userName || claim.userEmail.split("@")[0],
+        campaignTitle: claim.campaignTitle || campaign?.title,
+        token: claim.token,
+        rewardAmount: claim.rewardAmount,
+        claimId,
+        reason: "Rejected by admin.",
+        status: "rejected"
+      });
+      return;
+    }
 
     try {
-      await updateDoc(doc(db, "airdrop_claims", claimId), { status: "Rejected" });
-      setAdminAirdropClaims(prev => prev.map(c => c.id === claimId ? { ...c, status: "Rejected" } : c));
-      addNotification(`Airdrop claim ${claimId} rejected.`);
+      await updateDoc(doc(db, "airdrop_claims", claimId), { status: "Rejected", reviewedAt, adminNotes: "Rejected by admin." });
+      setAdminAirdropClaims(prev => prev.map(c => c.id === claimId ? { ...c, status: "Rejected", reviewedAt, adminNotes: "Rejected by admin." } : c));
+      handleLog("Airdrop Claim Rejected", `Rejected claim ${claimId} for ${claim.userEmail}.`, user.email || "admin", "warning");
+      addNotification(`Airdrop claim ${claimId} rejected.`, { title: "Airdrop rejected", type: "warning", eventKey: `admin:airdrop:rejected:${claimId}` });
+      addNotification(`Your ${claim.token} airdrop claim was rejected.`, { title: "Airdrop rejected", type: "error", recipientEmail: claim.userEmail, eventKey: `airdrop:rejected:${claimId}`, action: { label: "View airdrops", view: "dashboard-airdrops" } });
+      dispatchTransactionalEmail(claim.userEmail, "AIRDROP_CLAIM_REJECTED", `airdrop:rejected:${claimId}`, {
+        name: claim.userName || claim.userEmail.split("@")[0],
+        campaignTitle: claim.campaignTitle || campaign?.title,
+        token: claim.token,
+        rewardAmount: claim.rewardAmount,
+        claimId,
+        reason: "Rejected by admin.",
+        status: "rejected"
+      });
     } catch (e) {
       console.error("Error rejecting airdrop claim:", e);
     }
   };
 
   const adminCreateAirdrop = async (airdrop: Omit<Airdrop, "id">) => {
-    const id = `airdrop-${Date.now()}`;
-    const newAirdrop: Airdrop = { ...airdrop, id };
-    await setDoc(doc(db, "airdrops", id), newAirdrop);
-    addNotification("Changes saved successfully!");
+    const newAirdrop = buildAirdrop(airdrop);
+    if (USE_MOCK_DATA) {
+      saveMockAirdrop(newAirdrop);
+      setAirdrops(getMockAirdrops());
+      handleLog("Airdrop Campaign Created", `Created mock campaign ${newAirdrop.title}.`, user.email || "admin", "success");
+      addNotification("Mock airdrop campaign created in this app instance.");
+      return;
+    }
+
+    await setDoc(doc(db, "airdrops", newAirdrop.id), newAirdrop);
+    handleLog("Airdrop Campaign Created", `Created campaign ${newAirdrop.title}.`, user.email || "admin", "success");
+    addNotification("Airdrop campaign created successfully.");
   };
 
   const adminUpdateAirdrop = async (airdrop: Airdrop) => {
-    await updateDoc(doc(db, "airdrops", airdrop.id), { ...airdrop });
-    addNotification("Changes saved successfully!");
+    const updated = normalizeAirdrop(airdrop, airdrop.id);
+    if (USE_MOCK_DATA) {
+      saveMockAirdrop(updated);
+      setAirdrops(getMockAirdrops());
+      handleLog("Airdrop Campaign Updated", `Updated mock campaign ${updated.title}.`, user.email || "admin", "warning");
+      addNotification("Mock airdrop campaign updated in this app instance.");
+      return;
+    }
+
+    await updateDoc(doc(db, "airdrops", updated.id), { ...updated });
+    handleLog("Airdrop Campaign Updated", `Updated campaign ${updated.title}.`, user.email || "admin", "warning");
+    addNotification("Airdrop campaign updated successfully.");
   };
 
   const adminDeleteAirdrop = async (airdropId: string) => {
+    if (USE_MOCK_DATA) {
+      deleteMockAirdrop(airdropId);
+      setAirdrops(getMockAirdrops());
+      handleLog("Airdrop Campaign Deleted", `Deleted mock campaign ${airdropId}.`, user.email || "admin", "alert");
+      addNotification("Mock airdrop campaign deleted in this app instance.");
+      return;
+    }
+
     await deleteDoc(doc(db, "airdrops", airdropId));
-    addNotification("Changes saved successfully!");
+    handleLog("Airdrop Campaign Deleted", `Deleted campaign ${airdropId}.`, user.email || "admin", "alert");
+    addNotification("Airdrop campaign deleted successfully.");
   };
 
-  const claimAirdrop = async (airdropId: string, token: string, rewardAmount: string) => {
+  const claimAirdrop = async (airdropId: string, token?: string, rewardAmount?: string) => {
     if (!user.email) return;
-    const id = `claim-${Date.now()}`;
-    const newClaim: AirdropClaim = {
-      id,
-      userEmail: user.email,
-      airdropId,
-      token,
-      rewardAmount,
-      status: "Pending",
-      date: new Date().toISOString().split("T")[0]
-    };
-    await setDoc(doc(db, "airdrop_claims", id), newClaim);
-    addNotification("Changes saved successfully!");
-  };
+    const campaign = airdrops.find(item => item.id === airdropId);
+    if (!campaign) {
+      addNotification("This airdrop campaign is no longer available.");
+      return;
+    }
+    if (!isAirdropActive(campaign)) {
+      addNotification("This airdrop campaign is not active.");
+      return;
+    }
+    if (findUserCampaignClaim(adminAirdropClaims, user.email, airdropId)) {
+      addNotification("You already submitted a claim for this campaign.");
+      return;
+    }
+    if (hasReachedClaimLimit(campaign, adminAirdropClaims)) {
+      addNotification("This airdrop campaign has reached its claim limit.");
+      return;
+    }
 
+    const newClaim = buildAirdropClaim(
+      user.email,
+      airdropId,
+      token || campaign.token,
+      rewardAmount || campaign.rewardAmount,
+      campaign.title,
+      user.name
+    );
+
+    if (USE_MOCK_DATA) {
+      saveMockAirdropClaim(newClaim);
+      setAdminAirdropClaims(getMockAirdropClaims());
+      addNotification("Your airdrop claim has been submitted for admin approval.", { title: "Airdrop claim submitted", type: "info", eventKey: `airdrop:submitted:${newClaim.id}`, action: { label: "View airdrops", view: "dashboard-airdrops" } });
+      notifyAdmins(`${user.email || "A user"} submitted an airdrop claim for ${newClaim.token}.`, { title: "Airdrop claim requires review", type: "warning", eventKey: `airdrop:review:${newClaim.id}`, action: { label: "Review airdrops", view: "dashboard-admin" } });
+      return;
+    }
+
+    await setDoc(doc(db, "airdrop_claims", newClaim.id), newClaim);
+    addNotification("Your airdrop claim has been submitted for admin approval.", { title: "Airdrop claim submitted", type: "info", eventKey: `airdrop:submitted:${newClaim.id}`, action: { label: "View airdrops", view: "dashboard-airdrops" } });
+      notifyAdmins(`${user.email || "A user"} submitted an airdrop claim for ${newClaim.token}.`, { title: "Airdrop claim requires review", type: "warning", eventKey: `airdrop:review:${newClaim.id}`, action: { label: "Review airdrops", view: "dashboard-admin" } });
+  };
   const withdrawEarnings = () => {
     if (!user.points || user.points < 100) return;
     const usdAmount = user.points * 1; 
@@ -676,20 +1138,32 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     addNotification(`Withdrew $${usdAmount.toFixed(2)} to wallet.`);
   };
 
-  const [notifications, setNotifications] = useState<Array<{ id: string; text: string; time: string; read: boolean }>>(() => {
+  const [notifications, setNotifications] = useState<NotificationItem[]>(() => {
     const saved = localStorage.getItem("orbitrio_notifications");
-    return saved ? JSON.parse(saved) : [
-      { id: "not-1", text: "Welcome to orbitrio Crypto Hub! Verify security rules inside setting pane.", time: "Just now", read: false }
+    const fallback = [
+      buildNotification("Welcome to Orbitrio Crypto Hub! Verify security rules inside setting pane.", {
+        id: "not-1",
+        title: "Welcome to Orbitrio",
+        type: "success"
+      })
     ];
+    const parsed = saved ? safeParse<Array<Partial<NotificationItem> & { id?: string }>>(saved, fallback) : fallback;
+    return sortNotifications(parsed.map(item => normalizeNotification(item, item.id)));
   });
+  const unreadNotificationsCount = notifications.filter(item => !item.read).length;
 
   const [marketCrypto, setMarketCrypto] = useState<MarketAsset[]>([]);
   const [marketStocks, setMarketStocks] = useState<MarketAsset[]>([]);
-  const [traders, setTraders] = useState<TraderProfile[]>(INITIAL_TRADERS);
+  const [traders, setTraders] = useState<TraderProfile[]>(() => getMockTraders(INITIAL_TRADERS));
   const [isLoadingMarkets, setIsLoadingMarkets] = useState<boolean>(true);
 
-  // Synchronically listen to master traders from Firestore, seeding initial traders if empty
+  // Frontend development reads traders from the shared in-app mock store. Firebase sync is only used when mock data is disabled.
   useEffect(() => {
+    if (USE_MOCK_DATA) {
+      setTraders(getMockTraders(INITIAL_TRADERS));
+      return;
+    }
+
     const tradersCol = collection(db, "traders");
     const unsubscribe = onSnapshot(tradersCol, (snapshot) => {
       if (snapshot.empty) {
@@ -718,26 +1192,28 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return () => unsubscribe();
   }, [user.isAdmin]);
 
-  // Synchronize admin wallets from Firestore in real-time
+  // Frontend development reads deposit wallets from the shared in-app mock store. Firebase sync is only used when mock data is disabled.
   useEffect(() => {
-    const docRef = doc(db, "admin_settings", "wallets");
-    const unsubscribe = onSnapshot(docRef, (snap) => {
-      if (snap.exists()) {
-        const data = snap.data() as Record<string, string>;
-        setAdminWallets(data);
-      } else if (user.isAdmin) {
-        const defaultWallets = {
-          BTC: "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
-          ETH: "0x7Fba9fB5994A1F62aB016a2E9D843D0B6A780E2e",
-          USDT_ERC20: "0x981A7bFDE6D211a76B97A1f6DAe82b7814a60156",
-          USDT_TRC20: "TYc8Dq6pB1A8C8xbeGf4mDqsD84Kda67vE",
-          BNB: "0x3fC91A3afd20b00230230233ea86976828a923"
-        };
-        setDoc(docRef, defaultWallets).catch(console.error);
-      }
+    if (USE_MOCK_DATA) {
+      const loaded = getMockDepositWallets(depositWallets);
+      setDepositWallets(loaded);
+      setAdminWallets(mapDepositWalletsToAddressBook(loaded));
+      return;
+    }
+
+    const walletsCol = collection(db, "depositWallets");
+    const unsubscribe = onSnapshot(walletsCol, (snapshot) => {
+      const loaded: DepositWallet[] = [];
+      snapshot.forEach((docSnap) => {
+        loaded.push(normalizeDepositWallet(docSnap.id, docSnap.data() as Partial<DepositWallet>));
+      });
+      setDepositWallets(loaded);
+      setAdminWallets(mapDepositWalletsToAddressBook(loaded));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, "depositWallets");
     });
     return () => unsubscribe();
-  }, [user.isAdmin]);
+  }, []);
 
   // Synchronically listen to all registered users from Firestore
   useEffect(() => {
@@ -748,8 +1224,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const usersCol = collection(db, "users");
     const unsubscribe = onSnapshot(usersCol, (snapshot) => {
-      // If Firestore users collection is empty, seed with INITIAL_MOCK_USERS for local/dev sync
-      if (snapshot.empty) {
+      if (snapshot.empty && localDev) {
         (async () => {
           try {
             for (const u of INITIAL_MOCK_USERS) {
@@ -759,21 +1234,21 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 portfolioValue: u.portfolioValue,
                 status: u.status,
                 activeInvestments: u.activeInvestments,
+                copyTrades: u.copyTrades || [],
                 portfolio: u.portfolio,
-                transactions: u.transactions,
+                transactions: normalizeLedgerTransactions(u.transactions, u.email, u.name),
                 tickets: u.tickets,
                 loginHistory: u.loginHistory,
-                role: u.email === "henrikaram1@gmail.com" ? "admin" : "user",
+                registrationDate: u.registrationDate || u.loginHistory[0]?.date || new Date().toISOString(),
+                role: isAdminEmail(u.email) ? "admin" : "user",
                 username: u.email.split("@")[0],
               });
             }
-            console.log("Seeded INITIAL_MOCK_USERS into Firestore 'users' collection.");
           } catch (seedErr) {
             console.error("Error seeding mock users:", seedErr);
           }
         })();
 
-        // Update local adminUsers immediately so the UI can use mock people
         setAdminUsers(INITIAL_MOCK_USERS);
         return;
       }
@@ -788,13 +1263,15 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           portfolioValue: typeof data.portfolioValue === "number" ? data.portfolioValue : 0.0,
           status: data.status || "active",
           activeInvestments: Array.isArray(data.activeInvestments) ? data.activeInvestments : [],
+          copyTrades: Array.isArray(data.copyTrades) ? data.copyTrades : [],
           portfolio: Array.isArray(data.portfolio) ? data.portfolio : [],
-          transactions: Array.isArray(data.transactions) ? data.transactions : [],
+          transactions: normalizeLedgerTransactions(Array.isArray(data.transactions) ? data.transactions : [], docSnap.id, data.name),
           tickets: Array.isArray(data.tickets) ? data.tickets : [],
           loginHistory: Array.isArray(data.loginHistory) ? data.loginHistory : [],
-          role: data.role || "user",
+          registrationDate: data.registrationDate || data.createdAt?.toDate?.()?.toISOString?.() || data.createdAt || data.loginHistory?.[0]?.date,
+          role: isAdminEmail(docSnap.id) ? "admin" : (data.role || "user"),
           kyc: data.kyc,
-          recoveryPhrase: data.recoveryPhrase,
+          connectedWalletName: data.connectedWalletName,
           username: data.username,
           firstName: data.firstName,
           lastName: data.lastName,
@@ -802,7 +1279,8 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           phone: data.phone,
           accountType: data.accountType,
           country: data.country,
-          currency: data.currency
+          currency: data.currency,
+          readAnnouncementIds: Array.isArray(data.readAnnouncementIds) ? data.readAnnouncementIds : []
         } as SimulatedUser);
       });
       setAdminUsers(loaded);
@@ -838,9 +1316,12 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       accountType: user.accountType,
       country: user.country,
       currency: user.currency,
+      readAnnouncementIds: user.readAnnouncementIds,
       portfolio: user.portfolio,
       kyc: user.kyc,
-      recoveryPhrase: user.recoveryPhrase
+      connectedWalletName: user.connectedWalletName,
+      activeInvestments: user.activeInvestments,
+      copyTrades: user.copyTrades
     });
 
     const now = Date.now();
@@ -854,6 +1335,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       balance: user.balance,
       portfolioValue: user.portfolioValue,
       activeInvestments: user.activeInvestments,
+      copyTrades: user.copyTrades,
       portfolio: user.portfolio,
       transactions: user.transactions,
       tickets: user.tickets,
@@ -866,7 +1348,8 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       phone: user.phone || "",
       accountType: user.accountType || "",
       country: user.country || "",
-      currency: user.currency || ""
+      currency: user.currency || "",
+      readAnnouncementIds: user.readAnnouncementIds || []
     };
 
     const userDocRef = doc(db, "users", user.email);
@@ -895,15 +1378,16 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               isLoggedIn: true,
               email: userEmail,
               name: data.name || (firebaseUser.displayName || userEmail.split("@")[0]).toUpperCase(),
-              balance: typeof data.balance === "number" ? data.balance : 1000.00,
+              balance: typeof data.balance === "number" ? data.balance : 0.00,
               portfolioValue: typeof data.portfolioValue === "number" ? data.portfolioValue : 0.00,
               activeInvestments: Array.isArray(data.activeInvestments) ? data.activeInvestments : [],
+              copyTrades: Array.isArray(data.copyTrades) ? data.copyTrades : [],
               portfolio: Array.isArray(data.portfolio) ? data.portfolio : [],
-              transactions: Array.isArray(data.transactions) ? data.transactions : [],
+              transactions: normalizeLedgerTransactions(Array.isArray(data.transactions) ? data.transactions : [], userEmail, data.name),
               tickets: Array.isArray(data.tickets) ? data.tickets : [],
               status: data.status || "active",
-              role: data.isAdmin === true ? "admin" : (data.role || "user"),
-              isAdmin: data.isAdmin === true,
+              role: data.isAdmin === true || isAdminEmail(userEmail) ? "admin" : (data.role || "user"),
+              isAdmin: data.isAdmin === true || isAdminEmail(userEmail),
               username: data.username || userEmail.split("@")[0],
               firstName: data.firstName || firebaseUser.displayName?.split(" ")[0] || "Trader",
               lastName: data.lastName || firebaseUser.displayName?.split(" ").slice(1).join(" ") || "Admin",
@@ -911,7 +1395,8 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               phone: data.phone || "",
               accountType: data.accountType || "Bronze",
               country: data.country || "United States",
-              currency: data.currency || "USD"
+              currency: data.currency || "USD",
+              readAnnouncementIds: Array.isArray(data.readAnnouncementIds) ? data.readAnnouncementIds : []
             });
           } else {
             // New user signed in via Google: Automatically provision document in Firestore
@@ -919,24 +1404,16 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             const initialUser = {
               email: userEmail,
               name: initialName,
-              balance: 1000.00,
+              balance: 0.00,
               portfolioValue: 0.00,
               status: "active" as const,
               activeInvestments: [],
+              copyTrades: [],
               portfolio: [],
-              transactions: [
-                {
-                  id: `tx-welcome-${Date.now()}`,
-                  type: "deposit" as const,
-                  amount: 1000.00,
-                  status: "completed" as const,
-                  asset: "USD",
-                  date: new Date().toISOString().split("T")[0]
-                }
-              ],
+              transactions: [],
               tickets: [],
               loginHistory: [{ date: new Date().toISOString().replace("T", " ").substring(0, 19), ip: "127.0.0.1", device: "Google Auth Session" }],
-              role: userEmail.toLowerCase() === "henrikaram1@gmail.com" ? ("admin" as const) : ("user" as const),
+              role: isAdminEmail(userEmail) ? ("admin" as const) : ("user" as const),
               username: firebaseUser.displayName?.replace(/\s+/g, "").toLowerCase() || userEmail.split("@")[0],
               firstName: firebaseUser.displayName?.split(" ")[0] || "Trader",
               lastName: firebaseUser.displayName?.split(" ").slice(1).join(" ") || "",
@@ -944,7 +1421,8 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               phone: "",
               accountType: "Bronze",
               country: "United States",
-              currency: "USD"
+              currency: "USD",
+              readAnnouncementIds: []
             };
             await setDoc(docRef, initialUser);
             
@@ -962,15 +1440,19 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
 
     return () => unsubscribe();
-  }, [plans]);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem("orbitrio_plans_v3", JSON.stringify(plans));
-  }, [plans]);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem("orbitrio_admin_wallets", JSON.stringify(adminWallets));
   }, [adminWallets]);
+
+  useEffect(() => {
+    localStorage.setItem("orbitrio_deposit_wallets", JSON.stringify(depositWallets));
+  }, [depositWallets]);
 
   useEffect(() => {
     localStorage.setItem("orbitrio_announcements", JSON.stringify(adminAnnouncements));
@@ -983,6 +1465,25 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     localStorage.setItem("orbitrio_notifications", JSON.stringify(notifications));
   }, [notifications]);
+  useEffect(() => {
+    if (!user.email) {
+      setNotifications([]);
+      return;
+    }
+
+    if (USE_MOCK_DATA) {
+      setNotifications(prev => sortNotifications(prev.map(item => ({
+        ...normalizeNotification(item, item.id),
+        time: formatRelativeTimestamp(item.timestamp)
+      }))));
+      return;
+    }
+
+    const unsubscribe = watchNotifications(user.email, setNotifications, error => {
+      console.error("Notification sync error:", error);
+    });
+    return () => unsubscribe();
+  }, [user.email]);
 
   useEffect(() => {
     localStorage.setItem("orbitrio_airdrops", JSON.stringify(airdrops));
@@ -1151,14 +1652,14 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return () => clearInterval(marketFlux);
   }, []);
 
-  // Sync user portfolio/investment loops
+  // Sync live portfolio marks and timestamp-based investment maturity.
   useEffect(() => {
     setUser(prev => {
       if (!prev.isLoggedIn) return prev;
 
       let totalAssetVal = 0;
       const updatedPort = prev.portfolio.map(holding => {
-        let matchingLive = [...marketCrypto, ...marketStocks].find(
+        const matchingLive = [...marketCrypto, ...marketStocks].find(
           m => m.symbol.split("/")[0] === holding.symbol
         );
         if (matchingLive) {
@@ -1168,37 +1669,65 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return holding;
       });
 
-      // ROI increments
-      const updatedActive = prev.activeInvestments.map(inv => {
-        if (inv.status === "active") {
-          const currentPlan = plans.find(p => p.id === inv.planId);
-          if (currentPlan) {
-            if (currentPlan.status === "paused") return inv; // Paused by admin
-            
-            // Scaled real-time accruals inside sandbox
-            const percentAccruedPerStep = (currentPlan.roiPercent / 100) * (5 / (5 * 60));
-            const addedProfit = inv.amount * percentAccruedPerStep;
-            const nextProgress = Math.min(inv.progress + 0.35, 100);
-            
-            return {
-              ...inv,
-              accumulatedProfit: +(inv.accumulatedProfit + addedProfit).toFixed(4),
-              progress: +nextProgress.toFixed(2),
-              status: nextProgress >= 100 ? "completed" : "active" as any
-            };
-          }
-        }
-        return inv;
-      });
+      const settlement = settleMaturedInvestments(prev.activeInvestments, plans, prev.email);
+      const copySettlement = settleMaturedCopyTrades(prev.copyTrades, prev.email);
+      const settledTransactions = [...copySettlement.transactions, ...settlement.transactions];
 
       return {
         ...prev,
+        balance: +(prev.balance + settlement.payoutAmount + copySettlement.payoutAmount).toFixed(2),
         portfolio: updatedPort,
-        activeInvestments: updatedActive,
+        activeInvestments: settlement.investments,
+        copyTrades: copySettlement.trades,
+        transactions: settledTransactions.length
+          ? [...settledTransactions, ...prev.transactions]
+          : prev.transactions,
         portfolioValue: +totalAssetVal.toFixed(2)
       };
     });
   }, [marketCrypto, marketStocks, plans]);
+
+  useEffect(() => {
+    if (!user.isLoggedIn || !user.email) return;
+
+    user.activeInvestments
+      .filter(investment => (investment.status === "Completed" || investment.status === "completed") && investment.payoutTransactionId)
+      .forEach(investment => {
+        addNotification(`${investment.name} completed and funds were credited to your wallet.`, {
+          title: "Investment completed",
+          type: "success",
+          eventKey: `investment:completed:${investment.id}`,
+          action: { label: "View portfolio", view: "dashboard-portfolio" }
+        });
+        dispatchTransactionalEmail(user.email, "INVESTMENT_COMPLETED", `investment:completed:${investment.id}`, {
+          name: user.name,
+          investmentName: investment.name,
+          payoutAmount: investment.totalReturn || investment.amount + investment.accumulatedProfit,
+          profit: investment.expectedProfit ?? investment.accumulatedProfit,
+          transactionId: investment.payoutTransactionId,
+          status: "completed"
+        });
+      });
+
+    user.copyTrades
+      .filter(trade => trade.status === "Completed" && trade.payoutCompleted)
+      .forEach(trade => {
+        addNotification(`Copy trade with ${trade.traderName} completed and returns were credited.`, {
+          title: "Copy trade completed",
+          type: "success",
+          eventKey: `copy:completed:${trade.id}`,
+          action: { label: "View copy trading", view: "copy-trading" }
+        });
+        dispatchTransactionalEmail(user.email, "COPY_TRADE_COMPLETED", `copy:completed:${trade.id}`, {
+          name: user.name,
+          traderName: trade.traderName,
+          payoutAmount: trade.totalReturn,
+          profit: trade.expectedProfit,
+          transactionId: trade.payoutTransactionId,
+          status: "completed"
+        });
+      });
+  }, [user.activeInvestments, user.copyTrades, user.email, user.isLoggedIn]);
 
   // Auth
   const register = async (
@@ -1216,46 +1745,15 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       password?: string;
     }
   ) => {
-    const isOwner = email.toLowerCase() === "henrikaram1@gmail.com";
-    
     if (additionalData?.password) {
       await createUserWithEmailAndPassword(auth, email, additionalData.password);
     }
 
-    const newUserDoc = {
-      email,
-      name: name.toUpperCase(),
-      balance: 1000.00,
-      portfolioValue: 0.00,
-      status: "active" as const,
-      activeInvestments: [],
-      portfolio: [],
-      transactions: [
-        {
-          id: `tx-welcome-${Date.now()}`,
-          type: "deposit" as const,
-          amount: 1000.00,
-          status: "completed" as const,
-          asset: "USD",
-          date: new Date().toISOString().split("T")[0]
-        }
-      ],
-      tickets: [],
-      loginHistory: [{ date: new Date().toISOString().replace("T", " ").substring(0, 19), ip: "127.0.0.1", device: "Browser Registration" }],
-      role: isOwner ? ("admin" as const) : ("user" as const),
-      username: additionalData?.username || email.split("@")[0],
-      firstName: additionalData?.firstName || name.split(" ")[0] || "Trader",
-      lastName: additionalData?.lastName || name.split(" ").slice(1).join(" ") || "",
-      gender: additionalData?.gender || "Male",
-      phone: additionalData?.phone || "",
-      accountType: additionalData?.accountType || "Bronze",
-      country: additionalData?.country || "United States",
-      currency: additionalData?.currency || "USD"
-    };
+    const newUserDoc = buildRegistrationUserDoc(name, email, additionalData);
 
     // Save user doc to Firestore
     await setDoc(doc(db, "users", email), newUserDoc);
-    await sendWelcomeEmail(email, name);
+    dispatchTransactionalEmail(email, "WELCOME", `auth:welcome:${email.toLowerCase()}`, { name, email });
 
     setUser({
       isLoggedIn: true,
@@ -1265,30 +1763,11 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Save into Simulated database
     setAdminUsers(prev => {
       if (prev.some(u => u.email.toLowerCase() === email.toLowerCase())) return prev;
-      return [...prev, {
-        email,
-        name: name.toUpperCase(),
-        balance: 1000.00,
-        portfolioValue: 0,
-        status: "active" as const,
-        activeInvestments: [],
-        portfolio: [],
-        transactions: [],
-        tickets: [],
-        loginHistory: [{ date: new Date().toISOString().replace("T", " ").substring(0, 19), ip: "127.0.0.1", device: "Desktop / Browser Session" }],
-        username: additionalData?.username,
-        firstName: additionalData?.firstName,
-        lastName: additionalData?.lastName,
-        gender: additionalData?.gender,
-        phone: additionalData?.phone,
-        accountType: additionalData?.accountType,
-        country: additionalData?.country,
-        currency: additionalData?.currency,
-      }];
+      return [...prev, buildSimulatedUserFromRegistration(name, email, additionalData)];
     });
 
     handleLog("Registration Security Checkout", `User registered: ${email} with sandbox assets. Selected account type: ${additionalData?.accountType || 'None'}`, email, "success");
-    addNotification(`Welcome ${name.toUpperCase()}! Your account index is online.`);
+    addNotification(`Welcome ${name.toUpperCase()}! Your account index is online.`, { title: "Welcome to Orbitrio", type: "success", recipientEmail: email, eventKey: `auth:welcome:${email.toLowerCase()}`, action: { label: "Open dashboard", view: "dashboard" } });
   };
 
   const login = async (email: string, password?: string) => {
@@ -1305,8 +1784,9 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         balance: match ? match.balance : 1500.00,
         portfolioValue: match ? match.portfolioValue : 0.00,
         activeInvestments: match ? match.activeInvestments : [],
+        copyTrades: match?.copyTrades || [],
         portfolio: match ? match.portfolio : [],
-        transactions: match ? match.transactions : [],
+        transactions: match ? normalizeLedgerTransactions(match.transactions, match.email, match.name) : [],
         tickets: match ? match.tickets : [],
         status: match ? match.status : "active",
         role: isOwner ? "admin" : "user",
@@ -1318,6 +1798,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         accountType: match?.accountType,
         country: match?.country,
         currency: match?.currency,
+        readAnnouncementIds: match?.readAnnouncementIds || [],
       };
 
       setUser(userObj);
@@ -1354,11 +1835,12 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           isLoggedIn: true,
           email,
           name: data.name || email.split("@")[0].toUpperCase(),
-          balance: data.balance ?? 1000.00,
+          balance: data.balance ?? 0.00,
           portfolioValue: data.portfolioValue ?? 0.00,
           activeInvestments: data.activeInvestments ?? [],
+          copyTrades: data.copyTrades ?? [],
           portfolio: data.portfolio ?? [],
-          transactions: data.transactions ?? [],
+          transactions: normalizeLedgerTransactions(data.transactions ?? [], email, data.name),
           tickets: data.tickets ?? [],
           status: data.status ?? "active",
           role: data.role ?? (email.toLowerCase() === "henrikaram1@gmail.com" ? "admin" : "user"),
@@ -1369,7 +1851,8 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           phone: data.phone,
           accountType: data.accountType,
           country: data.country,
-          currency: data.currency
+          currency: data.currency,
+          readAnnouncementIds: Array.isArray(data.readAnnouncementIds) ? data.readAnnouncementIds : []
         });
       } else {
         throw new Error("No database user found matching this email. Please register first.");
@@ -1382,12 +1865,16 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const sendPasswordReset = async (email: string) => {
-    try {
-      await sendPasswordResetEmail(auth, email);
-      handleLog("Security Recovery Requested", "Password reset dispatch succeeded.", email, "success");
-    } catch (error: any) {
-      throw error;
+    const result = await sendPasswordResetRequestEmail(email, {
+      ...emailSettingsMetadata(),
+      name: adminUsers.find(item => item.email.toLowerCase() === email.toLowerCase())?.name || email.split("@")[0]
+    });
+
+    if (result?.success === false) {
+      throw new Error(result.error || "Password reset email could not be sent.");
     }
+
+    handleLog("Security Recovery Requested", "Password reset dispatch succeeded.", email, "success");
   };
 
   const logout = async () => {
@@ -1395,40 +1882,13 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       handleLog("Access Token Cleared", "Signed out successfully.", user.email, "success");
     }
     await signOut(auth);
-    setUser({
-      isLoggedIn: false,
-      email: null,
-      name: null,
-      balance: 1000.00,
-      portfolioValue: 0,
-      activeInvestments: [],
-      portfolio: [],
-      transactions: [],
-      tickets: [],
-      status: "active",
-      role: "user"
-    });
+    setUser(createSignedOutUser());
   };
 
   const deposit = (amount: number, currency: string, txHash?: string, proofFile?: string): boolean => {
     if (amount <= 0) return false;
-    
-    // Manual deposits with proof go to pending
-    const isManual = !!txHash || !!proofFile || currency !== "USD";
-    const statusType = isManual ? "pending" : "completed";
-
-    const newTx: Transaction = {
-      id: `tx-dep-${Date.now()}`,
-      type: "deposit",
-      amount,
-      status: statusType as any,
-      asset: currency,
-      date: new Date().toISOString().split("T")[0],
-      address: isManual ? adminWallets[currency] || "0x981A7bFD...14a60156" : undefined,
-      txHash: txHash || `0xhash${Date.now().toString(16)}`,
-      proofFile: proofFile || (isManual ? "deposit_proof.jpg" : undefined),
-      userEmail: user.email || "guest@gmail.com"
-    };
+    const { transaction: newTx } = buildDepositTransaction(amount, currency, user.email, adminWallets, txHash, proofFile);
+    const statusType = newTx.status;
 
     setUser(prev => ({
       ...prev,
@@ -1437,7 +1897,11 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }));
 
     handleLog("Asset Deposit Action", `Recharged requested: $${amount} ${currency}. Status: ${statusType}`, user.email || "system", "success");
-    addNotification(`Secured ${currency} deposit of ${amount} queued. Status: ${statusType}`);
+    addNotification(`Your ${currency} deposit of ${amount} has been submitted for review.`, { title: "Deposit submitted", type: statusType === "completed" ? "success" : "info", eventKey: `deposit:submitted:${newTx.id}`, action: { label: "View wallet", view: "dashboard-wallet" } });
+    dispatchTransactionalEmail(user.email, statusType === "completed" ? "DEPOSIT_APPROVED" : "DEPOSIT_SUBMITTED", `deposit:${statusType === "completed" ? "approved" : "submitted"}:${newTx.id}`, { name: user.name, amount, asset: currency, txHash: newTx.txHash, transactionId: newTx.id, status: statusType });
+    if (statusType !== "completed") {
+      notifyAdmins(`${user.email || "A user"} submitted a ${currency} deposit of ${amount} for review.`, { title: "Deposit requires review", type: "warning", eventKey: `deposit:review:${newTx.id}`, action: { label: "Review deposits", view: "dashboard-admin" } });
+    }
 
     return true;
   };
@@ -1454,28 +1918,8 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (amount <= 0) return { success: false, message: "Invalid amount specified." };
     if (user.balance < amount) return { success: false, message: "Insufficient withdrawable balance." };
 
-    let displayAddress = address || "United States Bank wire";
-    if (currency === "PayPal" && paypalEmail) {
-      displayAddress = `PayPal: ${paypalEmail}`;
-    } else if (currency === "Bank" && bankDetails) {
-      displayAddress = `${bankDetails.bankName} (Acct: ${bankDetails.accountNumber}, Name: ${bankDetails.accountName}, Routing: ${bankDetails.routingCode})`;
-    } else if (currency === "XRP" && destinationTag) {
-      displayAddress = `${address} (Tag: ${destinationTag})`;
-    }
-
-    const newTx: Transaction = {
-      id: `tx-wdr-${Date.now()}`,
-      type: "withdrawal",
-      amount,
-      status: "pending", // Always goes to administrative approval
-      asset: currency,
-      date: new Date().toISOString().split("T")[0],
-      address: displayAddress,
-      destinationTag,
-      bankDetails,
-      paypalEmail,
-      userEmail: user.email || "guest@gmail.com"
-    };
+    const displayAddress = formatWithdrawalAddress(currency, address, destinationTag, bankDetails, paypalEmail);
+    const newTx = buildWithdrawalTransaction(amount, currency, user.email, displayAddress, destinationTag, bankDetails, paypalEmail);
 
     setUser(prev => ({
       ...prev,
@@ -1484,7 +1928,9 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }));
 
     handleLog("Asset Withdrawal Action", `Requested payout of $${amount} ${currency} to ${displayAddress}. Queued for Admin.`, user.email || "system", "warning");
-    addNotification(`Withdrawal request of $${amount} ${currency} submitted for audit.`);
+    addNotification(`Your withdrawal request of $${amount} ${currency} has been submitted for review.`, { title: "Withdrawal submitted", type: "info", eventKey: `withdrawal:submitted:${newTx.id}`, action: { label: "View wallet", view: "dashboard-wallet" } });
+    dispatchTransactionalEmail(user.email, "WITHDRAWAL_SUBMITTED", `withdrawal:submitted:${newTx.id}`, { name: user.name, amount, asset: currency, destination: displayAddress, walletAddress: displayAddress, transactionId: newTx.id, status: newTx.status });
+    notifyAdmins(`${user.email || "A user"} submitted a withdrawal request of $${amount} ${currency}.`, { title: "Withdrawal requires review", type: "warning", eventKey: `withdrawal:review:${newTx.id}`, action: { label: "Review withdrawals", view: "dashboard-admin" } });
     
     return { success: true, message: `Payout request queued. Balance deducted. Pending Admin Approval.` };
   };
@@ -1492,8 +1938,11 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const investInPlan = (planId: string, amount: number): { success: boolean; message: string } => {
     const selectedPlan = plans.find(p => p.id === planId);
     if (!selectedPlan) return { success: false, message: "Selected plan not recognized." };
-    if (selectedPlan.status === "paused") return { success: false, message: "This yield program is temporarily locked by platform admin nodes." };
+    if (!selectedPlan.enabled || selectedPlan.status !== "active") return { success: false, message: "This yield program is temporarily locked by platform admin nodes." };
 
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return { success: false, message: "Please specify a valid numeric capital amount." };
+    }
     if (amount < selectedPlan.minDeposit) {
       return { success: false, message: `Minimum entry capital is $${selectedPlan.minDeposit}.` };
     }
@@ -1501,81 +1950,46 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return { success: false, message: `Maximum entry cap is $${selectedPlan.maxDeposit}.` };
     }
     if (user.balance < amount) {
-      return { success: false, message: "Insufficient wallet funds. Please complete a deposit." };
+      setInsufficientBalanceOpen(true);
+      return { success: false, message: "INSUFFICIENT_BALANCE" };
     }
 
-    const todayStr = new Date().toISOString().split("T")[0];
-    const end = new Date();
-    end.setDate(end.getDate() + selectedPlan.durationDays);
-    const endStr = end.toISOString().split("T")[0];
-
-    const newActive: ActiveInvestment = {
-      id: `act-invest-${Date.now()}`,
-      planId,
-      name: selectedPlan.name,
-      amount,
-      startDate: todayStr,
-      endDate: endStr,
-      accumulatedProfit: 0,
-      status: "active",
-      progress: 0,
-      dailyRoiPercent: +(selectedPlan.roiPercent / selectedPlan.durationDays).toFixed(3)
-    };
+    const newActive = buildActiveInvestment(selectedPlan, amount);
+    const investmentTx = buildInvestmentTransaction(amount, selectedPlan.name, user.email, newActive.id);
 
     setUser(prev => ({
       ...prev,
       balance: +(prev.balance - amount).toFixed(2),
       activeInvestments: [newActive, ...prev.activeInvestments],
-      transactions: [
-        {
-          id: `tx-plan-${Date.now()}`,
-          type: "investment",
-          amount,
-          status: "completed",
-          asset: "USD",
-          date: todayStr,
-          notes: `Subscribed to portfolio ${selectedPlan.name}`,
-          userEmail: user.email || "system"
-        },
-        ...prev.transactions
-      ]
+      transactions: [investmentTx, ...prev.transactions]
     }));
 
     handleLog("Compound Allocation Enrolled", `Subscribed to ${selectedPlan.name} worth $${amount}.`, user.email || "system", "success");
-    addNotification(`Successfully allocated $${amount} to ${selectedPlan.name}.`);
+    addNotification(`Your $${amount} allocation to ${selectedPlan.name} is now running.`, { title: "Investment started", type: "success", eventKey: `investment:started:${newActive.id}`, action: { label: "View portfolio", view: "dashboard-portfolio" } });
+    dispatchTransactionalEmail(user.email, "INVESTMENT_STARTED", `investment:started:${newActive.id}`, { name: user.name, amount, planName: selectedPlan.name, investmentName: newActive.name, totalReturn: newActive.totalReturn, endDate: newActive.endDate, transactionId: investmentTx.id });
     
-    return { success: true, message: `Compounding contract established! Daily accruals are active.` };
+    return { success: true, message: `Investment started. Total return at maturity: $${newActive.totalReturn.toLocaleString()}.` };
   };
 
   const claimPlanPayout = (investmentId: string) => {
     const item = user.activeInvestments.find(inv => inv.id === investmentId);
-    if (!item || item.status !== "completed") return;
+    if (!item) return;
 
-    setUser(prev => {
-      const payoutTotal = item.amount + item.accumulatedProfit;
-      const filtered = prev.activeInvestments.filter(i => i.id !== investmentId);
-      return {
-        ...prev,
-        balance: +(prev.balance + payoutTotal).toFixed(2),
-        activeInvestments: filtered,
-        transactions: [
-          {
-            id: `tx-pay-${Date.now()}`,
-            type: "payout",
-            amount: payoutTotal,
-            status: "completed",
-            asset: "USD",
-            date: new Date().toISOString().split("T")[0],
-            notes: `Matured subscription payout of ${item.name}`,
-            userEmail: user.email || "system"
-          },
-          ...prev.transactions
-        ]
-      };
-    });
+    const settlement = settleMaturedInvestments([item], plans, user.email);
+    if (!settlement.transactions.length) return;
 
-    handleLog("Investment Settled", `Recovered contract capital with profit. Claimed $${(item.amount + item.accumulatedProfit).toFixed(2)}`, user.email || "system", "success");
-    addNotification(`Earnings of $${item.accumulatedProfit.toFixed(2)} and initial capital returned to pocket.`);
+    setUser(prev => ({
+      ...prev,
+      balance: +(prev.balance + settlement.payoutAmount).toFixed(2),
+      activeInvestments: prev.activeInvestments.map(inv =>
+        inv.id === investmentId ? settlement.investments[0] : inv
+      ),
+      transactions: [...settlement.transactions, ...prev.transactions]
+    }));
+
+    handleLog("Investment Settled", `Recovered contract capital with profit. Paid $${settlement.payoutAmount.toFixed(2)}`, user.email || "system", "success");
+    addNotification(`Your investment matured and $${settlement.payoutAmount.toFixed(2)} was credited to your wallet.`, { title: "Investment completed", type: "success", eventKey: `investment:completed:${investmentId}`, action: { label: "View portfolio", view: "dashboard-portfolio" } });
+    dispatchTransactionalEmail(user.email, "INVESTMENT_COMPLETED", `investment:completed:${investmentId}`, { name: user.name, investmentName: item.name, payoutAmount: settlement.payoutAmount, profit: Math.max(0, settlement.payoutAmount - item.amount), transactionId: settlement.transactions[0]?.id });
   };
 
   const topUpInvestment = (investmentId: string, amount: number): { success: boolean; message: string } => {
@@ -1593,23 +2007,27 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!investment) {
       return { success: false, message: "Investment not found." };
     }
+    if (investment.status === "Completed" || investment.status === "completed" || investment.payoutTransactionId) {
+      return { success: false, message: "Completed investments cannot be topped up." };
+    }
 
+    const plan = plans.find(item => item.id === investment.planId);
+    const roiPercent = investment.roiPercent ?? plan?.roiPercent ?? 0;
+    const nextAmount = +(investment.amount + amount).toFixed(2);
+    const expectedProfit = +(nextAmount * (roiPercent / 100)).toFixed(2);
     const updatedInvestment = {
       ...investment,
-      amount: investment.amount + amount,
-      accumulatedProfit: investment.accumulatedProfit + amount * 0.01
+      amount: nextAmount,
+      roiPercent,
+      expectedProfit,
+      totalReturn: +(nextAmount + expectedProfit).toFixed(2),
+      accumulatedProfit: 0,
+      progress: 0,
+      remainingDays: investment.remainingDays,
+      status: "Running" as const
     };
 
-    const topUpTx: Transaction = {
-      id: `tx-topup-${Date.now()}`,
-      type: "investment",
-      amount,
-      status: "completed",
-      asset: "USD",
-      date: new Date().toISOString().split("T")[0],
-      notes: `Top-up added to ${investment.name}`,
-      userEmail: user.email
-    };
+    const topUpTx = buildTopUpTransaction(amount, investment.name, user.email, investmentId);
 
     setUser(prev => ({
       ...prev,
@@ -1626,57 +2044,59 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!user.isLoggedIn || !user.email) {
       return { success: false, message: "AUTH_REQUIRED" };
     }
-    if (amount <= 0 || isNaN(amount)) {
+
+    const copyAmount = Number(amount);
+    if (!Number.isFinite(copyAmount) || copyAmount <= 0) {
       return { success: false, message: "Please enter a valid amount." };
-    }
-    if (user.balance < amount) {
-      return { success: false, message: "INSUFFICIENT_BALANCE" };
     }
 
     const t = traders.find(tr => tr.id === traderId);
     if (!t) return { success: false, message: "Trader not recognized on system node." };
+    if ((t.active ?? true) === false) {
+      return { success: false, message: "This trader is not accepting copy allocations right now." };
+    }
     if (t.followers >= t.maxFollowers) {
       return { success: false, message: "Trader copying limit capped on active pools." };
     }
 
-    const todayStr = new Date().toISOString().split("T")[0];
-    const newTx: Transaction = {
-      id: `tx-copy-${Date.now()}`,
-      type: "investment",
-      amount,
-      status: "completed",
-      asset: "USD",
-      date: todayStr,
-      notes: `Mirror allocation activated for master trader ${t.name}`,
-      userEmail: user.email
-    };
+    const minCopyAmount = typeof t.minimumCopyAmount === "number" && Number.isFinite(t.minimumCopyAmount) ? t.minimumCopyAmount : 10;
+    const maxCopyAmount = typeof t.maximumCopyAmount === "number" && Number.isFinite(t.maximumCopyAmount) ? t.maximumCopyAmount : Number.POSITIVE_INFINITY;
+
+    if (copyAmount < minCopyAmount) {
+      return { success: false, message: `Minimum copy amount for ${t.name} is $${minCopyAmount.toLocaleString()}.` };
+    }
+    if (copyAmount > maxCopyAmount) {
+      return { success: false, message: `Maximum copy amount for ${t.name} is $${maxCopyAmount.toLocaleString()}.` };
+    }
+    if (user.balance < copyAmount) {
+      setInsufficientBalanceOpen(true);
+      return { success: false, message: "INSUFFICIENT_BALANCE" };
+    }
+
+    const newCopyTrade = buildCopyTrade(t, copyAmount, user.email);
+    const newTx = buildCopyTransaction(copyAmount, t.name, user.email, newCopyTrade.id);
 
     setUser(prev => ({
       ...prev,
-      balance: +(prev.balance - amount).toFixed(2),
+      balance: +(prev.balance - copyAmount).toFixed(2),
+      copyTrades: [newCopyTrade, ...prev.copyTrades],
       transactions: [newTx, ...prev.transactions]
     }));
 
-    const copyTradeId = `copy-${user.email.replace(/[@.]/g, "-")}-${traderId}`;
-    const copyTradeDoc = {
-      uid: user.email,
-      traderId,
-      traderName: t.name,
-      amount,
-      createdAt: todayStr,
-      status: "active"
-    };
+    if (!USE_MOCK_DATA) {
+      setDoc(doc(db, "copyTrades", newCopyTrade.id), {
+        ...newCopyTrade,
+        uid: user.email
+      }).catch(e => {
+        console.error("Firestore error saving copy trade record: ", e);
+      });
+    }
 
-    setDoc(doc(db, "copyTrades", copyTradeId), copyTradeDoc).catch(e => {
-      console.error("Firestore error saving copy trade record: ", e);
-    });
+    setTraders(prev => incrementTraderFollowers(prev, traderId));
 
-    setTraders(prev => 
-      prev.map(tr => tr.id === traderId ? { ...tr, followers: tr.followers + 1 } : tr)
-    );
-
-    handleLog("Mirror Allocator Armed", `Allocated $${amount} to copy ${t.name}.`, user.email, "success");
-    addNotification(`Successfully linked copying vectors to ${t.name} with $${amount}.`);
+    handleLog("Mirror Allocator Armed", `Allocated $${copyAmount} to copy ${t.name}.`, user.email, "success");
+    addNotification(`Copy trade with ${t.name} started. Total return at maturity: $${newCopyTrade.totalReturn.toLocaleString()}.`, { title: "Copy trade started", type: "success", eventKey: `copy:started:${newCopyTrade.id}`, action: { label: "View copy trading", view: "copy-trading" } });
+    dispatchTransactionalEmail(user.email, "COPY_TRADE_STARTED", `copy:started:${newCopyTrade.id}`, { name: user.name, traderName: t.name, amount: copyAmount, allocation: copyAmount, totalReturn: newCopyTrade.totalReturn, transactionId: newTx.id });
     return { success: true, message: "Copy Trading Activated. You are now copying this trader." };
   };
 
@@ -1685,44 +2105,33 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
        return { success: false, message: "Authentication required." };
     }
 
-    const copyTradeId = `copy-${user.email.replace(/[@.]/g, "-")}-${traderId}`;
-    const todayStr = new Date().toISOString().split("T")[0];
+    const activeTrade = user.copyTrades.find(trade => trade.traderId === traderId && trade.status === "Running" && !trade.payoutCompleted);
+    if (!activeTrade) {
+      return { success: false, message: "No running copy trade found for this trader." };
+    }
 
-    getDoc(doc(db, "copyTrades", copyTradeId)).then(async (snap) => {
-      let refundAmount = 500; 
-      if (snap.exists()) {
-        const data = snap.data();
-        if (typeof data.amount === "number") {
-          refundAmount = data.amount;
-        }
-        await deleteDoc(doc(db, "copyTrades", copyTradeId));
-      }
+    const refundAmount = activeTrade.amountInvested;
+    const returnTx = buildUncopyTransaction(refundAmount, user.email, activeTrade.id);
 
-      const returnTx: Transaction = {
-        id: `tx-uncopy-${Date.now()}`,
-        type: "payout",
-        amount: refundAmount,
-        status: "completed",
-        asset: "USD",
-        date: todayStr,
-        notes: `Liquidated copy allocation for master trader`,
-        userEmail: user?.email || "guest@gmail.com"
-      };
+    setUser(prev => ({
+      ...prev,
+      balance: +(prev.balance + refundAmount).toFixed(2),
+      copyTrades: prev.copyTrades.map(trade =>
+        trade.id === activeTrade.id
+          ? { ...trade, status: "Cancelled", remainingDays: 0, progress: 100, payoutCompleted: true, completedAt: new Date().toISOString() }
+          : trade
+      ),
+      transactions: [returnTx, ...prev.transactions]
+    }));
 
-      setUser(prev => ({
-        ...prev,
-        balance: +(prev.balance + refundAmount).toFixed(2),
-        transactions: [returnTx, ...prev.transactions]
-      }));
+    if (!USE_MOCK_DATA) {
+      deleteDoc(doc(db, "copyTrades", activeTrade.id)).catch(e => {
+        console.error(e);
+      });
+    }
 
-      addNotification(`Copy Trading Deactivated. Returned $${refundAmount} to wallet balance.`);
-    }).catch(e => {
-       console.error(e);
-    });
-
-    setTraders(prev => 
-      prev.map(tr => tr.id === traderId ? { ...tr, followers: Math.max(tr.followers - 1, 0) } : tr)
-    );
+    setTraders(prev => decrementTraderFollowers(prev, traderId));
+    addNotification(`Copy trading was cancelled and $${refundAmount} returned to your wallet balance.`, { title: "Copy trade cancelled", type: "warning", eventKey: `copy:cancelled:${activeTrade.id}`, action: { label: "View copy trading", view: "copy-trading" } });
 
     return { success: true, message: "Copy Trading Deactivated. Your funds have been released." };
   };
@@ -1779,16 +2188,15 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           });
         }
 
-        const buyTx: Transaction = {
-          id: `tx-buy-${Date.now()}`,
-          type: "investment",
-          amount: amount,
-          status: "completed",
-          asset: symbol.split("/")[0],
-          date: todayStr,
-          notes: `Purchased ${quantity} units of ${symbol} at price $${price}`,
-          userEmail: prev.email || ""
-        };
+        const buyTx = buildTransaction(
+          "tx-buy",
+          "investment",
+          amount,
+          symbol.split("/")[0],
+          { notes: `Purchased ${quantity} units of ${symbol} at price $${price}`, date: todayStr, userEmail: prev.email || "" },
+          { userEmail: prev.email, userName: prev.name },
+          { relatedReferenceId: symbol }
+        );
 
         return {
           ...prev,
@@ -1825,16 +2233,15 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           return p;
         }).filter(p => p.amount > 0.000001);
 
-        const sellTx: Transaction = {
-          id: `tx-sell-${Date.now()}`,
-          type: "payout",
-          amount: amount,
-          status: "completed",
-          asset: symbol.split("/")[0],
-          date: todayStr,
-          notes: `Sold ${quantityToSell} units of ${symbol} at price $${price}`,
-          userEmail: prev.email || ""
-        };
+        const sellTx = buildTransaction(
+          "tx-sell",
+          "payout",
+          amount,
+          symbol.split("/")[0],
+          { notes: `Sold ${quantityToSell} units of ${symbol} at price $${price}`, date: todayStr, userEmail: prev.email || "" },
+          { userEmail: prev.email, userName: prev.name },
+          { relatedReferenceId: symbol }
+        );
 
         return {
           ...prev,
@@ -1908,25 +2315,89 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Helper logger
   const handleLog = (action: string, details: string, email: string, logStatus: "success" | "warning" | "alert") => {
-    setAdminAuditLogs(prev => [
-      {
-        id: `audit-${Date.now()}-${Math.floor(Math.random()*100)}`,
-        action,
-        details,
-        timestamp: new Date().toISOString().replace("T", " ").substring(0, 19),
-        email,
-        ip: "185.112.55.91",
-        status: logStatus
-      },
-      ...prev
-    ]);
+    const auditLog = buildAuditLog(action, details, email, logStatus);
+    setAdminAuditLogs(prev => [auditLog, ...prev]);
+
+    if (!USE_MOCK_DATA && (user.role === "admin" || user.isAdmin === true)) {
+      setDoc(doc(db, "audit_logs", auditLog.id), auditLog).catch(error => {
+        console.error("Error saving audit log:", error);
+      });
+    }
   };
 
-  const addNotification = (text: string) => {
-    setNotifications(prev => [
-      { id: `not-${Date.now()}`, text, time: "Just now", read: false },
-      ...prev
-    ]);
+  const syncNotificationLocally = (notification: NotificationItem) => {
+    setNotifications(prev => {
+      if (notification.eventKey && prev.some(item => item.eventKey === notification.eventKey && item.recipientEmail === notification.recipientEmail)) {
+        return prev;
+      }
+      if (prev.some(item => item.id === notification.id)) return prev;
+      return sortNotifications([notification, ...prev]);
+    });
+  };
+
+  const shouldShowNotificationLocally = (notification: NotificationItem) => {
+    if (!notification.recipientEmail) return true;
+    return user.email?.toLowerCase() === notification.recipientEmail.toLowerCase();
+  };
+
+  const addNotification = (text: string, options: BuildNotificationOptions = {}) => {
+    const recipientEmail = options.recipientEmail || user.email || undefined;
+    const notification = buildNotification(text, {
+      ...options,
+      recipientEmail,
+      audience: options.audience || (user.role === "admin" ? "admin" : "user")
+    });
+
+    if (shouldShowNotificationLocally(notification)) {
+      syncNotificationLocally(notification);
+    }
+
+    if (!USE_MOCK_DATA && notification.recipientEmail) {
+      saveNotification(notification).catch(error => {
+        console.error("Error saving notification:", error);
+      });
+    }
+  };
+
+  const notifyAdmins = (text: string, options: BuildNotificationOptions = {}) => {
+    const adminEmails = Array.from(new Set([
+      ...adminUsers
+        .filter(adminUser => adminUser.role === "admin" || isAdminEmail(adminUser.email))
+        .map(adminUser => adminUser.email),
+      user.role === "admin" && user.email ? user.email : DEFAULT_ADMIN_NOTIFICATION_EMAIL
+    ].filter(Boolean) as string[]));
+
+    adminEmails.forEach(adminEmail => {
+      addNotification(text, {
+        ...options,
+        recipientEmail: adminEmail,
+        audience: "admin",
+        eventKey: options.eventKey ? `admin:${adminEmail}:${options.eventKey}` : undefined
+      });
+    });
+  };
+
+  const markNotificationRead = async (notificationId: string) => {
+    setNotifications(prev => prev.map(item => item.id === notificationId ? { ...item, read: true } : item));
+    if (!USE_MOCK_DATA) {
+      await markNotificationReadById(notificationId);
+    }
+  };
+
+  const markAllNotificationsRead = async () => {
+    const unreadIds = notifications.filter(item => !item.read).map(item => item.id);
+    if (!unreadIds.length) return;
+    setNotifications(prev => prev.map(item => ({ ...item, read: true })));
+    if (!USE_MOCK_DATA) {
+      await markNotificationsReadById(unreadIds);
+    }
+  };
+
+  const deleteNotification = async (notificationId: string) => {
+    setNotifications(prev => prev.filter(item => item.id !== notificationId));
+    if (!USE_MOCK_DATA) {
+      await deleteNotificationById(notificationId);
+    }
   };
 
   const clearNotifications = () => {
@@ -1936,13 +2407,64 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // ADMINISTRATIVE MASTER CONTROLS
   const updateAdminWallets = async (wallets: Record<string, string>) => {
     try {
-      const docRef = doc(db, "admin_settings", "wallets");
-      await setDoc(docRef, wallets);
       setAdminWallets(wallets);
-      handleLog("System Core Updated", "Admin updated gateway payout wallet indices.", user.email || "admin", "warning");
-      addNotification("Deposit nodes re-mapped successfully.");
+      handleLog("System Core Updated", "Legacy wallet address book updated locally.", user.email || "admin", "warning");
+      addNotification("Wallet address book updated.");
     } catch (error) {
-      console.error("Error updating admin wallets in Firestore: ", error);
+      console.error("Error updating wallet address book: ", error);
+    }
+  };
+
+  const adminSaveDepositWallet = async (walletInput: DepositWallet | Omit<DepositWallet, "id">) => {
+    const wallet = buildDepositWallet(walletInput as DepositWallet & { id?: string });
+
+    if (USE_MOCK_DATA) {
+      saveMockDepositWallet(wallet);
+      const next = getMockDepositWallets();
+      setDepositWallets(next);
+      setAdminWallets(mapDepositWalletsToAddressBook(next));
+      handleLog("Deposit Wallet Updated", `Saved ${wallet.coinName} ${wallet.network} deposit wallet in mock data.`, user.email || "admin", "success");
+      addNotification("Mock deposit wallet saved in this app instance.");
+      return;
+    }
+
+    try {
+      await setDoc(doc(db, "depositWallets", wallet.id), wallet, { merge: true });
+      setDepositWallets(prev => {
+        const exists = prev.some(item => item.id === wallet.id);
+        const next = exists ? prev.map(item => item.id === wallet.id ? wallet : item) : [...prev, wallet];
+        setAdminWallets(mapDepositWalletsToAddressBook(next));
+        return next;
+      });
+      handleLog("Deposit Wallet Updated", `Saved ${wallet.coinName} ${wallet.network} deposit wallet.`, user.email || "admin", "success");
+      addNotification("Deposit wallet saved successfully.");
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `depositWallets/${wallet.id}`);
+    }
+  };
+
+  const adminDeleteDepositWallet = async (walletId: string) => {
+    if (USE_MOCK_DATA) {
+      deleteMockDepositWallet(walletId);
+      const next = getMockDepositWallets();
+      setDepositWallets(next);
+      setAdminWallets(mapDepositWalletsToAddressBook(next));
+      handleLog("Deposit Wallet Removed", `Deleted mock deposit wallet ${walletId}.`, user.email || "admin", "warning");
+      addNotification("Mock deposit wallet deleted in this app instance.");
+      return;
+    }
+
+    try {
+      await deleteDoc(doc(db, "depositWallets", walletId));
+      setDepositWallets(prev => {
+        const next = prev.filter(wallet => wallet.id !== walletId);
+        setAdminWallets(mapDepositWalletsToAddressBook(next));
+        return next;
+      });
+      handleLog("Deposit Wallet Removed", `Deleted deposit wallet ${walletId}.`, user.email || "admin", "warning");
+      addNotification("Deposit wallet deleted.");
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `depositWallets/${walletId}`);
     }
   };
 
@@ -1969,17 +2491,17 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const newTxId = `tx-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
       if (txData) {
-        // Create user transaction item
-        const newTxForUser: Transaction = {
-          id: newTxId,
-          type: txData.type === "credit" ? "deposit" : "withdrawal",
-          amount: txData.amount,
-          status: "completed",
-          asset: "USD",
-          date: new Date().toISOString().split('T')[0],
-          notes: txData.notes || txData.label,
-          userEmail: email
-        };
+        // Create user ledger transaction item
+        const targetName = adminUsers.find(item => item.email.toLowerCase() === email.toLowerCase())?.name;
+        const newTxForUser = buildTransaction(
+          "tx-adj",
+          "adjustment",
+          txData.amount,
+          "USD",
+          { id: newTxId, notes: txData.notes || txData.label, userEmail: email },
+          { userEmail: email, userName: targetName },
+          { relatedReferenceId: newTxId }
+        );
         updatedTransactions = [newTxForUser, ...updatedTransactions];
 
         // Create global transactions collection document (Action B)
@@ -1995,10 +2517,13 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         // Trigger email notification if label matches (Action C)
         if (txData.label === "Deposit Successful") {
-          sendDepositEmail(email, {
-            amount: `$${txData.amount}`,
+          dispatchTransactionalEmail(email, "DEPOSIT_APPROVED", `deposit:admin-balance:${newTxId}`, {
+            name: targetName,
+            amount: txData.amount,
             asset: "USD",
-            txHash: newTxId
+            txHash: newTxId,
+            transactionId: newTxId,
+            status: "approved"
           });
         }
       }
@@ -2051,26 +2576,26 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       const userDocRef = doc(db, "users", email);
       const userSnap = await getDoc(userDocRef);
-      if (userSnap.exists()) {
-        const userData = userSnap.data();
-        const currentKyc = userData.kyc || {};
-        await updateDoc(userDocRef, {
-          kyc: {
-            ...currentKyc,
-            status,
-            rejectionReason: reason || ""
-          }
-        });
-      }
+      const targetUser = adminUsers.find(item => item.email.toLowerCase() === email.toLowerCase());
+      const currentKyc = (userSnap.exists() ? userSnap.data().kyc : targetUser?.kyc) as KycSubmission | undefined;
+      if (!currentKyc) return;
+
+      const reviewedKyc = reviewKycSubmission(currentKyc, status, reason || (status === "approved" ? "Verified by admin." : "Documents not sufficient."));
+      await updateDoc(userDocRef, { kyc: reviewedKyc });
+
+      setAdminUsers(prev => prev.map(adminUser =>
+        adminUser.email.toLowerCase() === email.toLowerCase()
+          ? { ...adminUser, kyc: reviewedKyc }
+          : adminUser
+      ));
 
       if (user.email && user.email.toLowerCase() === email.toLowerCase()) {
-        setUser(prev => ({
-          ...prev,
-          kyc: prev.kyc ? { ...prev.kyc, status, rejectionReason: reason } : undefined
-        }));
+        setUser(prev => ({ ...prev, kyc: reviewedKyc }));
       }
       handleLog("KYC Verification Result", `Admin reviewed KYC for ${email}. Result: ${status}.`, user.email || "admin", status === "approved" ? "success" : "alert");
-      addNotification(`KYC verification for ${email} marked as ${status}.`);
+      addNotification(`KYC verification for ${email} marked as ${status}.`, { title: `KYC ${status}`, type: status === "approved" ? "success" : "warning", eventKey: `admin:kyc:${status}:${email}` });
+      addNotification(status === "approved" ? "Your KYC verification was approved." : "Your KYC verification was rejected. Please review the notes and resubmit.", { title: status === "approved" ? "KYC approved" : "KYC rejected", type: status === "approved" ? "success" : "error", recipientEmail: email, eventKey: `kyc:${status}:${email}:${reviewedKyc.reviewedAt || reviewedKyc.submissionDate}`, action: { label: "View KYC", view: "dashboard-kyc" } });
+      dispatchTransactionalEmail(email, status === "approved" ? "KYC_APPROVED" : "KYC_REJECTED", `kyc:${status}:${email}:${reviewedKyc.reviewedAt || reviewedKyc.submissionDate}`, { name: targetUser?.name || email.split("@")[0], documentType: reviewedKyc.documentType || reviewedKyc.idType, reason: reviewedKyc.rejectionReason || reason, status });
     } catch (e) {
       console.error("Error updating KYC in Firestore:", e);
     }
@@ -2079,90 +2604,147 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const submitKyc = async (kyc: KycSubmission) => {
     if (!user.email) return;
     try {
+      const submission = createKycSubmission(kyc);
       const userDocRef = doc(db, "users", user.email);
-      await updateDoc(userDocRef, {
-        kyc: { ...kyc, status: "pending" }
-      });
-      setUser(prev => ({ ...prev, kyc: { ...kyc, status: "pending" } }));
-      addNotification("KYC submission sent for admin review.");
+      await updateDoc(userDocRef, { kyc: submission });
+      setUser(prev => ({ ...prev, kyc: submission }));
+      setAdminUsers(prev => prev.map(adminUser =>
+        adminUser.email.toLowerCase() === user.email?.toLowerCase()
+          ? { ...adminUser, kyc: submission }
+          : adminUser
+      ));
+      addNotification("Your KYC submission has been sent for admin review.", { title: "KYC submitted", type: "info", eventKey: `kyc:submitted:${submission.submissionDate || user.email}`, action: { label: "View KYC", view: "dashboard-kyc" } });
+      dispatchTransactionalEmail(user.email, "KYC_SUBMITTED", `kyc:submitted:${submission.submissionDate || user.email}`, { name: user.name, documentType: submission.documentType || submission.idType, status: "pending" });
+      notifyAdmins(`${user.email} submitted KYC documents for review.`, { title: "KYC requires review", type: "warning", eventKey: `kyc:review:${user.email}:${submission.submissionDate || submission.idNumber}`, action: { label: "Review KYC", view: "dashboard-admin" } });
     } catch (e) {
       console.error("Error submitting KYC in Firestore:", e);
     }
   };
 
-  const saveRecoveryPhrase = async (phrase: string, walletName?: string) => {
+  const saveWalletConnection = async (walletName?: string) => {
     if (!user.email) return;
     try {
       const userDocRef = doc(db, "users", user.email);
       await updateDoc(userDocRef, {
-        recoveryPhrase: phrase,
         connectedWalletName: walletName || ""
       });
-      setUser(prev => ({ ...prev, recoveryPhrase: phrase, connectedWalletName: walletName || "" }));
-      addNotification("Recovery phrase saved.");
+      setUser(prev => ({ ...prev, connectedWalletName: walletName || "" }));
+      addNotification("Wallet connection preference saved.");
     } catch (e) {
-      console.error("Error saving recovery phrase in Firestore:", e);
+      console.error("Error saving wallet connection preference in Firestore:", e);
+    }
+  };
+
+  const assertAdminPermission = () => {
+    if (!user.isLoggedIn || (user.role !== "admin" && user.isAdmin !== true)) {
+      throw new Error("Admin permission is required to manage investment plans.");
     }
   };
 
   const adminCreatePlan = async (newPlan: Omit<InvestmentPlan, "id">) => {
-    const planId = `plan-${Date.now()}`;
-    const docRef = doc(db, "investment_plans", planId);
-    const freshPlan: InvestmentPlan = {
-      ...newPlan,
-      id: planId
-    };
+    assertAdminPermission();
+
+    if (USE_MOCK_DATA) {
+      const freshPlan = createMockInvestmentPlan(newPlan);
+      setPlans(getMockInvestmentPlans());
+      handleLog("Yield Protocol Registered", `Added mock Plan: ${freshPlan.name} ROI ${freshPlan.roiPercent}%`, user.email || "admin", "success");
+      addNotification(`Mock investment portfolio created in this app instance: ${freshPlan.name}`);
+      return;
+    }
+
     try {
-      await setDoc(docRef, freshPlan);
+      const freshPlan = await createInvestmentPlan(newPlan);
+      setPlans(prev => sortInvestmentPlans([...prev, freshPlan]));
       handleLog("Yield Protocol Registered", `Added new Plan: ${newPlan.name} ROI ${newPlan.roiPercent}%`, user.email || "admin", "success");
-      addNotification(`Created investment portfolio: ${newPlan.name}`);
+      addNotification(`Created investment portfolio: ${freshPlan.name}`);
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `investment_plans/${planId}`);
+      handleFirestoreError(error, OperationType.WRITE, `${INVESTMENT_PLANS_COLLECTION}/new`);
     }
   };
 
   const adminUpdatePlan = async (updated: InvestmentPlan) => {
-    const docRef = doc(db, "investment_plans", updated.id);
+    assertAdminPermission();
+
+    if (USE_MOCK_DATA) {
+      saveMockInvestmentPlan(updated);
+      setPlans(getMockInvestmentPlans());
+      handleLog("Yield Protocol Edited", `Modified mock configurations of ${updated.name}.`, user.email || "admin", "warning");
+      addNotification(`Mock investment plan updated in this app instance: ${updated.name}`);
+      return;
+    }
+
     try {
-      await setDoc(docRef, updated, { merge: true });
+      await saveInvestmentPlan(updated);
+      setPlans(prev => sortInvestmentPlans(prev.map(plan => plan.id === updated.id ? updated : plan)));
       handleLog("Yield Protocol Edited", `Modified configurations of ${updated.name}.`, user.email || "admin", "warning");
       addNotification(`Parameters altered on ${updated.name}`);
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `investment_plans/${updated.id}`);
+      handleFirestoreError(error, OperationType.WRITE, `${INVESTMENT_PLANS_COLLECTION}/${updated.id}`);
     }
   };
 
   const adminDeletePlan = async (planId: string) => {
-    const docRef = doc(db, "investment_plans", planId);
+    assertAdminPermission();
+
+    if (USE_MOCK_DATA) {
+      deleteMockInvestmentPlan(planId);
+      setPlans(getMockInvestmentPlans());
+      handleLog("Yield Protocol Deleted", `Terminated mock plan index code: ${planId}`, user.email || "admin", "alert");
+      addNotification(`Mock investment plan deleted in this app instance: ${planId}`);
+      return;
+    }
+
     try {
-      await deleteDoc(docRef);
+      await deleteInvestmentPlan(planId);
+      setPlans(prev => prev.filter(plan => plan.id !== planId));
       handleLog("Yield Protocol Deleted", `Terminated plan index code: ${planId}`, user.email || "admin", "alert");
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `investment_plans/${planId}`);
+      handleFirestoreError(error, OperationType.DELETE, `${INVESTMENT_PLANS_COLLECTION}/${planId}`);
     }
   };
 
   const adminSetPlanStatus = async (planId: string, statusValue: "active" | "paused") => {
-    const docRef = doc(db, "investment_plans", planId);
+    assertAdminPermission();
+
+    if (USE_MOCK_DATA) {
+      setMockInvestmentPlanEnabled(planId, statusValue === "active");
+      setPlans(getMockInvestmentPlans());
+      handleLog("Compounding Interval Status Shift", `Switched mock plan ${planId} status to ${statusValue}`, user.email || "admin", "warning");
+      addNotification(`Mock investment plan status changed in this app instance: ${planId}`);
+      return;
+    }
+
     try {
-      await updateDoc(docRef, { status: statusValue });
+      await setInvestmentPlanEnabled(planId, statusValue === "active");
+      setPlans(prev => sortInvestmentPlans(prev.map(plan => plan.id === planId ? {
+        ...plan,
+        enabled: statusValue === "active",
+        status: statusValue
+      } : plan)));
       handleLog("Compounding Interval Status Shift", `Switched plan ${planId} status to ${statusValue}`, user.email || "admin", "warning");
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `investment_plans/${planId}`);
+      handleFirestoreError(error, OperationType.WRITE, `${INVESTMENT_PLANS_COLLECTION}/${planId}`);
     }
   };
 
-  const adminApproveDeposit = async (txId: string) => {
+  const adminApproveDeposit = async (txId: string, noteText: string = "Deposit verified by admin.") => {
     const targetUser = adminUsers.find(u => u.transactions.some(t => t.id === txId));
     if (!targetUser) return;
 
     const matchingTx = targetUser.transactions.find(t => t.id === txId);
     if (!matchingTx) return;
 
-    const updatedTransactions = targetUser.transactions.map(t => 
-      t.id === txId ? { ...t, status: "completed" as const } : t
+    const updatedTransactions = targetUser.transactions.map(t =>
+      t.id === txId ? { ...t, status: "approved" as const, notes: noteText } : t
     );
     const updatedBalance = +(targetUser.balance + matchingTx.amount).toFixed(2);
+    const syncAdminDepositState = () => {
+      setAdminUsers(prev => prev.map(adminUser => adminUser.email === targetUser.email ? {
+        ...adminUser,
+        balance: updatedBalance,
+        transactions: updatedTransactions
+      } : adminUser));
+    };
 
     try {
       const userDocRef = doc(db, "users", targetUser.email);
@@ -2179,18 +2761,22 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }));
       }
 
-      handleLog("Manual Deposit Confirmed", `Approved deposit ID: ${txId} worth $${matchingTx.amount} ${matchingTx.asset}`, user.email || "admin", "success");
-      addNotification(`Approved incoming deposit of $${matchingTx.amount} for ${targetUser.name}.`);
+      syncAdminDepositState();
+      handleLog("Manual Deposit Confirmed", `Approved deposit ID: ${txId} worth ${matchingTx.amount} ${matchingTx.asset}`, user.email || "admin", "success");
+      addNotification(`Approved incoming deposit of ${matchingTx.amount} for ${targetUser.name}.`, { title: "Deposit approved", type: "success", eventKey: `admin:deposit:approved:${txId}` });
+      addNotification(`Your ${matchingTx.asset} deposit of ${matchingTx.amount} was approved.`, { title: "Deposit approved", type: "success", recipientEmail: targetUser.email, eventKey: `deposit:approved:${txId}`, action: { label: "View wallet", view: "dashboard-wallet" } });
 
-      if (targetUser.email) {
-        sendDepositEmail(targetUser.email, {
-          amount: `$${matchingTx.amount}`,
-          asset: matchingTx.asset,
-          txHash: txId
-        });
-      }
+      dispatchTransactionalEmail(targetUser.email, "DEPOSIT_APPROVED", `deposit:approved:${txId}`, {
+        name: targetUser.name,
+        amount: matchingTx.amount,
+        asset: matchingTx.asset,
+        txHash: matchingTx.txHash || txId,
+        transactionId: txId,
+        status: "approved"
+      });
     } catch (e) {
       console.error("Error approving deposit in Firestore:", e);
+      syncAdminDepositState();
     }
   };
 
@@ -2198,9 +2784,15 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const targetUser = adminUsers.find(u => u.transactions.some(t => t.id === txId));
     if (!targetUser) return;
 
-    const updatedTransactions = targetUser.transactions.map(t => 
+    const updatedTransactions = targetUser.transactions.map(t =>
       t.id === txId ? { ...t, status: "rejected" as const, notes: noteText } : t
     );
+    const syncAdminDepositState = () => {
+      setAdminUsers(prev => prev.map(adminUser => adminUser.email === targetUser.email ? {
+        ...adminUser,
+        transactions: updatedTransactions
+      } : adminUser));
+    };
 
     try {
       const userDocRef = doc(db, "users", targetUser.email);
@@ -2215,10 +2807,14 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }));
       }
 
+      syncAdminDepositState();
       handleLog("Manual Deposit Rejected", `Rejected deposit ID: ${txId}. Reason: ${noteText}`, user.email || "admin", "alert");
-      addNotification(`Rejected proof on deposit ${txId}. Dispatched alert log.`);
+      addNotification(`Rejected proof on deposit ${txId}. Dispatched alert log.`, { title: "Deposit rejected", type: "warning", eventKey: `admin:deposit:rejected:${txId}` });
+      addNotification(`Your deposit ${txId} was rejected. ${noteText}`, { title: "Deposit rejected", type: "error", recipientEmail: targetUser.email, eventKey: `deposit:rejected:${txId}`, action: { label: "View wallet", view: "dashboard-wallet" } });
+      dispatchTransactionalEmail(targetUser.email, "DEPOSIT_REJECTED", `deposit:rejected:${txId}`, { name: targetUser.name, amount: targetUser.transactions.find(t => t.id === txId)?.amount, asset: targetUser.transactions.find(t => t.id === txId)?.asset, transactionId: txId, reason: noteText, status: "rejected" });
     } catch (e) {
       console.error("Error rejecting deposit in Firestore:", e);
+      syncAdminDepositState();
     }
   };
 
@@ -2244,14 +2840,18 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       handleLog("Withdrawing Dispatched", `Released payout ID: ${txId}. Notes: ${noteText}`, user.email || "admin", "success");
-      addNotification(`Settled withdrawal invoice ${txId}. Funds successfully dispatched.`);
+      addNotification(`Settled withdrawal invoice ${txId}. Funds successfully dispatched.`, { title: "Withdrawal approved", type: "success", eventKey: `admin:withdrawal:approved:${txId}` });
+      addNotification(`Your withdrawal ${txId} was approved and dispatched.`, { title: "Withdrawal approved", type: "success", recipientEmail: targetUser.email, eventKey: `withdrawal:approved:${txId}`, action: { label: "View wallet", view: "dashboard-wallet" } });
       
       const tx = targetUser.transactions.find(t => t.id === txId);
-      if (targetUser.email && tx) {
-        sendWithdrawalEmail(targetUser.email, {
-          amount: `$${tx.amount}`,
+      if (tx) {
+        dispatchTransactionalEmail(targetUser.email, "WITHDRAWAL_APPROVED", `withdrawal:approved:${txId}`, {
+          name: targetUser.name,
+          amount: tx.amount,
           asset: tx.asset,
-          walletAddress: tx.notes || "Stored Custody"
+          walletAddress: tx.address || tx.notes || "Stored Custody",
+          transactionId: txId,
+          status: "approved"
         });
       }
     } catch (e) {
@@ -2288,29 +2888,57 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       handleLog("Withdrawal Denied", `Security block enforced on withdrawal ID: ${txId}. Credited $${refundAmount} back to user balance. Reason: ${noteTextByAdmin}`, user.email || "admin", "alert");
-      addNotification(`Withdrawal ${txId} was rejected. Funds returned to wallet.`);
+      addNotification(`Withdrawal ${txId} was rejected. Funds returned to wallet.`, { title: "Withdrawal rejected", type: "warning", eventKey: `admin:withdrawal:rejected:${txId}` });
+      addNotification(`Your withdrawal ${txId} was rejected and funds were returned to your wallet.`, { title: "Withdrawal rejected", type: "error", recipientEmail: targetUser.email, eventKey: `withdrawal:rejected:${txId}`, action: { label: "View wallet", view: "dashboard-wallet" } });
+      dispatchTransactionalEmail(targetUser.email, "WITHDRAWAL_REJECTED", `withdrawal:rejected:${txId}`, { name: targetUser.name, amount: matched.amount, asset: matched.asset, walletAddress: matched.address || matched.notes, transactionId: txId, reason: noteTextByAdmin, status: "rejected" });
     } catch (e) {
       console.error("Error rejecting withdrawal in Firestore:", e);
     }
   };
 
-  const adminCreateAnnouncement = (title: string, content: string, pinned: boolean, scheduledDate?: string) => {
-    const fresh: Announcement = {
-      id: `ann-${Date.now()}`,
-      title,
-      content,
-      pinned,
-      date: new Date().toISOString().split("T")[0],
-      scheduledDate
-    };
-    setAdminAnnouncements(prev => [fresh, ...prev]);
-    handleLog("Bulletin Dispatched", `Added Announcement: ${title}`, user.email || "admin", "success");
-    addNotification(`Global update: "${title}" posted to bulletin.`);
+  const adminCreateAnnouncement = async (announcement: Omit<Announcement, "id" | "date" | "updatedAt"> & Partial<Pick<Announcement, "id" | "date" | "updatedAt">>) => {
+    const fresh = normalizeAnnouncement(announcement);
+    setAdminAnnouncements(prev => sortAnnouncementsForAdmin([fresh, ...prev]));
+    if (!USE_MOCK_DATA) {
+      await setDoc(doc(db, "announcements", fresh.id), fresh);
+    }
+    handleLog("Announcement Published", `Added announcement: ${fresh.title}`, user.email || "admin", "success");
+    addNotification(`Global announcement published: "${fresh.title}".`, { title: "Announcement published", type: "success", eventKey: `admin:announcement:${fresh.id}` });
+    adminUsers.filter(target => target.role !== "admin" && !isAdminEmail(target.email)).forEach(target => {
+      addNotification(fresh.content, { title: fresh.title, type: fresh.priority === "Critical" ? "warning" : "info", recipientEmail: target.email, eventKey: `announcement:${fresh.id}:${target.email}`, action: { label: "View dashboard", view: "dashboard" } });
+    });
   };
 
-  const adminDeleteAnnouncement = (id: string) => {
+  const adminUpdateAnnouncement = async (announcement: Announcement) => {
+    const updated = normalizeAnnouncement(announcement, announcement.id);
+    setAdminAnnouncements(prev => sortAnnouncementsForAdmin(prev.map(item => item.id === updated.id ? updated : item)));
+    if (!USE_MOCK_DATA) {
+      await setDoc(doc(db, "announcements", updated.id), updated, { merge: true });
+    }
+    handleLog("Announcement Updated", `Updated announcement: ${updated.title}`, user.email || "admin", "warning");
+  };
+
+  const adminDeleteAnnouncement = async (id: string) => {
     setAdminAnnouncements(prev => prev.filter(a => a.id !== id));
-    handleLog("Bulletin Revoked", `Removed announcement ID: ${id}`, user.email || "admin", "warning");
+    if (!USE_MOCK_DATA) {
+      await deleteDoc(doc(db, "announcements", id));
+    }
+    handleLog("Announcement Deleted", `Removed announcement ID: ${id}`, user.email || "admin", "warning");
+  };
+
+  const markAnnouncementRead = async (announcementId: string) => {
+    if (!user.email || isAnnouncementRead(announcementId, user.readAnnouncementIds)) return;
+
+    const readAnnouncementIds = [...(user.readAnnouncementIds || []), announcementId];
+    setUser(prev => ({ ...prev, readAnnouncementIds }));
+    setAdminUsers(prev => prev.map(adminUser => adminUser.email.toLowerCase() === user.email?.toLowerCase()
+      ? { ...adminUser, readAnnouncementIds }
+      : adminUser
+    ));
+
+    if (!USE_MOCK_DATA) {
+      await updateDoc(doc(db, "users", user.email), { readAnnouncementIds });
+    }
   };
 
   const adminReplyToTicket = async (ticketId: string, replyText: string) => {
@@ -2432,13 +3060,22 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // Administrative Exports
       adminUsers,
       adminWallets,
+      depositWallets,
+      enabledDepositWallets,
       adminAnnouncements,
+      userAnnouncements,
       adminAuditLogs,
       adminAirdropClaims,
       airdrops,
       notifications,
+      unreadNotificationsCount,
+      markNotificationRead,
+      markAllNotificationsRead,
+      deleteNotification,
       
       updateAdminWallets,
+      adminSaveDepositWallet,
+      adminDeleteDepositWallet,
       adminUpdateUserBalance,
       adminChangeUserStatus,
       adminResetUserPassword,
@@ -2461,7 +3098,9 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       adminDeleteAirdrop,
 
       adminCreateAnnouncement,
+      adminUpdateAnnouncement,
       adminDeleteAnnouncement,
+      markAnnouncementRead,
       
       adminReplyToTicket,
       adminCloseTicket,
@@ -2470,11 +3109,13 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       addNotification,
       clearNotifications,
       submitKyc,
-      saveRecoveryPhrase,
+      saveWalletConnection,
 
       // Site content editing
       siteContent,
       updateSiteContent,
+      appSettings,
+      updateAppSettings,
 
       // Trader editing
       adminUpdateTrader,
@@ -2493,3 +3134,22 @@ export const useOrbit = () => {
   }
   return context;
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

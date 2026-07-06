@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useOrbit } from "../context/OrbitContext";
-import { Menu, X, User, LogOut, LayoutDashboard, Coins, Briefcase, Wallet2, TrendingUp, LogIn, UserPlus, History, Gift, Share2, Shield, CheckCircle2 } from "lucide-react";
+import { Menu, X, User, LogOut, LayoutDashboard, Coins, Briefcase, Wallet2, TrendingUp, LogIn, UserPlus, History, Gift, Shield, CheckCircle2, ChevronDown, MoreHorizontal, MessageSquare, Settings, Bell } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 interface NavigationProps {
@@ -9,8 +9,11 @@ interface NavigationProps {
 }
 
 export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate }) => {
-  const { user, logout } = useOrbit();
+  const { user, logout, unreadNotificationsCount } = useOrbit();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+
+  if (user.isLoggedIn && user.role === "admin") return null;
 
   const guestLinks = [
     { id: "home", label: "Home" },
@@ -20,18 +23,21 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
     { id: "contact", label: "Contact" }
   ];
 
-  const authLinks = [
+  const primaryLinks = [
     { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard className="text-blue-400" size={14} /> },
-    { id: "dashboard-wallet-connect", label: "Connect Wallet", icon: <Wallet2 className="text-pink-400" size={14} /> },
-    { id: "dashboard-kyc", label: user.kyc?.status === "approved" ? "Verified" : "Verify Identity", icon: user.kyc?.status === "approved" ? <CheckCircle2 size={14} className="text-emerald-400" /> : <Shield size={14} className="text-amber-400" /> },
     { id: "dashboard-trading", label: "Trade", icon: <TrendingUp className="text-emerald-400" size={14} /> },
+    { id: "dashboard-wallet", label: "Wallet", icon: <Wallet2 className="text-cyan-400" size={14} /> },
+    { id: "dashboard-plans", label: "Investments", icon: <Briefcase className="text-amber-400" size={14} /> },
+    { id: "dashboard-transactions", label: "History", icon: <History className="text-gray-400" size={14} /> }
+  ];
+
+  const secondaryLinks = [
     { id: "copy-trading", label: "Copy Trading", icon: <User className="text-violet-400" size={14} /> },
-    { id: "dashboard-portfolio", label: "Assets", icon: <Briefcase className="text-amber-400" size={14} /> },
-    { id: "dashboard-wallet", label: "Deposit / Withdraw", icon: <Wallet2 className="text-cyan-400" size={14} /> },
-    { id: "dashboard-transactions", label: "Transaction History", icon: <History className="text-gray-400" size={14} /> },
-    { id: "dashboard-airdrops", label: "Airdrop", icon: <Gift className="text-rose-400" size={14} /> },
-    { id: "dashboard-referral", label: "Refer & Earn", icon: <Share2 className="text-indigo-400" size={14} /> },
-    { id: "dashboard-plans", label: "Earn", icon: <Coins className="text-yellow-400" size={14} /> }
+    { id: "dashboard-airdrops", label: "Airdrops", icon: <Gift className="text-rose-400" size={14} /> },
+    { id: "dashboard-kyc", label: user.kyc?.status === "approved" ? "Verified" : "Verify Identity", icon: user.kyc?.status === "approved" ? <CheckCircle2 size={14} className="text-emerald-400" /> : <Shield size={14} className="text-amber-400" /> },
+    { id: "dashboard-notifications", label: "Notifications", icon: <Bell className="text-orbit-accent" size={14} />, badge: unreadNotificationsCount },
+    { id: "dashboard-support", label: "Support", icon: <MessageSquare className="text-sky-400" size={14} /> },
+    { id: "dashboard-settings", label: "Settings", icon: <Settings className="text-slate-400" size={14} /> }
   ];
 
   const getUID = (email: string | null) => {
@@ -43,6 +49,13 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
     }
     const uid = Math.abs(hash) % 10000000;
     return String(uid).padStart(7, "0");
+  };
+
+  const handleAuthenticatedNav = (id: string) => {
+    if (id === "dashboard-kyc" && user.kyc?.status === "approved") return;
+    onNavigate(id);
+    setMobileMenuOpen(false);
+    setMoreMenuOpen(false);
   };
 
   const isLinkActive = (id: string) => {
@@ -168,14 +181,11 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
             ) : (
               <>
                 {/* Authenticated Desktop Links */}
-                <div className="flex gap-1.5 border-r border-orbit-border/50 pr-6">
-                  {authLinks.map((link) => (
+                <div className="flex items-center gap-1.5 border-r border-orbit-border/50 pr-6">
+                  {primaryLinks.map((link) => (
                     <button
                       key={link.id}
-                      onClick={() => { 
-                          if (link.id === 'dashboard-kyc' && user.kyc?.status === 'approved') return;
-                          onNavigate(link.id); setMobileMenuOpen(false); 
-                      }}
+                      onClick={() => handleAuthenticatedNav(link.id)}
                       className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg transition-all duration-200 cursor-pointer ${
                         isLinkActive(link.id)
                           ? "text-orbit-accent bg-orbit-accent/10 font-bold shadow-inner shadow-orbit-accent/10"
@@ -186,6 +196,44 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
                       <span>{link.label}</span>
                     </button>
                   ))}
+
+                  <div className="relative">
+                    <button
+                      onClick={() => setMoreMenuOpen((prev) => !prev)}
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg transition-all duration-200 cursor-pointer hover:text-orbit-white hover:bg-white/5"
+                    >
+                      <MoreHorizontal size={14} />
+                      <span>More</span>
+                      <ChevronDown size={12} className={`transition-transform ${moreMenuOpen ? "rotate-180" : "rotate-0"}`} />
+                    </button>
+
+                    <AnimatePresence>
+                      {moreMenuOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -6 }}
+                          transition={{ duration: 0.16 }}
+                          className="absolute right-0 mt-2 w-56 rounded-2xl border border-orbit-border/70 bg-[#0d1118]/95 p-2 shadow-2xl backdrop-blur-xl"
+                        >
+                          {secondaryLinks.map((link) => (
+                            <button
+                              key={link.id}
+                              onClick={() => handleAuthenticatedNav(link.id)}
+                              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-all ${
+                                isLinkActive(link.id)
+                                  ? "text-orbit-accent bg-orbit-accent/10"
+                                  : "text-orbit-gray-text hover:text-orbit-white hover:bg-white/5"
+                              }`}
+                            >
+                              {link.icon}
+                              <span>{link.label}</span>
+                            </button>
+                          ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </div>
 
                 {/* User details and exit button */}
@@ -363,13 +411,29 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
                   // Authenticated Menu Items: Dashboard, Trade, Copy Trading, Assets, Deposit / Withdraw, Earn
                   <>
                     <div className="space-y-1 overflow-y-auto pr-2 pb-6 max-h-[60vh] scrollbar-thin scrollbar-thumb-orbit-border/50 scrollbar-track-transparent">
-                      {authLinks.map((link) => (
+                      <div className="mb-2 text-[10px] uppercase tracking-[0.3em] text-orbit-gray-text/80">Primary</div>
+                      {primaryLinks.map((link) => (
                         <button
                           key={link.id}
-                          onClick={() => { 
-                              if (link.id === 'dashboard-kyc' && user.kyc?.status === 'approved') return;
-                              onNavigate(link.id); setMobileMenuOpen(false); 
-                          }}
+                          onClick={() => handleAuthenticatedNav(link.id)}
+                          className={`w-full py-3.5 px-4 rounded-xl text-left text-sm font-medium transition-all flex items-center gap-3.5 cursor-pointer ${
+                            isLinkActive(link.id)
+                              ? "text-orbit-accent bg-orbit-accent/10 border-l-[3px] border-orbit-accent font-bold pl-3.5 shadow-inner"
+                              : "text-orbit-gray-text hover:text-orbit-white hover:bg-orbit-card/40"
+                          }`}
+                        >
+                          <span className={isLinkActive(link.id) ? "text-orbit-accent" : "text-orbit-gray-text"}>
+                            {link.icon}
+                          </span>
+                          <span>{link.label}</span>
+                        </button>
+                      ))}
+
+                      <div className="mt-4 mb-2 text-[10px] uppercase tracking-[0.3em] text-orbit-gray-text/80">More</div>
+                      {secondaryLinks.map((link) => (
+                        <button
+                          key={link.id}
+                          onClick={() => handleAuthenticatedNav(link.id)}
                           className={`w-full py-3.5 px-4 rounded-xl text-left text-sm font-medium transition-all flex items-center gap-3.5 cursor-pointer ${
                             isLinkActive(link.id)
                               ? "text-orbit-accent bg-orbit-accent/10 border-l-[3px] border-orbit-accent font-bold pl-3.5 shadow-inner"
@@ -427,3 +491,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
     </>
   );
 };
+
+
+
+

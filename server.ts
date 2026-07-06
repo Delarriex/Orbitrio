@@ -8,7 +8,8 @@ import resetPasswordHandler from "./api/reset-password";
 
 dotenv.config();
 
-const PORT = 5000;
+const PORT = parseInt(process.env.PORT || "5173", 10);
+const HMR_PORT = parseInt(process.env.VITE_HMR_PORT || process.env.HMR_PORT || "24680", 10);
 
 // Lazy initialize Gemini client to prevent startup crash if key is missing
 let aiClient: GoogleGenAI | null = null;
@@ -120,14 +121,17 @@ async function startServer() {
 
   // Dev server using Vite middleware
   if (process.env.NODE_ENV !== "production") {
-    console.log("Starting server in DEVELOPMENT mode with Vite Middleware...");
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: {
+          port: HMR_PORT
+        }
+      },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
-    console.log("Starting server in PRODUCTION mode...");
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
@@ -136,10 +140,16 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Orbitrio institutional platform listening at http://0.0.0.0:${PORT}`);
+    if (process.env.NODE_ENV !== "production") {
+      console.info(`Orbitrio institutional platform listening at http://0.0.0.0:${PORT}`);
+    }
   });
 }
 
 startServer().catch((err) => {
   console.error("Critical server bootstrap error:", err);
 });
+
+
+
+

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useOrbit } from "../context/OrbitContext";
-import { ChevronDown, Check, Wallet, Info } from "lucide-react";
+import { Wallet, Info } from "lucide-react";
 
 const TrustWalletLogo = () => (
   <svg className="w-9 h-9 shrink-0" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -107,9 +107,8 @@ const walletLogos: Record<string, React.ReactNode> = {
 };
 
 export const DashboardWalletConnect: React.FC = () => {
-  const { user, saveRecoveryPhrase, addNotification } = useOrbit();
+  const { saveWalletConnection, addNotification } = useOrbit();
   const [selectedWallet, setSelectedWallet] = useState<string | null>(null);
-  const [phrase, setPhrase] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -127,23 +126,22 @@ export const DashboardWalletConnect: React.FC = () => {
   ];
 
   const handleConnect = () => {
-    if (!phrase.trim()) {
-      addNotification("Please enter a valid recovery seed phrase.");
+    if (!selectedWallet) {
+      addNotification("Please select a wallet first.");
       return;
     }
-    
+
     setIsLoading(true);
     setTimeout(() => {
-      saveRecoveryPhrase(phrase, selectedWallet || "Unknown Wallet");
-      addNotification(`Connected successfully with ${selectedWallet}!`);
+      saveWalletConnection(selectedWallet);
+      addNotification(`Wallet preference saved for ${selectedWallet}.`);
       setIsLoading(false);
       setShowModal(false);
-      setPhrase("");
-    }, 1500);
+    }, 800);
   };
 
   return (
-    <div className="space-y-8 pb-20 p-6 max-w-4xl mx-auto">
+    <div className="space-y-5 pb-4 sm:pb-6 p-6 max-w-4xl mx-auto">
       <div className="space-y-2">
         <h1 className="text-2xl font-bold font-heading text-orbit-white flex items-center gap-2">
           <Wallet className="text-orbit-accent" />
@@ -185,7 +183,7 @@ export const DashboardWalletConnect: React.FC = () => {
         <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-orbit-card border border-orbit-border p-6 rounded-2xl w-full max-w-md space-y-5 animate-fade-in shadow-2xl relative">
             <button 
-              onClick={() => { setShowModal(false); setPhrase(""); }}
+              onClick={() => setShowModal(false)}
               className="absolute top-4 right-4 text-orbit-gray-text hover:text-orbit-white cursor-pointer bg-transparent border-none outline-none text-sm font-bold"
             >
               ✕
@@ -195,29 +193,18 @@ export const DashboardWalletConnect: React.FC = () => {
               {selectedWallet && walletLogos[selectedWallet]}
               <div>
                 <h2 className="text-base font-bold text-orbit-white leading-tight">Connect to {selectedWallet}</h2>
-                <p className="text-[11px] text-orbit-gray-text mt-0.5">Enter recovery parameters below</p>
+                <p className="text-[11px] text-orbit-gray-text mt-0.5">Confirm this wallet preference</p>
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-[10px] uppercase tracking-wider font-bold text-orbit-gray-text">Seed / Recovery Phrase (12 or 24 words)</label>
-              <textarea 
-                placeholder="Enter words separated by spaces (e.g. apple banana cherry...)" 
-                value={phrase} 
-                onChange={(e) => setPhrase(e.target.value)} 
-                disabled={isLoading}
-                className="w-full h-28 bg-orbit-bg border border-orbit-border rounded-xl p-3.5 text-xs text-orbit-white focus:outline-none focus:border-orbit-accent focus:ring-1 focus:ring-orbit-accent font-mono leading-relaxed"
-              />
-            </div>
-
-            <div className="text-[10px] text-orbit-gray-text flex items-start gap-1.5 bg-orbit-bg/50 p-2.5 rounded-lg border border-orbit-border/50 font-sans">
-              <Info size={12} className="text-orbit-accent shrink-0 mt-0.5" />
-              <span>We use AES-256 secure encryption. Keys are never transmitted over plain-text protocol.</span>
+            <div className="text-xs text-orbit-gray-text flex items-start gap-2 bg-orbit-bg/50 p-3.5 rounded-lg border border-orbit-border/50 font-sans leading-relaxed">
+              <Info size={14} className="text-orbit-accent shrink-0 mt-0.5" />
+              <span>Orbitrio will never ask for or store seed phrases, private keys, or recovery words. This action only records your selected wallet provider for support context.</span>
             </div>
 
             <div className="flex gap-3">
               <button 
-                onClick={() => { setShowModal(false); setPhrase(""); }} 
+                onClick={() => setShowModal(false)} 
                 disabled={isLoading}
                 className="flex-1 bg-orbit-bg border border-orbit-border/80 hover:border-orbit-white text-orbit-white font-bold p-3 rounded-xl hover:opacity-90 transition-all text-xs cursor-pointer disabled:opacity-50"
               >
@@ -231,10 +218,10 @@ export const DashboardWalletConnect: React.FC = () => {
                 {isLoading ? (
                   <>
                     <span className="w-3.5 h-3.5 border-2 border-orbit-bg border-t-transparent rounded-full animate-spin"></span>
-                    Syncing...
+                    Saving...
                   </>
                 ) : (
-                  "Connect"
+                  "Save Preference"
                 )}
               </button>
             </div>
@@ -244,3 +231,4 @@ export const DashboardWalletConnect: React.FC = () => {
     </div>
   );
 };
+

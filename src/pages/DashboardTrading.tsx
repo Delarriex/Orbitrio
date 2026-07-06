@@ -80,7 +80,7 @@ export const DashboardTrading: React.FC<DashboardTradingProps> = ({ initialAsset
   };
 
   return (
-    <div className="space-y-6 pb-20">
+    <div className="space-y-4 pb-4 sm:pb-6">
       
       {/* 1. Mini top stats banner */}
       <div className="flex flex-wrap items-center justify-between gap-4 py-3.5 px-5 sm:px-6 rounded-xl border border-orbit-border bg-orbit-card text-xs font-sans">

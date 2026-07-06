@@ -1,8 +1,60 @@
-import React, { useState, useRef } from "react";
-import { useOrbit } from "../../../context/OrbitContext";
+import React, { useMemo, useRef, useState } from "react";
 import { motion } from "motion/react";
-import { Award, Edit3, Plus, Trash2, Save, X, Check, Upload, ImagePlus } from "lucide-react";
+import { Award, Check, Edit3, ImagePlus, Plus, Save, Star, ToggleLeft, ToggleRight, Trash2, Upload, X } from "lucide-react";
+import { useOrbit } from "../../../context/OrbitContext";
 import type { TraderProfile } from "../../../types";
+
+type TraderFormState = {
+  name: string;
+  avatar: string;
+  active: boolean;
+  featured: boolean;
+  country: string;
+  tradingStyle: string;
+  markets: string;
+  minimumCopyAmount: string;
+  maximumCopyAmount: string;
+  biography: string;
+  displayOrder: string;
+  roi: string;
+  winRate: string;
+  followers: string;
+  maxFollowers: string;
+  assetsUnderManagement: string;
+  riskScore: string;
+  profitDays: string;
+};
+
+const emptyForm: TraderFormState = {
+  name: "",
+  avatar: "",
+  active: true,
+  featured: false,
+  country: "",
+  tradingStyle: "",
+  markets: "",
+  minimumCopyAmount: "",
+  maximumCopyAmount: "",
+  biography: "",
+  displayOrder: "",
+  roi: "",
+  winRate: "",
+  followers: "",
+  maxFollowers: "",
+  assetsUnderManagement: "",
+  riskScore: "",
+  profitDays: ""
+};
+
+const numberValue = (value: string, fallback: number) => (value !== "" ? Number(value) : fallback);
+const integerValue = (value: string, fallback: number) => (value !== "" ? parseInt(value, 10) : fallback);
+const errorMessage = (error: unknown) => error instanceof Error ? error.message : "Unexpected error";
+
+const moneyRange = (minimum?: number, maximum?: number) => {
+  const min = minimum ?? 0;
+  const max = maximum ?? 0;
+  return `$${min.toLocaleString()} - $${max.toLocaleString()}`;
+};
 
 export const AdminTradersTab: React.FC = () => {
   const { traders, adminUpdateTrader, adminCreateTrader, adminDeleteTrader } = useOrbit();
@@ -10,158 +62,222 @@ export const AdminTradersTab: React.FC = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [form, setForm] = useState({
-    name: "", avatar: "", roi: "", winRate: "", followers: "", maxFollowers: "",
-    assetsUnderManagement: "", riskScore: "", profitDays: ""
-  });
+  const [form, setForm] = useState<TraderFormState>(emptyForm);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const sortedTraders = useMemo(
+    () => [...traders].sort((a, b) => (a.displayOrder ?? 999) - (b.displayOrder ?? 999) || a.name.localeCompare(b.name)),
+    [traders]
+  );
+
+  const tableStats = useMemo(() => ({
+    total: traders.length,
+    active: traders.filter(trader => trader.active ?? true).length,
+    featured: traders.filter(trader => trader.featured ?? false).length
+  }), [traders]);
+
+  const setField = <K extends keyof TraderFormState>(key: K, value: TraderFormState[K]) => {
+    setForm(prev => ({ ...prev, [key]: value }));
+  };
+
+  const showFeedback = (message: string) => {
+    setFeedback(message);
+    setTimeout(() => setFeedback(null), 5000);
+  };
+
   const resetForm = () => {
-    setForm({ name: "", avatar: "", roi: "", winRate: "", followers: "", maxFollowers: "", assetsUnderManagement: "", riskScore: "", profitDays: "" });
+    setForm(emptyForm);
     setIsCreating(false);
     setEditingId(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const buildTraderPayload = (): Omit<TraderProfile, "id"> => ({
+    name: form.name.trim(),
+    avatar: form.avatar,
+    active: form.active,
+    featured: form.featured,
+    country: form.country.trim(),
+    tradingStyle: form.tradingStyle.trim(),
+    markets: form.markets.trim(),
+    minimumCopyAmount: numberValue(form.minimumCopyAmount, 0),
+    maximumCopyAmount: numberValue(form.maximumCopyAmount, 0),
+    biography: form.biography.trim(),
+    displayOrder: integerValue(form.displayOrder, sortedTraders.length + 1),
+    roi: numberValue(form.roi, 0),
+    winRate: numberValue(form.winRate, 0),
+    followers: integerValue(form.followers, 0),
+    maxFollowers: integerValue(form.maxFollowers, 500),
+    assetsUnderManagement: form.assetsUnderManagement.trim() || "$0",
+    riskScore: integerValue(form.riskScore, 2),
+    profitDays: integerValue(form.profitDays, 0),
+    chartData: Array.from({ length: 10 }, () => Math.random() * 100)
+  });
+
+  const handleAvatarFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
     if (!file) return;
-    // Validate file type
+
     if (!file.type.startsWith("image/")) {
       alert("Please select an image file (PNG, JPG, WEBP, etc.)");
       return;
     }
-    // Validate file size (max 5MB)
+
     if (file.size > 5 * 1024 * 1024) {
       alert("Image must be smaller than 5MB.");
       return;
     }
-    // Read file and resize to 256px for optimized storage
+
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = readerEvent => {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        const MAX = 256;
-        let w = img.width, h = img.height;
-        if (w > h) { h = (h / w) * MAX; w = MAX; }
-        else { w = (w / h) * MAX; h = MAX; }
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, w, h);
-          const dataUrl = canvas.toDataURL("image/webp", 0.85);
-          setForm(f => ({ ...f, avatar: dataUrl }));
+        const max = 256;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          height = (height / width) * max;
+          width = max;
+        } else {
+          width = (width / height) * max;
+          height = max;
         }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+
+        ctx.drawImage(img, 0, 0, width, height);
+        setField("avatar", canvas.toDataURL("image/webp", 0.85));
       };
-      img.src = event.target?.result as string;
+      img.src = readerEvent.target?.result as string;
     };
     reader.readAsDataURL(file);
   };
 
-  const startEdit = (t: TraderProfile) => {
-    setEditingId(t.id);
+  const startCreate = () => {
+    resetForm();
+    setForm({ ...emptyForm, displayOrder: (sortedTraders.length + 1).toString() });
+    setIsCreating(true);
+  };
+
+  const startEdit = (trader: TraderProfile) => {
+    setEditingId(trader.id);
     setIsCreating(false);
     setForm({
-      name: t.name, avatar: t.avatar, roi: (t.roi ?? 0).toString(), winRate: (t.winRate ?? 0).toString(),
-      followers: (t.followers ?? 0).toString(), maxFollowers: (t.maxFollowers ?? 500).toString(),
-      assetsUnderManagement: t.assetsUnderManagement || "$0", riskScore: (t.riskScore ?? 2).toString(), profitDays: (t.profitDays ?? 0).toString()
+      name: trader.name,
+      avatar: trader.avatar,
+      active: trader.active ?? true,
+      featured: trader.featured ?? false,
+      country: trader.country ?? "",
+      tradingStyle: trader.tradingStyle ?? "",
+      markets: trader.markets ?? "",
+      minimumCopyAmount: (trader.minimumCopyAmount ?? "").toString(),
+      maximumCopyAmount: (trader.maximumCopyAmount ?? "").toString(),
+      biography: trader.biography ?? "",
+      displayOrder: (trader.displayOrder ?? "").toString(),
+      roi: (trader.roi ?? 0).toString(),
+      winRate: (trader.winRate ?? 0).toString(),
+      followers: (trader.followers ?? 0).toString(),
+      maxFollowers: (trader.maxFollowers ?? 500).toString(),
+      assetsUnderManagement: trader.assetsUnderManagement || "$0",
+      riskScore: (trader.riskScore ?? 2).toString(),
+      profitDays: (trader.profitDays ?? 0).toString()
     });
   };
 
   const handleCreate = async () => {
-    if (!form.name || !form.avatar) {
+    if (!form.name.trim() || !form.avatar) {
       alert("Please enter a name and upload a profile photo.");
       return;
     }
+
     try {
-      await adminCreateTrader({
-        name: form.name,
-        avatar: form.avatar,
-        roi: form.roi !== "" ? parseFloat(form.roi) : 0,
-        winRate: form.winRate !== "" ? parseFloat(form.winRate) : 0,
-        followers: form.followers !== "" ? parseInt(form.followers) : 0,
-        maxFollowers: form.maxFollowers !== "" ? parseInt(form.maxFollowers) : 500,
-        assetsUnderManagement: form.assetsUnderManagement || "$0",
-        riskScore: form.riskScore !== "" ? parseInt(form.riskScore) : 2,
-        profitDays: form.profitDays !== "" ? parseInt(form.profitDays) : 0,
-        chartData: Array.from({ length: 10 }, () => Math.random() * 100)
-      });
-      setFeedback(`Created trader: ${form.name}`);
+      await adminCreateTrader(buildTraderPayload());
+      showFeedback(`Created trader: ${form.name}`);
       resetForm();
-    } catch (e: any) {
-      setFeedback(`Failed to create trader: ${e.message}`);
+    } catch (error) {
+      showFeedback(`Failed to create trader: ${errorMessage(error)}`);
     }
-    setTimeout(() => setFeedback(null), 5000);
   };
 
   const handleUpdate = async () => {
     if (!editingId) return;
+
     try {
+      const currentTrader = traders.find(trader => trader.id === editingId);
       await adminUpdateTrader(editingId, {
-        name: form.name,
-        avatar: form.avatar,
-        roi: form.roi !== "" ? parseFloat(form.roi) : 0,
-        winRate: form.winRate !== "" ? parseFloat(form.winRate) : 0,
-        followers: form.followers !== "" ? parseInt(form.followers) : 0,
-        maxFollowers: form.maxFollowers !== "" ? parseInt(form.maxFollowers) : 500,
-        assetsUnderManagement: form.assetsUnderManagement,
-        riskScore: form.riskScore !== "" ? parseInt(form.riskScore) : 2,
-        profitDays: form.profitDays !== "" ? parseInt(form.profitDays) : 0,
+        ...buildTraderPayload(),
+        chartData: currentTrader?.chartData ?? []
       });
-      setFeedback(`Updated trader: ${form.name}`);
+      showFeedback(`Updated trader: ${form.name}`);
       resetForm();
-    } catch (e: any) {
-      setFeedback(`Failed to update trader: ${e.message}`);
+    } catch (error) {
+      showFeedback(`Failed to update trader: ${errorMessage(error)}`);
     }
-    setTimeout(() => setFeedback(null), 5000);
+  };
+
+  const toggleTraderField = async (trader: TraderProfile, field: "active" | "featured") => {
+    const nextValue = !(trader[field] ?? field === "active");
+    try {
+      await adminUpdateTrader(trader.id, { [field]: nextValue });
+      showFeedback(`${trader.name} ${field} set to ${nextValue ? "on" : "off"}.`);
+    } catch (error) {
+      showFeedback(`Failed to update ${trader.name}: ${errorMessage(error)}`);
+    }
   };
 
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.3 }} className="space-y-6">
-      {/* Header */}
-      <div className="bg-orbit-card border border-orbit-border rounded-2xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="bg-orbit-card border border-orbit-border rounded-2xl p-6 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-5">
         <div>
           <h1 className="text-xl font-bold text-orbit-white flex items-center gap-2">
-            <Award size={20} className="text-orbit-accent" /> Traders List
+            <Award size={20} className="text-orbit-accent" /> Trader Management
           </h1>
-          <p className="text-xs text-orbit-gray-text mt-1">Manage copy trading master traders displayed on the platform.</p>
+          <p className="text-xs text-orbit-gray-text mt-1">Manage copy trading profiles, visibility, allocation limits, and platform ranking.</p>
         </div>
-        <button onClick={() => { setIsCreating(true); setEditingId(null); resetForm(); setIsCreating(true); }}
-          className="flex items-center gap-2 px-4 py-2 bg-orbit-accent text-orbit-bg font-bold text-xs uppercase rounded-lg hover:opacity-90 cursor-pointer">
-          <Plus size={14} /> Add Trader
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <StatBadge label="Total" value={tableStats.total} />
+            <StatBadge label="Active" value={tableStats.active} tone="green" />
+            <StatBadge label="Featured" value={tableStats.featured} tone="accent" />
+          </div>
+          <button onClick={startCreate} className="flex items-center gap-2 px-4 py-2 bg-orbit-accent text-orbit-bg font-bold text-xs uppercase rounded-lg hover:opacity-90 cursor-pointer">
+            <Plus size={14} /> Add Trader
+          </button>
+        </div>
       </div>
 
-      {/* Feedback */}
       {feedback && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-2">
           <Check size={14} /> {feedback}
         </motion.div>
       )}
 
-      {/* Create / Edit Form */}
       {(isCreating || editingId) && (
-        <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="bg-orbit-card border border-orbit-accent/30 rounded-2xl p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-orbit-white">{isCreating ? "Add New Trader" : "Edit Trader"}</h3>
-            <button onClick={resetForm} className="p-1.5 rounded-lg bg-orbit-border/50 text-orbit-gray-text hover:text-orbit-white cursor-pointer"><X size={14} /></button>
+        <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="bg-orbit-card border border-orbit-accent/30 rounded-2xl p-6 space-y-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-bold text-orbit-white">{isCreating ? "Add New Trader" : "Edit Trader Profile"}</h3>
+              <p className="text-[11px] text-orbit-gray-text mt-1">Update the fields shown to admins and copied into the trader record.</p>
+            </div>
+            <button onClick={resetForm} className="p-1.5 rounded-lg bg-orbit-border/50 text-orbit-gray-text hover:text-orbit-white cursor-pointer" aria-label="Close trader form">
+              <X size={14} />
+            </button>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <input placeholder="Name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-              className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
-            {/* Avatar File Upload */}
-            <div className="flex items-center gap-3 px-3 py-1.5 bg-orbit-bg border border-orbit-border rounded-lg relative">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleAvatarFileChange}
-                className="hidden"
-                id="trader-avatar-upload"
-              />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            <TextInput placeholder="Name" value={form.name} onChange={value => setField("name", value)} />
+            <TextInput placeholder="Country" value={form.country} onChange={value => setField("country", value)} />
+            <TextInput placeholder="Trading Style" value={form.tradingStyle} onChange={value => setField("tradingStyle", value)} />
+            <TextInput placeholder="Markets (Crypto, Forex, Stocks)" value={form.markets} onChange={value => setField("markets", value)} />
+
+            <div className="flex items-center gap-3 px-3 py-1.5 bg-orbit-bg border border-orbit-border rounded-lg">
+              <input ref={fileInputRef} type="file" accept="image/*" onChange={handleAvatarFileChange} className="hidden" id="trader-avatar-upload" />
               {form.avatar ? (
                 <img src={form.avatar} alt="Avatar preview" className="w-8 h-8 rounded-full object-cover border-2 border-orbit-accent/40 flex-shrink-0" />
               ) : (
@@ -169,77 +285,156 @@ export const AdminTradersTab: React.FC = () => {
                   <ImagePlus size={14} className="text-orbit-gray-text" />
                 </div>
               )}
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-1.5 text-xs text-orbit-accent font-semibold hover:text-orbit-white transition-colors cursor-pointer truncate"
-              >
+              <button type="button" onClick={() => fileInputRef.current?.click()} className="flex items-center gap-1.5 text-xs text-orbit-accent font-semibold hover:text-orbit-white transition-colors cursor-pointer truncate">
                 <Upload size={12} />
                 {form.avatar ? "Change Photo" : "Upload Photo"}
               </button>
             </div>
-            <input type="number" placeholder="ROI % (e.g. 142.5)" value={form.roi} onChange={e => setForm(f => ({ ...f, roi: e.target.value }))}
-              className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
-            <input type="number" placeholder="Win Rate (%)" value={form.winRate} onChange={e => setForm(f => ({ ...f, winRate: e.target.value }))}
-              className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
-            <input type="number" placeholder="Followers" value={form.followers} onChange={e => setForm(f => ({ ...f, followers: e.target.value }))}
-              className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
-            <input type="number" placeholder="Max Followers" value={form.maxFollowers} onChange={e => setForm(f => ({ ...f, maxFollowers: e.target.value }))}
-              className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
-            <input placeholder="AUM (e.g. $1.4M)" value={form.assetsUnderManagement} onChange={e => setForm(f => ({ ...f, assetsUnderManagement: e.target.value }))}
-              className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
-            <input type="number" placeholder="Risk Score (1-5)" value={form.riskScore} onChange={e => setForm(f => ({ ...f, riskScore: e.target.value }))}
-              className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
-            <input type="number" placeholder="Profit Days (e.g. 90)" value={form.profitDays} onChange={e => setForm(f => ({ ...f, profitDays: e.target.value }))}
-              className="px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
+            <NumberInput placeholder="ROI %" value={form.roi} onChange={value => setField("roi", value)} />
+            <NumberInput placeholder="Win Rate %" value={form.winRate} onChange={value => setField("winRate", value)} />
+            <NumberInput placeholder="Risk Score (1-5)" value={form.riskScore} onChange={value => setField("riskScore", value)} />
+
+            <NumberInput placeholder="Followers" value={form.followers} onChange={value => setField("followers", value)} />
+            <NumberInput placeholder="Max Followers" value={form.maxFollowers} onChange={value => setField("maxFollowers", value)} />
+            <TextInput placeholder="AUM (e.g. $1.4M)" value={form.assetsUnderManagement} onChange={value => setField("assetsUnderManagement", value)} />
+            <NumberInput placeholder="Profit Days" value={form.profitDays} onChange={value => setField("profitDays", value)} />
+
+            <NumberInput placeholder="Minimum Copy Amount" value={form.minimumCopyAmount} onChange={value => setField("minimumCopyAmount", value)} />
+            <NumberInput placeholder="Maximum Copy Amount" value={form.maximumCopyAmount} onChange={value => setField("maximumCopyAmount", value)} />
+            <NumberInput placeholder="Display Order" value={form.displayOrder} onChange={value => setField("displayOrder", value)} />
+            <div className="grid grid-cols-2 gap-2">
+              <ToggleButton label="Active" enabled={form.active} onClick={() => setField("active", !form.active)} />
+              <ToggleButton label="Featured" enabled={form.featured} onClick={() => setField("featured", !form.featured)} />
+            </div>
           </div>
-          <button onClick={isCreating ? handleCreate : handleUpdate}
-            className="flex items-center gap-2 px-6 py-2 bg-orbit-accent text-orbit-bg font-bold text-xs uppercase rounded-lg hover:opacity-90 cursor-pointer">
-            <Save size={14} /> {isCreating ? "Create Trader" : "Save Changes"}
-          </button>
+
+          <textarea placeholder="Biography" rows={4} value={form.biography} onChange={event => setField("biography", event.target.value)} className="w-full px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent resize-none" />
+
+          <div className="flex flex-wrap gap-3">
+            <button onClick={isCreating ? handleCreate : handleUpdate} className="flex items-center gap-2 px-6 py-2 bg-orbit-accent text-orbit-bg font-bold text-xs uppercase rounded-lg hover:opacity-90 cursor-pointer">
+              <Save size={14} /> {isCreating ? "Create Trader" : "Save Changes"}
+            </button>
+            <button onClick={resetForm} className="flex items-center gap-2 px-5 py-2 bg-orbit-border/60 text-orbit-white font-bold text-xs uppercase rounded-lg hover:bg-orbit-border cursor-pointer">
+              <X size={14} /> Cancel
+            </button>
+          </div>
         </motion.div>
       )}
 
-      {/* Traders Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {traders.map(t => (
-          <div key={t.id} className="bg-orbit-card border border-orbit-border rounded-2xl p-5 space-y-3">
-            <div className="flex items-center gap-3">
-              <img src={t.avatar} alt={t.name} className="w-10 h-10 rounded-full object-cover border-2 border-orbit-accent/30" />
-              <div>
-                <h3 className="text-sm font-bold text-orbit-white">{t.name}</h3>
-                <p className="text-[10px] text-orbit-gray-text">{t.assetsUnderManagement} AUM</p>
-              </div>
-            </div>
-            {/* Highlighted ROI & Days */}
-            <div className="flex gap-2">
-              <div className="flex-1 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 text-center">
-                <p className="text-[9px] text-orbit-gray-text uppercase tracking-wider">ROI</p>
-                <p className="text-sm font-bold text-emerald-400">{t.roi ?? 0}%</p>
-              </div>
-              <div className="flex-1 bg-orbit-accent/10 border border-orbit-accent/20 rounded-lg px-3 py-2 text-center">
-                <p className="text-[9px] text-orbit-gray-text uppercase tracking-wider">Profit Days</p>
-                <p className="text-sm font-bold text-orbit-accent">{t.profitDays ?? 0}</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-2 text-[10px]">
-              <div><span className="text-orbit-gray-text">Win:</span> <span className="text-orbit-white font-bold ml-1">{t.winRate}%</span></div>
-              <div><span className="text-orbit-gray-text">Risk:</span> <span className="text-orbit-accent font-bold ml-1">{t.riskScore}/5</span></div>
-              <div><span className="text-orbit-gray-text">Followers:</span> <span className="text-orbit-white font-bold ml-1">{t.followers}/{t.maxFollowers}</span></div>
-            </div>
-            <div className="flex gap-2 pt-2 border-t border-orbit-border/50">
-              <button onClick={() => startEdit(t)}
-                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-orbit-accent/10 border border-orbit-accent/30 text-orbit-accent text-[10px] font-bold rounded-lg hover:bg-orbit-accent/20 cursor-pointer">
-                <Edit3 size={10} /> Edit
-              </button>
-              <button onClick={() => { if (window.confirm(`Delete "${t.name}"?`)) adminDeleteTrader(t.id); }}
-                className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-red-500/10 border border-red-500/30 text-red-400 text-[10px] font-bold rounded-lg hover:bg-red-500/20 cursor-pointer">
-                <Trash2 size={10} />
-              </button>
-            </div>
+      <div className="bg-orbit-card border border-orbit-border rounded-2xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-orbit-border flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-orbit-white">Trader Directory</h2>
+            <p className="text-[11px] text-orbit-gray-text mt-1">Inline visibility controls with editable profile details.</p>
           </div>
-        ))}
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1120px] text-left">
+            <thead className="bg-orbit-bg/60 border-b border-orbit-border">
+              <tr className="text-[10px] uppercase tracking-wider text-orbit-gray-text">
+                <th className="px-5 py-3 font-bold">Trader</th>
+                <th className="px-4 py-3 font-bold">Status</th>
+                <th className="px-4 py-3 font-bold">Featured</th>
+                <th className="px-4 py-3 font-bold">Country</th>
+                <th className="px-4 py-3 font-bold">Style / Markets</th>
+                <th className="px-4 py-3 font-bold">Performance</th>
+                <th className="px-4 py-3 font-bold">Followers</th>
+                <th className="px-4 py-3 font-bold">Copy Range</th>
+                <th className="px-4 py-3 font-bold">Order</th>
+                <th className="px-5 py-3 font-bold text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-orbit-border/70">
+              {sortedTraders.map(trader => (
+                <tr key={trader.id} className="hover:bg-orbit-bg/40 transition-colors">
+                  <td className="px-5 py-4">
+                    <div className="flex items-center gap-3">
+                      <img src={trader.avatar} alt={trader.name} className="w-10 h-10 rounded-full object-cover border-2 border-orbit-accent/30" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-orbit-white truncate">{trader.name}</p>
+                        <p className="text-[10px] text-orbit-gray-text">{trader.assetsUnderManagement || "$0"} AUM</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-4">
+                    <TableToggle enabled={trader.active ?? true} onClick={() => toggleTraderField(trader, "active")} onText="Active" offText="Inactive" />
+                  </td>
+                  <td className="px-4 py-4">
+                    <TableToggle enabled={trader.featured ?? false} onClick={() => toggleTraderField(trader, "featured")} onText="Featured" offText="Standard" />
+                  </td>
+                  <td className="px-4 py-4 text-xs text-orbit-white">{trader.country || "Not set"}</td>
+                  <td className="px-4 py-4">
+                    <p className="text-xs font-bold text-orbit-white">{trader.tradingStyle || "Not set"}</p>
+                    <p className="text-[10px] text-orbit-gray-text mt-0.5">{trader.markets || "Markets not set"}</p>
+                  </td>
+                  <td className="px-4 py-4">
+                    <div className="flex items-center gap-3 text-[11px]">
+                      <span className="font-bold text-emerald-400">{trader.roi ?? 0}% ROI</span>
+                      <span className="text-orbit-white">{trader.winRate ?? 0}% win</span>
+                      <span className="text-orbit-accent">R{trader.riskScore ?? 2}</span>
+                    </div>
+                    <p className="text-[10px] text-orbit-gray-text mt-1">{trader.profitDays ?? 0} profit days</p>
+                  </td>
+                  <td className="px-4 py-4 text-xs text-orbit-white font-bold">{trader.followers ?? 0}<span className="text-orbit-gray-text font-normal"> / {trader.maxFollowers ?? 500}</span></td>
+                  <td className="px-4 py-4 text-xs text-orbit-white">{moneyRange(trader.minimumCopyAmount, trader.maximumCopyAmount)}</td>
+                  <td className="px-4 py-4 text-xs text-orbit-accent font-bold">{trader.displayOrder ?? "-"}</td>
+                  <td className="px-5 py-4">
+                    <div className="flex justify-end gap-2">
+                      <button onClick={() => startEdit(trader)} className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-orbit-accent/10 border border-orbit-accent/30 text-orbit-accent text-[10px] font-bold rounded-lg hover:bg-orbit-accent/20 cursor-pointer">
+                        <Edit3 size={10} /> Edit
+                      </button>
+                      <button onClick={() => { if (window.confirm(`Delete \"${trader.name}\"?`)) void adminDeleteTrader(trader.id); }} className="flex items-center justify-center px-3 py-1.5 bg-red-500/10 border border-red-500/30 text-red-400 rounded-lg hover:bg-red-500/20 cursor-pointer" aria-label={`Delete ${trader.name}`}>
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </motion.div>
   );
 };
+
+const inputClass = "px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent";
+
+const TextInput: React.FC<{ placeholder: string; value: string; onChange: (value: string) => void }> = ({ placeholder, value, onChange }) => (
+  <input placeholder={placeholder} value={value} onChange={event => onChange(event.target.value)} className={inputClass} />
+);
+
+const NumberInput: React.FC<{ placeholder: string; value: string; onChange: (value: string) => void }> = ({ placeholder, value, onChange }) => (
+  <input type="number" placeholder={placeholder} value={value} onChange={event => onChange(event.target.value)} className={inputClass} />
+);
+
+const StatBadge: React.FC<{ label: string; value: number; tone?: "default" | "green" | "accent" }> = ({ label, value, tone = "default" }) => {
+  const toneClass = tone === "green"
+    ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+    : tone === "accent"
+      ? "bg-orbit-accent/10 border-orbit-accent/20 text-orbit-accent"
+      : "bg-orbit-bg border-orbit-border text-orbit-white";
+
+  return (
+    <div className={`px-3 py-2 border rounded-lg ${toneClass}`}>
+      <p className="text-[9px] uppercase text-orbit-gray-text tracking-wider">{label}</p>
+      <p className="text-sm font-bold">{value}</p>
+    </div>
+  );
+};
+
+const ToggleButton: React.FC<{ label: string; enabled: boolean; onClick: () => void }> = ({ label, enabled, onClick }) => (
+  <button type="button" onClick={onClick} className={`flex items-center justify-center gap-1.5 px-3 py-2 border rounded-lg text-[11px] font-bold cursor-pointer ${enabled ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" : "bg-orbit-bg border-orbit-border text-orbit-gray-text"}`}>
+    {enabled ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
+    {label}
+  </button>
+);
+
+const TableToggle: React.FC<{ enabled: boolean; onClick: () => void; onText: string; offText: string }> = ({ enabled, onClick, onText, offText }) => (
+  <button type="button" onClick={onClick} className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[10px] font-bold cursor-pointer ${enabled ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" : "bg-orbit-bg border-orbit-border text-orbit-gray-text"}`}>
+    {enabled ? <ToggleRight size={13} /> : <ToggleLeft size={13} />}
+    {enabled ? onText : offText}
+    {enabled && onText === "Featured" ? <Star size={11} /> : null}
+  </button>
+);

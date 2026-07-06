@@ -5,22 +5,129 @@ service cloud.firestore {
       return request.auth != null && request.auth.token.email != null;
     }
 
-    function isOwner(email) {
-      return isAuthenticated() && request.auth.token.email.toLowerCase() == email.toLowerCase();
+    function signedInEmail() {
+      return request.auth.token.email.lower();
     }
 
-    function userDoc() {
-      return get(/databases/$(database)/documents/users/$(request.auth.token.email));
+    function isOwner(email) {
+      return isAuthenticated() && signedInEmail() == email.lower();
+    }
+
+    function userPath() {
+      return /databases/$(database)/documents/users/$(request.auth.token.email);
     }
 
     function isAdmin() {
       return isAuthenticated() && (
-        request.auth.token.email.toLowerCase() == "henrikaram1@gmail.com" ||
-        (userDoc().exists() && userDoc().data.role == "admin")
+        signedInEmail() == "henrikaram1@gmail.com" ||
+        (exists(userPath()) && get(userPath()).data.role == "admin")
       );
     }
 
+    function isNotificationRecipient() {
+      return isAuthenticated() && resource.data.recipientEmail is string && resource.data.recipientEmail.lower() == signedInEmail();
+    }
+
+    function isNewNotificationRecipient() {
+      return isAuthenticated() && request.resource.data.recipientEmail is string && request.resource.data.recipientEmail.lower() == signedInEmail();
+    }
+
+    function hasNoWalletSecrets() {
+      return !request.resource.data.keys().hasAny([
+        "recoveryPhrase",
+        "seedPhrase",
+        "mnemonic",
+        "privateKey",
+        "walletSecret",
+        "recoveryWords"
+      ]);
+    }
+
+    function hasValidUserKeys() {
+      return request.resource.data.keys().hasOnly([
+        "email",
+        "name",
+        "balance",
+        "portfolioValue",
+        "status",
+        "role",
+        "isAdmin",
+        "activeInvestments",
+        "copyTrades",
+        "portfolio",
+        "transactions",
+        "tickets",
+        "loginHistory",
+        "registrationDate",
+        "createdAt",
+        "lastLoginDevice",
+        "username",
+        "firstName",
+        "lastName",
+        "gender",
+        "phone",
+        "accountType",
+        "country",
+        "currency",
+        "kyc",
+        "connectedWalletName",
+        "readAnnouncementIds",
+        "referralCount",
+        "points"
+      ]);
+    }
+
+    function hasSafeInitialFinancialState() {
+      return request.resource.data.balance == 0 &&
+        request.resource.data.portfolioValue == 0 &&
+        request.resource.data.activeInvestments is list && request.resource.data.activeInvestments.size() == 0 &&
+        request.resource.data.copyTrades is list && request.resource.data.copyTrades.size() == 0 &&
+        request.resource.data.portfolio is list && request.resource.data.portfolio.size() == 0 &&
+        request.resource.data.transactions is list && request.resource.data.transactions.size() == 0;
+    }
+
+    function ownerCreateHasSafeRole(email) {
+      return isOwner(email) &&
+        request.resource.data.email.lower() == email.lower() &&
+        request.resource.data.role == "user" &&
+        request.resource.data.isAdmin != true &&
+        hasSafeInitialFinancialState();
+    }
+
+    function ownerCanOnlyChangeProfileFields() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        "name",
+        "username",
+        "firstName",
+        "lastName",
+        "gender",
+        "phone",
+        "accountType",
+        "country",
+        "currency",
+        "lastLoginDevice",
+        "kyc",
+        "connectedWalletName",
+        "readAnnouncementIds"
+      ]);
+    }
+
+    function ownerKycChangeIsSubmissionOnly() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(["kyc"]) ||
+        (request.resource.data.kyc.status == "pending" && !("reviewedAt" in request.resource.data.kyc));
+    }
+
+    function recipientCanOnlyMarkNotificationRead() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(["read"]) &&
+        request.resource.data.read == true;
+    }
+
     match /site_content/texts {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /app_settings/{settingId} {
       allow read: if true;
       allow write: if isAdmin();
     }
@@ -30,27 +137,24 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    match /investment_plans/{planId} {
+    match /investmentPlans/{planId} {
       allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /depositWallets/{walletId} {
+      allow read: if isAuthenticated();
       allow write: if isAdmin();
     }
 
     match /users/{email} {
       allow get: if isOwner(email) || isAdmin();
       allow list: if isAdmin();
-      allow create: if isOwner(email) || isAdmin();
-      allow update: if isAdmin() || (
-        isOwner(email) &&
-        request.resource.data.role == resource.data.role &&
-        request.resource.data.status == resource.data.status &&
-        request.resource.data.isAdmin == resource.data.isAdmin
-      );
+      allow create: if hasNoWalletSecrets() && hasValidUserKeys() && (isAdmin() || ownerCreateHasSafeRole(email));
+      allow update: if hasNoWalletSecrets() && hasValidUserKeys() && (isAdmin() || (
+        isOwner(email) && ownerCanOnlyChangeProfileFields() && ownerKycChangeIsSubmissionOnly()
+      ));
       allow delete: if isAdmin();
-    }
-
-    match /admin_settings/{settingId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
     }
 
     match /transactions/{txId} {
@@ -58,10 +162,10 @@ service cloud.firestore {
     }
 
     match /copyTrades/{tradeId} {
-      allow create: if isAuthenticated() && request.resource.data.uid.toLowerCase() == request.auth.token.email.toLowerCase();
-      allow get, delete: if isAuthenticated() && resource.data.uid.toLowerCase() == request.auth.token.email.toLowerCase();
-      allow update: if false;
-      allow list: if isAdmin();
+      allow create: if isAuthenticated() && request.resource.data.uid is string && request.resource.data.uid.lower() == signedInEmail();
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.uid is string && resource.data.uid.lower() == signedInEmail());
+      allow update: if isAdmin();
+      allow delete: if isAdmin() || (isAuthenticated() && resource.data.uid is string && resource.data.uid.lower() == signedInEmail());
     }
 
     match /airdrops/{airdropId} {
@@ -70,14 +174,9 @@ service cloud.firestore {
     }
 
     match /airdrop_claims/{claimId} {
-      allow create: if isAuthenticated() && request.resource.data.userEmail.toLowerCase() == request.auth.token.email.toLowerCase();
-      allow get: if isAdmin() || (isAuthenticated() && resource.data.userEmail.toLowerCase() == request.auth.token.email.toLowerCase());
-      allow list: if isAdmin();
-      allow update: if isAdmin() || (
-        isAuthenticated() &&
-        resource.data.userEmail.toLowerCase() == request.auth.token.email.toLowerCase() &&
-        request.resource.data.status == resource.data.status
-      );
+      allow create: if isAuthenticated() && request.resource.data.userEmail is string && request.resource.data.userEmail.lower() == signedInEmail() && request.resource.data.status == "Pending";
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userEmail is string && resource.data.userEmail.lower() == signedInEmail());
+      allow update: if isAdmin();
       allow delete: if isAdmin();
     }
 
@@ -86,8 +185,16 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /notifications/{notificationId} {
+      allow create: if isAdmin() || isNewNotificationRecipient() || (isAuthenticated() && request.resource.data.audience == "admin");
+      allow read: if isAdmin() || isNotificationRecipient();
+      allow update: if isAdmin() || (isNotificationRecipient() && recipientCanOnlyMarkNotificationRead());
+      allow delete: if isAdmin();
+    }
+
     match /audit_logs/{logId} {
       allow read, write: if isAdmin();
     }
   }
 }
+

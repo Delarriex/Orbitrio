@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useOrbit } from "../context/OrbitContext";
 import { Check, Info, ArrowRight, ShieldCheck, DollarSign, HelpCircle, Clock, TrendingUp, Award, Layers, Crown, Sparkles, Gem, Activity, ChevronDown } from "lucide-react";
 
@@ -8,12 +8,30 @@ interface PublicPlansProps {
 
 export const PublicPlans: React.FC<PublicPlansProps> = ({ onNavigate }) => {
   const { plans, user, siteContent } = useOrbit();
+  const enabledPlans = useMemo(() => plans.filter((plan) => plan.enabled && plan.status === "active").sort((a, b) => a.displayOrder - b.displayOrder || a.minDeposit - b.minDeposit), [plans]);
   
   // Calculator States
   const [selectedCalcPlan, setSelectedCalcPlan] = useState("plan-gold");
   const [calcAmount, setCalcAmount] = useState(5000);
 
-  const activeCalcPlanObj = plans.find(p => p.id === selectedCalcPlan) || plans[0];
+  const activeCalcPlanObj = enabledPlans.find(p => p.id === selectedCalcPlan) || enabledPlans[0];
+
+  useEffect(() => {
+    if (enabledPlans.length && !enabledPlans.some((plan) => plan.id === selectedCalcPlan)) {
+      setSelectedCalcPlan(enabledPlans[0].id);
+      setCalcAmount(enabledPlans[0].minDeposit);
+    }
+  }, [enabledPlans, selectedCalcPlan]);
+
+  if (!activeCalcPlanObj) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 py-20">
+        <div className="bg-orbit-card border border-orbit-border rounded-2xl p-8 text-center text-sm text-orbit-gray-text">
+          No investment plans are currently available.
+        </div>
+      </div>
+    );
+  }
 
   // Restrict calc amount to min/max of current plan
   const handleAmountChange = (val: number) => {
@@ -51,10 +69,8 @@ export const PublicPlans: React.FC<PublicPlansProps> = ({ onNavigate }) => {
 
       {/* Main tiered selector cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-        {plans.map((plan) => {
-          const isGold = plan.id === "plan-gold";
-          const isDiamond = plan.id === "plan-diamond";
-          
+        {enabledPlans.map((plan) => {
+
           const getPlanHeaderIcon = (planId: string) => {
             switch (planId) {
               case "plan-bronze":
@@ -88,14 +104,9 @@ export const PublicPlans: React.FC<PublicPlansProps> = ({ onNavigate }) => {
               key={plan.id}
               className="bg-orbit-card border border-orbit-border rounded-2xl p-6 relative overflow-hidden transition-all flex flex-col justify-between hover:scale-[1.01] hover:border-orbit-accent/40 shadow-xl"
             >
-              {isGold && (
+              {plan.badge && (
                 <div className="absolute top-0 right-0 bg-orbit-accent text-orbit-bg text-[9px] uppercase font-subheading tracking-wider font-bold px-3 py-1 rounded-bl-lg">
-                  Most Popular
-                </div>
-              )}
-              {isDiamond && (
-                <div className="absolute top-0 right-0 bg-yellow-500 text-orbit-bg text-[9px] uppercase font-subheading tracking-wider font-bold px-3 py-1 rounded-bl-lg">
-                  Elite VIP
+                  {plan.badge}
                 </div>
               )}
 
@@ -187,7 +198,7 @@ export const PublicPlans: React.FC<PublicPlansProps> = ({ onNavigate }) => {
                 Select Desired Plan Tier
               </label>
               <div className="grid grid-cols-3 gap-3">
-                {plans.map((p) => (
+                {enabledPlans.map((p) => (
                   <button
                     key={p.id}
                     onClick={() => {
@@ -344,3 +355,5 @@ export const PublicPlans: React.FC<PublicPlansProps> = ({ onNavigate }) => {
     </div>
   );
 };
+
+

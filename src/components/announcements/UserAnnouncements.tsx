@@ -1,0 +1,82 @@
+import React from "react";
+import { AlertTriangle, Check, Megaphone, Pin } from "lucide-react";
+import { motion } from "motion/react";
+import { useOrbit } from "../../context/OrbitContext";
+import type { AnnouncementPriority } from "../../types";
+
+const priorityStyle: Record<AnnouncementPriority, { badge: string; border: string; icon: React.ReactNode }> = {
+  Normal: {
+    badge: "bg-slate-500/10 text-slate-300 border-slate-500/30",
+    border: "border-orbit-border",
+    icon: <Megaphone size={15} className="text-orbit-accent" />
+  },
+  Important: {
+    badge: "bg-amber-500/10 text-amber-300 border-amber-500/30",
+    border: "border-amber-500/30",
+    icon: <AlertTriangle size={15} className="text-amber-300" />
+  },
+  Critical: {
+    badge: "bg-red-500/10 text-red-300 border-red-500/30",
+    border: "border-red-500/40",
+    icon: <AlertTriangle size={15} className="text-red-300" />
+  }
+};
+
+export const UserAnnouncements: React.FC = () => {
+  const { user, userAnnouncements, markAnnouncementRead } = useOrbit();
+
+  if (userAnnouncements.length === 0) return null;
+
+  const readIds = user.readAnnouncementIds || [];
+
+  return (
+    <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Megaphone size={17} className="text-orbit-accent" />
+          <h2 className="text-sm font-bold text-orbit-white font-heading">Announcements</h2>
+        </div>
+        <span className="text-[10px] text-orbit-gray-text font-bold uppercase tracking-wider">
+          {userAnnouncements.filter(item => !readIds.includes(item.id)).length} unread
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {userAnnouncements.map(announcement => {
+          const priority = announcement.priority || "Normal";
+          const style = priorityStyle[priority];
+          const unread = !readIds.includes(announcement.id);
+
+          return (
+            <article key={announcement.id} className={`rounded-xl border ${style.border} ${unread ? "bg-orbit-accent/10 shadow shadow-orbit-accent/5" : "bg-orbit-card/80"} p-4 transition-colors`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {announcement.pinned && <Pin size={12} className="text-orbit-accent" />}
+                    {style.icon}
+                    <h3 className="text-sm font-bold text-orbit-white break-words">{announcement.title}</h3>
+                    {unread && <span className="w-2 h-2 rounded-full bg-orbit-accent" title="Unread" />}
+                  </div>
+                  <p className="mt-2 text-xs leading-relaxed text-orbit-gray-text break-words">{announcement.content}</p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] text-orbit-gray-text">
+                    <span className={`px-2 py-0.5 rounded-full border font-bold ${style.badge}`}>{priority}</span>
+                    <span>{announcement.publishDate || announcement.date}</span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => markAnnouncementRead(announcement.id)}
+                  disabled={!unread}
+                  className={`shrink-0 p-2 rounded-lg border transition-colors ${unread ? "bg-orbit-bg border-orbit-border text-orbit-accent hover:bg-orbit-accent hover:text-orbit-bg" : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 cursor-default"}`}
+                  title={unread ? "Mark as read" : "Read"}
+                >
+                  <Check size={14} />
+                </button>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </motion.section>
+  );
+};
+

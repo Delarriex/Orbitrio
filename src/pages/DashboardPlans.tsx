@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useOrbit } from "../context/OrbitContext";
-import { Check, Flame, Trophy, Layers, Target, Coins, ShieldAlert, Timer, TrendingUp, Activity, Sparkles, Crown, Gem, Award } from "lucide-react";
+import { Layers, Target, Coins, ShieldAlert, Timer, TrendingUp, Activity, Sparkles, Crown, Gem, Award } from "lucide-react";
 
 export const DashboardPlans: React.FC = () => {
-  const { plans, user, investInPlan, claimPlanPayout, setInsufficientBalanceOpen } = useOrbit();
+  const { plans, user, investInPlan, setInsufficientBalanceOpen } = useOrbit();
+  const enabledPlans = useMemo(() => plans.filter((plan) => plan.enabled && plan.status === "active").sort((a, b) => a.displayOrder - b.displayOrder || a.minDeposit - b.minDeposit), [plans]);
   const [selectedPlanId, setSelectedPlanId] = useState("plan-gold");
   const [investAmountText, setInvestAmountText] = useState("");
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -25,7 +26,13 @@ export const DashboardPlans: React.FC = () => {
     }
   };
 
-  const activePlanObj = plans.find(p => p.id === selectedPlanId) || plans[0];
+  const activePlanObj = enabledPlans.find(p => p.id === selectedPlanId) || enabledPlans[0];
+
+  useEffect(() => {
+    if (enabledPlans.length && !enabledPlans.some((plan) => plan.id === selectedPlanId)) {
+      setSelectedPlanId(enabledPlans[0].id);
+    }
+  }, [enabledPlans, selectedPlanId]);
 
   const handleInvestSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,6 +57,14 @@ export const DashboardPlans: React.FC = () => {
     }
   };
 
+  if (!activePlanObj) {
+    return (
+      <div className="bg-orbit-card border border-orbit-border rounded-2xl p-8 text-center text-sm text-orbit-gray-text">
+        No investment plans are currently available.
+      </div>
+    );
+  }
+
   // Calculates estimated returns for the input amount
   const getProjections = () => {
     const amt = parseFloat(investAmountText) || 0;
@@ -64,7 +79,7 @@ export const DashboardPlans: React.FC = () => {
   const projections = getProjections();
 
   return (
-    <div className="space-y-8 pb-20 font-sans">
+    <div className="space-y-4 pb-4 sm:pb-6 font-sans">
       
       {/* Header title */}
       <div className="border-b border-orbit-border/50 pb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -84,7 +99,7 @@ export const DashboardPlans: React.FC = () => {
 
       {/* Side-by-Side Plan Cards as requested by user */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 font-sans">
-        {plans.map((p) => {
+        {enabledPlans.map((p) => {
           const isSelected = p.id === selectedPlanId;
           const isPaused = p.status === "paused";
           return (
@@ -175,7 +190,7 @@ export const DashboardPlans: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
         
         {/* Left column: Selector + Allocation inputs (col-span-7) */}
-        <div className="lg:col-span-12 bg-orbit-card border border-orbit-border rounded-xl p-6 space-y-6">
+        <div className="lg:col-span-12 bg-orbit-card border border-orbit-border rounded-2xl p-4 space-y-4">
           <h3 className="text-sm font-bold font-sans text-orbit-white border-b border-orbit-border/50 pb-3 flex flex-wrap items-center justify-between gap-y-2">
             <span className="flex items-center gap-2">
               <Coins size={16} className="text-orbit-accent animate-spin" style={{ animationDuration: "12s" }} />
@@ -187,7 +202,7 @@ export const DashboardPlans: React.FC = () => {
             </span>
           </h3>
 
-          <form onSubmit={handleInvestSubmit} className="space-y-6">
+          <form onSubmit={handleInvestSubmit} className="space-y-4">
             
             {/* Display message logs */}
             {feedback && (
@@ -291,7 +306,10 @@ export const DashboardPlans: React.FC = () => {
             ) : (
               <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1 font-sans">
                 {user.activeInvestments.map((inv) => {
-                  const isMaturedComplete = inv.status === "completed";
+                  const isMaturedComplete = inv.status === "Completed" || inv.status === "completed";
+                  const expectedProfit = inv.expectedProfit ?? inv.accumulatedProfit;
+                  const totalReturn = inv.totalReturn ?? inv.amount + expectedProfit;
+                  const remainingDays = inv.remainingDays ?? 0;
                   return (
                     <div 
                       key={inv.id}
@@ -300,7 +318,7 @@ export const DashboardPlans: React.FC = () => {
                       <div className="flex justify-between font-bold text-orbit-white font-sans">
                         <span>{inv.name}</span>
                         <span className="text-orbit-green font-data">
-                          +${inv.accumulatedProfit.toLocaleString(undefined, { minimumFractionDigits: 4 })}
+                          +${(isMaturedComplete ? expectedProfit : inv.accumulatedProfit).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                         </span>
                       </div>
 
@@ -313,16 +331,12 @@ export const DashboardPlans: React.FC = () => {
 
                       <div className="flex justify-between text-[9px] text-orbit-gray-text font-data">
                         <span>Funded: ${inv.amount.toLocaleString()}</span>
-                        <span className="font-subheading">{isMaturedComplete ? "Completed" : `loops: ${inv.progress}%`}</span>
+                        <span className="font-subheading">{isMaturedComplete ? "Completed" : `${remainingDays}d left`}</span>
                       </div>
-
                       {isMaturedComplete && (
-                        <button
-                          onClick={() => claimPlanPayout(inv.id)}
-                          className="w-full bg-orbit-green hover:bg-orbit-green/80 text-orbit-bg font-bold font-subheading py-1.5 rounded transition-all uppercase text-[10px] mt-1 cursor-pointer"
-                        >
-                          Claim Earnings
-                        </button>
+                        <div className="w-full bg-orbit-green/10 border border-orbit-green/30 text-orbit-green font-bold font-subheading py-1.5 rounded text-center uppercase text-[10px] mt-1">
+                          Paid ${totalReturn.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </div>
                       )}
                     </div>
                   );
@@ -347,3 +361,7 @@ export const DashboardPlans: React.FC = () => {
     </div>
   );
 };
+
+
+
+

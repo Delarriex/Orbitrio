@@ -1,85 +1,227 @@
-import React, { useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { useOrbit } from "../../../context/OrbitContext";
+import { getDownloadURL, ref, storage, uploadBytes } from "../../../lib/firebase";
+import { getDepositWalletLabel, sortDepositWallets } from "../../../services";
+import type { DepositWallet } from "../../../types";
 import { motion } from "motion/react";
-import { CreditCard, Save, Check, Copy } from "lucide-react";
+import { Check, Copy, CreditCard, Edit3, Plus, QrCode, Save, Trash2 } from "lucide-react";
+
+type WalletForm = {
+  id: string;
+  coinName: string;
+  network: string;
+  walletAddress: string;
+  qrCodeUrl: string;
+  minimumDeposit: string;
+  enabled: boolean;
+  displayOrder: string;
+  depositInstructions: string;
+};
+
+const createEmptyForm = (): WalletForm => ({
+  id: "",
+  coinName: "",
+  network: "",
+  walletAddress: "",
+  qrCodeUrl: "",
+  minimumDeposit: "100",
+  enabled: true,
+  displayOrder: "0",
+  depositInstructions: "Send only the selected coin and network to this address. Credits are reviewed after network confirmation."
+});
+
+const walletToForm = (wallet: DepositWallet): WalletForm => ({
+  id: wallet.id,
+  coinName: wallet.coinName,
+  network: wallet.network,
+  walletAddress: wallet.walletAddress,
+  qrCodeUrl: wallet.qrCodeUrl,
+  minimumDeposit: String(wallet.minimumDeposit),
+  enabled: wallet.enabled,
+  displayOrder: String(wallet.displayOrder),
+  depositInstructions: wallet.depositInstructions
+});
 
 export const AdminWalletsTab: React.FC = () => {
-  const { adminWallets, updateAdminWallets } = useOrbit();
-  const [form, setForm] = useState<Record<string, string>>({ ...adminWallets });
+  const { depositWallets, adminSaveDepositWallet, adminDeleteDepositWallet } = useOrbit();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [form, setForm] = useState<WalletForm>(() => createEmptyForm());
+  const [qrFile, setQrFile] = useState<File | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
-  React.useEffect(() => {
-    setForm(prev => ({ ...prev, ...adminWallets }));
-  }, [adminWallets]);
+  const sortedWallets = useMemo(() => sortDepositWallets(depositWallets), [depositWallets]);
+  const isEditing = Boolean(form.id);
 
-  const handleSave = () => {
-    updateAdminWallets(form);
-    setFeedback("Wallet addresses updated successfully!");
+  const showFeedback = (message: string) => {
+    setFeedback(message);
     setTimeout(() => setFeedback(null), 3000);
   };
 
-  const handleCopy = (key: string, value: string) => {
-    navigator.clipboard.writeText(value);
-    setCopiedKey(key);
+  const resetForm = () => {
+    setForm(createEmptyForm());
+    setQrFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleCopy = (wallet: DepositWallet) => {
+    navigator.clipboard.writeText(wallet.walletAddress);
+    setCopiedKey(wallet.id);
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
-  const walletLabels: Record<string, string> = {
-    BTC: "Bitcoin (BTC)",
-    ETH: "Ethereum (ETH)",
-    USDT_ERC20: "USDT (ERC-20)",
-    USDT_TRC20: "USDT (TRC-20)",
-    BNB: "Binance Coin (BNB)",
-    SOL: "Solana (SOL)",
-    XRP: "Ripple (XRP)"
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.coinName.trim() || !form.network.trim() || !form.walletAddress.trim()) {
+      showFeedback("Coin, network, and wallet address are required.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const walletId = form.id || `deposit-wallet-${Date.now()}`;
+      let qrCodeUrl = form.qrCodeUrl.trim();
+
+      if (qrFile) {
+        const storageRef = ref(storage, `deposit-wallets/${walletId}_${Date.now()}_${qrFile.name}`);
+        await uploadBytes(storageRef, qrFile);
+        qrCodeUrl = await getDownloadURL(storageRef);
+      }
+
+      await adminSaveDepositWallet({
+        id: walletId,
+        coinName: form.coinName,
+        network: form.network,
+        walletAddress: form.walletAddress,
+        qrCodeUrl,
+        minimumDeposit: parseFloat(form.minimumDeposit) || 0,
+        enabled: form.enabled,
+        displayOrder: parseInt(form.displayOrder, 10) || 0,
+        depositInstructions: form.depositInstructions
+      });
+
+      resetForm();
+      showFeedback("Deposit wallet saved successfully.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleToggle = async (wallet: DepositWallet) => {
+    await adminSaveDepositWallet({ ...wallet, enabled: !wallet.enabled });
+    showFeedback(`${getDepositWalletLabel(wallet)} ${wallet.enabled ? "disabled" : "enabled"}.`);
+  };
+
+  const handleDelete = async (wallet: DepositWallet) => {
+    await adminDeleteDepositWallet(wallet.id);
+    if (form.id === wallet.id) resetForm();
+    showFeedback("Deposit wallet deleted.");
   };
 
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.3 }} className="space-y-6">
-      {/* Header */}
       <div className="bg-orbit-card border border-orbit-border rounded-2xl p-6">
         <h1 className="text-xl font-bold text-orbit-white flex items-center gap-2">
-          <CreditCard size={20} className="text-orbit-accent" /> Wallet Gateways
+          <CreditCard size={20} className="text-orbit-accent" /> Deposit Wallet Management
         </h1>
-        <p className="text-xs text-orbit-gray-text mt-1">Configure the deposit wallet addresses shown to users. Changes update globally in real-time via Firestore.</p>
+        <p className="text-xs text-orbit-gray-text mt-1">Manage coin networks, wallet addresses, QR codes, deposit limits, and display order.</p>
       </div>
 
-      {/* Feedback */}
       {feedback && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-2">
           <Check size={14} /> {feedback}
         </motion.div>
       )}
 
-      {/* Wallet Fields */}
-      <div className="space-y-4">
-        {Object.keys(walletLabels).map(key => (
-          <div key={key} className="bg-orbit-card border border-orbit-border rounded-xl p-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] font-bold text-orbit-gray-text uppercase tracking-wider">
-                {walletLabels[key] || key}
-              </label>
-              <button onClick={() => handleCopy(key, form[key] || "")}
-                className="flex items-center gap-1 text-[10px] text-orbit-accent hover:text-orbit-white transition-colors cursor-pointer">
-                {copiedKey === key ? <><Check size={10} /> Copied!</> : <><Copy size={10} /> Copy</>}
-              </button>
-            </div>
-            <input
-              value={form[key] || ""}
-              onChange={e => setForm(prev => ({ ...prev, [key]: e.target.value }))}
-              className="w-full px-4 py-2.5 bg-orbit-bg border border-orbit-border rounded-lg text-sm text-orbit-white font-mono placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent"
-            />
-          </div>
-        ))}
-      </div>
+      <form onSubmit={handleSubmit} className="bg-orbit-card border border-orbit-border rounded-xl p-4 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-bold text-orbit-white flex items-center gap-2">
+            {isEditing ? <Edit3 size={15} className="text-orbit-accent" /> : <Plus size={15} className="text-orbit-accent" />}
+            {isEditing ? "Edit Deposit Wallet" : "Add Deposit Wallet"}
+          </h2>
+          {isEditing && (
+            <button type="button" onClick={resetForm} className="text-[10px] text-orbit-gray-text hover:text-orbit-white cursor-pointer">
+              New Wallet
+            </button>
+          )}
+        </div>
 
-      {/* Save */}
-      <div className="flex justify-end">
-        <button onClick={handleSave}
-          className="flex items-center gap-2 px-8 py-3 bg-orbit-accent text-orbit-bg font-bold text-xs uppercase rounded-xl hover:opacity-90 cursor-pointer">
-          <Save size={14} /> Save Wallet Addresses
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <input value={form.coinName} onChange={e => setForm(prev => ({ ...prev, coinName: e.target.value }))} placeholder="Coin Name e.g. USDT" className="w-full px-4 py-2.5 bg-orbit-bg border border-orbit-border rounded-lg text-xs text-orbit-white focus:outline-none focus:border-orbit-accent" />
+          <input value={form.network} onChange={e => setForm(prev => ({ ...prev, network: e.target.value }))} placeholder="Network e.g. TRC20" className="w-full px-4 py-2.5 bg-orbit-bg border border-orbit-border rounded-lg text-xs text-orbit-white focus:outline-none focus:border-orbit-accent" />
+          <input value={form.minimumDeposit} onChange={e => setForm(prev => ({ ...prev, minimumDeposit: e.target.value }))} type="number" min="0" placeholder="Minimum Deposit" className="w-full px-4 py-2.5 bg-orbit-bg border border-orbit-border rounded-lg text-xs text-orbit-white focus:outline-none focus:border-orbit-accent" />
+          <input value={form.displayOrder} onChange={e => setForm(prev => ({ ...prev, displayOrder: e.target.value }))} type="number" placeholder="Display Order" className="w-full px-4 py-2.5 bg-orbit-bg border border-orbit-border rounded-lg text-xs text-orbit-white focus:outline-none focus:border-orbit-accent" />
+        </div>
+
+        <input value={form.walletAddress} onChange={e => setForm(prev => ({ ...prev, walletAddress: e.target.value }))} placeholder="Wallet Address" className="w-full px-4 py-2.5 bg-orbit-bg border border-orbit-border rounded-lg text-xs text-orbit-white font-mono focus:outline-none focus:border-orbit-accent" />
+        <input value={form.qrCodeUrl} onChange={e => setForm(prev => ({ ...prev, qrCodeUrl: e.target.value }))} placeholder="QR Code URL" className="w-full px-4 py-2.5 bg-orbit-bg border border-orbit-border rounded-lg text-xs text-orbit-white focus:outline-none focus:border-orbit-accent" />
+
+        <input ref={fileInputRef} type="file" accept="image/*" onChange={e => setQrFile(e.target.files?.[0] || null)} className="hidden" />
+        <button type="button" onClick={() => fileInputRef.current?.click()} className="w-full px-4 py-3 border border-dashed border-orbit-border rounded-xl text-xs text-orbit-gray-text hover:border-orbit-accent hover:text-orbit-accent transition-colors cursor-pointer flex items-center justify-center gap-2">
+          <QrCode size={14} /> {qrFile ? qrFile.name : "Upload or Change QR Code"}
         </button>
+
+        <textarea value={form.depositInstructions} onChange={e => setForm(prev => ({ ...prev, depositInstructions: e.target.value }))} rows={3} placeholder="Deposit Instructions" className="w-full px-4 py-2.5 bg-orbit-bg border border-orbit-border rounded-lg text-xs text-orbit-white focus:outline-none focus:border-orbit-accent" />
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <label className="flex items-center gap-2 text-xs text-orbit-white cursor-pointer">
+            <input type="checkbox" checked={form.enabled} onChange={e => setForm(prev => ({ ...prev, enabled: e.target.checked }))} className="accent-orbit-accent" />
+            Enabled
+          </label>
+          <button type="submit" disabled={isSaving} className="flex items-center justify-center gap-2 px-8 py-3 bg-orbit-accent text-orbit-bg font-bold text-xs uppercase rounded-xl hover:opacity-90 disabled:opacity-60 cursor-pointer">
+            <Save size={14} /> {isSaving ? "Saving..." : "Save Wallet"}
+          </button>
+        </div>
+      </form>
+
+      <div className="space-y-4">
+        {sortedWallets.length === 0 ? (
+          <div className="bg-orbit-card border border-orbit-border rounded-xl p-6 text-center text-xs text-orbit-gray-text">
+            No deposit wallets configured.
+          </div>
+        ) : (
+          sortedWallets.map(wallet => (
+            <div key={wallet.id} className="bg-orbit-card border border-orbit-border rounded-xl p-4 space-y-3">
+              <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
+                <div className="space-y-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-orbit-white">{getDepositWalletLabel(wallet)}</h3>
+                    <span className={`text-[9px] px-2 py-0.5 rounded-full border ${wallet.enabled ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : "border-orbit-red/30 bg-orbit-red/10 text-orbit-red"}`}>
+                      {wallet.enabled ? "Enabled" : "Disabled"}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-orbit-gray-text">Min ${wallet.minimumDeposit.toLocaleString()} | Order {wallet.displayOrder}</p>
+                  <p className="text-xs text-orbit-white font-mono break-all">{wallet.walletAddress}</p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button type="button" onClick={() => handleCopy(wallet)} className="p-2 rounded-lg bg-orbit-bg border border-orbit-border text-orbit-gray-text hover:text-orbit-accent hover:border-orbit-accent cursor-pointer" title="Copy address">
+                    {copiedKey === wallet.id ? <Check size={14} className="text-orbit-green" /> : <Copy size={14} />}
+                  </button>
+                  <button type="button" onClick={() => setForm(walletToForm(wallet))} className="p-2 rounded-lg bg-orbit-bg border border-orbit-border text-orbit-gray-text hover:text-orbit-accent hover:border-orbit-accent cursor-pointer" title="Edit wallet">
+                    <Edit3 size={14} />
+                  </button>
+                  <button type="button" onClick={() => handleToggle(wallet)} className="px-3 py-2 rounded-lg bg-orbit-bg border border-orbit-border text-[10px] text-orbit-gray-text hover:text-orbit-white cursor-pointer">
+                    {wallet.enabled ? "Disable" : "Enable"}
+                  </button>
+                  <button type="button" onClick={() => handleDelete(wallet)} className="p-2 rounded-lg bg-orbit-bg border border-orbit-border text-orbit-gray-text hover:text-orbit-red hover:border-orbit-red/50 cursor-pointer" title="Delete wallet">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+
+              {wallet.qrCodeUrl && (
+                <div className="flex items-center gap-3 pt-2 border-t border-orbit-border/50">
+                  <div className="w-16 h-16 rounded-lg bg-white p-1 shrink-0">
+                    <img src={wallet.qrCodeUrl} alt={`${getDepositWalletLabel(wallet)} QR code`} className="w-full h-full object-contain" />
+                  </div>
+                  <p className="text-xs text-orbit-gray-text leading-relaxed">{wallet.depositInstructions}</p>
+                </div>
+              )}
+            </div>
+          ))
+        )}
       </div>
     </motion.div>
   );

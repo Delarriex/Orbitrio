@@ -25,45 +25,138 @@ import { DashboardPlans } from "./pages/DashboardPlans";
 import { DashboardWallet } from "./pages/DashboardWallet";
 import { DashboardAdmin } from "./pages/DashboardAdmin";
 import { DashboardTransactions } from "./pages/DashboardTransactions";
-import { DashboardReferral } from "./pages/DashboardReferral";
 import { DashboardAirdrops } from "./pages/DashboardAirdrops";
 import { DashboardKYC } from "./pages/DashboardKYC";
 import { DashboardWalletConnect } from "./pages/DashboardWalletConnect";
+import { DashboardNotifications } from "./pages/DashboardNotifications";
+
+const AUTHENTICATED_PUBLIC_REDIRECT_VIEWS = new Set([
+  "home",
+  "markets",
+  "plans",
+  "copy-trading",
+  "auth",
+  "login",
+  "register",
+  "contact"
+]);
+
+const PUBLIC_PATH_TO_VIEW: Record<string, string> = {
+  "/": "home",
+  "/home": "home",
+  "/markets": "markets",
+  "/plans": "plans",
+  "/copy-trading": "copy-trading",
+  "/auth": "auth",
+  "/login": "login",
+  "/register": "register",
+  "/contact": "contact"
+};
+
+const PUBLIC_HASH_TO_VIEW: Record<string, string> = {
+  "#home": "home",
+  "#/home": "home",
+  "#markets": "markets",
+  "#/markets": "markets",
+  "#plans": "plans",
+  "#/plans": "plans",
+  "#copy-trading": "copy-trading",
+  "#/copy-trading": "copy-trading",
+  "#auth": "auth",
+  "#/auth": "auth",
+  "#login": "login",
+  "#/login": "login",
+  "#register": "register",
+  "#/register": "register",
+  "#contact": "contact",
+  "#/contact": "contact"
+};
+
+const isAuthenticatedPublicRedirectView = (view: string) => {
+  const baseView = view.split("#")[0];
+  const hashView = view.includes("#") ? view.split("#")[1] : "";
+  return AUTHENTICATED_PUBLIC_REDIRECT_VIEWS.has(baseView) || AUTHENTICATED_PUBLIC_REDIRECT_VIEWS.has(hashView);
+};
+
+const navigateToCleanRoot = () => {
+  if (window.location.pathname !== "/" || window.location.hash) {
+    window.history.pushState(null, "", "/");
+  }
+};
 
 function MainAppContent() {
   const { user } = useOrbit();
   const [currentView, setCurrentView] = useState("home");
   const [targetTradeAsset, setTargetTradeAsset] = useState<string | null>(null);
   const [walletSubTab, setWalletSubTab] = useState<"deposit" | "withdraw" | "ledger" | "support">("deposit");
-  const maintenanceMode = import.meta.env.VITE_MAINTENANCE_MODE === "true";
+  const localDev = import.meta.env.VITE_LOCAL_DEV === "true";
+  const maintenanceMode = !localDev && import.meta.env.VITE_MAINTENANCE_MODE === "true";
 
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
+  const isAdminUser = user.isLoggedIn && user.role === "admin";
+  const isAuthenticatedUser = user.isLoggedIn && user.role !== "admin";
+  const isAdminView = isAdminUser;
+  const showUserNavigation = !maintenanceMode && !isAdminUser;
+  const showUserMobileNav = !maintenanceMode && isAuthenticatedUser && currentView !== "auth";
 
   // Reset scroll coordinates on navigation/page view change
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "instant" as ScrollBehavior });
   }, [currentView]);
 
-  // Auto-redirect logged-in users to dashboard if they are on the auth page
+  // Keep the shell aligned with auth role state.
   useEffect(() => {
-    if (user.isLoggedIn && currentView === "auth") {
-      setCurrentView("dashboard");
+    if (isAdminUser) {
+      if (window.location.pathname !== "/admin") {
+        window.history.pushState(null, "", "/admin");
+      }
+      if (currentView !== "dashboard-admin") {
+        setCurrentView("dashboard-admin");
+      }
+      return;
     }
-  }, [user.isLoggedIn, currentView]);
 
-  // Listen to path changes or initial page load for direct path routing (e.g. /admin)
+    if (isAuthenticatedUser && isAuthenticatedPublicRedirectView(currentView)) {
+      navigateToCleanRoot();
+      setCurrentView("dashboard");
+      return;
+    }
+
+    if (!user.isLoggedIn && currentView.startsWith("dashboard")) {
+      if (window.location.pathname === "/admin") {
+        window.history.pushState(null, "", "/");
+      }
+      setCurrentView("home");
+    }
+  }, [user.isLoggedIn, user.role, isAdminUser, isAuthenticatedUser, currentView]);
+
+  // Listen to path changes or initial page load for direct path routing (e.g. /admin, /login, #markets).
   useEffect(() => {
     const handleUrlRouting = () => {
       const path = window.location.pathname;
       const hash = window.location.hash;
       const isAdminRoute = path === "/admin" || hash === "#/admin" || hash === "#admin";
+      const requestedPublicView = PUBLIC_PATH_TO_VIEW[path] || PUBLIC_HASH_TO_VIEW[hash];
 
       if (isAdminRoute) {
-        if (user.isLoggedIn && user.role === "admin") {
+        if (isAdminUser) {
           setCurrentView("dashboard-admin");
         } else {
           setCurrentView(user.isLoggedIn ? "dashboard" : "auth");
+        }
+        return;
+      }
+
+      if (requestedPublicView) {
+        if (isAuthenticatedUser && isAuthenticatedPublicRedirectView(requestedPublicView)) {
+          navigateToCleanRoot();
+          setCurrentView("dashboard");
+          return;
+        }
+
+        if (!user.isLoggedIn) {
+          setCurrentView(requestedPublicView);
         }
       }
     };
@@ -75,9 +168,28 @@ function MainAppContent() {
       window.removeEventListener("popstate", handleUrlRouting);
       window.removeEventListener("hashchange", handleUrlRouting);
     };
-  }, [user.isLoggedIn, user.role]);
+  }, [user.isLoggedIn, isAdminUser, isAuthenticatedUser]);
 
-  const handleNavigate = (view: string, assetSymbol?: string) => {
+  const handleNavigate = (view: string, assetSymbol?: string, subTab?: "deposit" | "withdraw" | "ledger" | "support") => {
+    if (isAdminUser) {
+      if (window.location.pathname !== "/admin") {
+        window.history.pushState(null, "", "/admin");
+      }
+      setCurrentView("dashboard-admin");
+      return;
+    }
+
+    if (isAuthenticatedUser && isAuthenticatedPublicRedirectView(view)) {
+      navigateToCleanRoot();
+      setCurrentView("dashboard");
+      return;
+    }
+
+    if (view === "dashboard-referral") {
+      setCurrentView("dashboard");
+      return;
+    }
+
     if (view.startsWith("dashboard") && !user.isLoggedIn) {
       setCurrentView("auth");
       return;
@@ -87,13 +199,24 @@ function MainAppContent() {
       setCurrentView(user.isLoggedIn ? "dashboard" : "auth");
       return;
     }
-
     if (view === "dashboard-trading" && assetSymbol) {
       setTargetTradeAsset(assetSymbol);
     }
 
     if (view === "dashboard-wallet") {
+      setWalletSubTab(subTab || "deposit");
+    }
+
+    if (view === "dashboard-support") {
+      setWalletSubTab("support");
+      setCurrentView("dashboard-wallet");
+      return;
+    }
+
+    if (view === "dashboard-settings") {
       setWalletSubTab("deposit");
+      setCurrentView("dashboard-wallet");
+      return;
     }
 
     // Dynamic URL update for professional custom domain routing
@@ -114,8 +237,24 @@ function MainAppContent() {
     if (maintenanceMode) {
       return <MaintenancePage />;
     }
+
+    if (isAdminUser) {
+      return <DashboardAdmin />;
+    }
+
+    if (isAuthenticatedUser && isAuthenticatedPublicRedirectView(currentView)) {
+      return (
+        <DashboardOverview
+          onNavigate={handleNavigate}
+          onOpenDeposit={() => setDepositModalOpen(true)}
+          onOpenWithdraw={() => setWithdrawModalOpen(true)}
+        />
+      );
+    }
+
     switch (currentView) {
       case "home":
+      case "contact":
         return <PublicHome onNavigate={handleNavigate} />;
       case "markets":
         return <PublicMarkets onNavigate={handleNavigate} />;
@@ -161,8 +300,16 @@ function MainAppContent() {
         return <DashboardWalletConnect />;
       case "dashboard-kyc":
         return <DashboardKYC />;
+      case "dashboard-notifications":
+        return <DashboardNotifications onNavigate={handleNavigate} />;
       case "dashboard-referral":
-        return <DashboardReferral />;
+        return (
+          <DashboardOverview
+            onNavigate={handleNavigate}
+            onOpenDeposit={() => setDepositModalOpen(true)}
+            onOpenWithdraw={() => setWithdrawModalOpen(true)}
+          />
+        );
 
       default:
         return <PublicHome onNavigate={handleNavigate} />;
@@ -170,30 +317,32 @@ function MainAppContent() {
   };
 
   return (
-    <div className={`relative flex flex-col min-h-screen bg-orbit-bg text-[#F5F6F8] font-sans overflow-hidden pt-16 sm:pt-20`}>
+    <div className={`relative flex flex-col min-h-screen bg-orbit-bg text-[#F5F6F8] font-sans ${showUserNavigation ? "pt-16 sm:pt-20" : ""}`}>
       <ScrollAnimatedBackground />
       
       {/* Dynamic top bar links */}
-      {!maintenanceMode && <Navigation currentView={currentView} onNavigate={handleNavigate} />}
+      {showUserNavigation && <Navigation currentView={currentView} onNavigate={handleNavigate} />}
 
       {/* Primary content area container */}
-      <main className={`relative z-10 flex-grow ${
-        currentView === "home"
-          ? "w-full pb-32"
-          : "max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 mt-4 pb-32"
+      <main className={`relative z-10 w-full ${
+        isAdminView
+          ? ""
+          : currentView === "home" || currentView === "contact"
+            ? "pb-24 sm:pb-28"
+            : "max-w-7xl mx-auto px-3 sm:px-5 lg:px-6 mt-2 pb-20 sm:pb-24"
       }`}>
         {renderView()}
       </main>
 
       {/* Global Standard Footer - Hidden on mobile */}
-      {!maintenanceMode && currentView !== "dashboard-admin" && currentView !== "auth" && (
+      {!maintenanceMode && !isAdminView && currentView !== "auth" && (
         <div className="hidden sm:block">
           <Footer />
         </div>
       )}
 
       {/* Mobile Sticky Navigation (Logged in users only) */}
-      {!maintenanceMode && user.isLoggedIn && currentView !== "dashboard-admin" && currentView !== "auth" && (
+      {showUserMobileNav && (
         <div className="sm:hidden mt-auto z-40 relative">
           <MobileNav currentView={currentView} onNavigate={handleNavigate} />
         </div>
@@ -220,3 +369,6 @@ export default function App() {
     </OrbitProvider>
   );
 }
+
+
+

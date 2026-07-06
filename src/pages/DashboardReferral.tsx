@@ -21,7 +21,7 @@ export const DashboardReferral: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 font-sans">
+    <div className="space-y-4 pb-4 sm:pb-6 font-sans">
       <h2 className="text-xl font-bold font-heading text-orbit-white flex items-center gap-2">
         <Share2 className="text-orbit-accent" size={24} />
         Refer & Earn

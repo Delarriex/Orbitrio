@@ -1,153 +1,337 @@
-import React, { useState } from "react";
-import { useOrbit } from "../../../context/OrbitContext";
+import React, { useMemo, useState } from "react";
 import { motion } from "motion/react";
-import { ArrowUpRight, Check, X, Search, FileText } from "lucide-react";
+import { AlertCircle, ArrowUpRight, Check, ClipboardList, Hash, Loader2, Search, X } from "lucide-react";
+import { useOrbit } from "../../../context/OrbitContext";
+import type { SimulatedUser, Transaction } from "../../../types";
+
+type WithdrawalStatus = "pending" | "approved" | "rejected";
+
+type WithdrawalRow = Transaction & {
+  userName: string;
+  userEmail: string;
+  coin: string;
+  network: string;
+  destinationWallet: string;
+  displayStatus: WithdrawalStatus;
+};
+
+const statusStyles: Record<WithdrawalStatus, string> = {
+  pending: "text-yellow-400 bg-yellow-500/10 border-yellow-500/30",
+  approved: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
+  rejected: "text-red-400 bg-red-500/10 border-red-500/30"
+};
+
+const statusLabels: Record<WithdrawalStatus, string> = {
+  pending: "Pending",
+  approved: "Approved",
+  rejected: "Rejected"
+};
+
+const normalizeStatus = (status: Transaction["status"]): WithdrawalStatus => {
+  if (status === "pending") return "pending";
+  if (status === "rejected" || status === "failed") return "rejected";
+  return "approved";
+};
+
+const parseAsset = (asset: string) => {
+  const normalized = asset.replace(/_/g, " ").trim();
+  if (normalized.toLowerCase() === "paypal") return { coin: "PayPal", network: "Off-chain" };
+  if (normalized.toLowerCase() === "bank") return { coin: "Bank", network: "Fiat" };
+
+  const [coin = "USD", ...networkParts] = normalized.split(/\s+/);
+  const network = networkParts.join(" ") || (coin.toUpperCase() === "USD" ? "Fiat" : "Native");
+  return { coin, network };
+};
+
+const formatMoney = (amount: number) =>
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(amount);
+
+const shortValue = (value: string, left = 10, right = 6) =>
+  value.length > left + right + 3 ? `${value.slice(0, left)}...${value.slice(-right)}` : value;
+
+const getDestinationWallet = (transaction: Transaction) => {
+  if (transaction.paypalEmail) return `PayPal: ${transaction.paypalEmail}`;
+  if (transaction.bankDetails) {
+    return `${transaction.bankDetails.bankName} / ${transaction.bankDetails.accountNumber} / ${transaction.bankDetails.accountName}`;
+  }
+  return transaction.address || "Not captured";
+};
+
+const buildWithdrawalRows = (users: SimulatedUser[]): WithdrawalRow[] =>
+  users.flatMap(user =>
+    user.transactions
+      .filter(transaction => transaction.type === "withdrawal")
+      .map(transaction => {
+        const asset = parseAsset(transaction.asset);
+        return {
+          ...transaction,
+          userName: user.name,
+          userEmail: user.email,
+          coin: asset.coin,
+          network: asset.network,
+          destinationWallet: getDestinationWallet(transaction),
+          displayStatus: normalizeStatus(transaction.status)
+        };
+      })
+  );
 
 export const AdminWithdrawalsTab: React.FC = () => {
   const { adminUsers, adminApproveWithdrawal, adminRejectWithdrawal } = useOrbit();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [approveNotes, setApproveNotes] = useState<Record<string, string>>({});
-  const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
+  const [adminNotes, setAdminNotes] = useState<Record<string, string>>({});
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [filterStatus, setFilterStatus] = useState<"all" | "pending" | "completed" | "failed">("all");
+  const [filterStatus, setFilterStatus] = useState<"all" | WithdrawalStatus>("all");
+  const [searchQuery, setSearchQuery] = useState("");
 
-  const allWithdrawals: Array<any> = [];
-  adminUsers.forEach(u => {
-    u.transactions.forEach(t => {
-      if (t.type === "withdrawal") {
-        allWithdrawals.push({ ...t, userName: u.name, userEmail: u.email });
-      }
+  const isLoading = !Array.isArray(adminUsers);
+
+  const withdrawalResult = useMemo(() => {
+    try {
+      const rows = buildWithdrawalRows(adminUsers).sort((a, b) => {
+        if (a.displayStatus === "pending" && b.displayStatus !== "pending") return -1;
+        if (b.displayStatus === "pending" && a.displayStatus !== "pending") return 1;
+        const dateA = Date.parse(a.date);
+        const dateB = Date.parse(b.date);
+        if (!Number.isNaN(dateA) && !Number.isNaN(dateB) && dateA !== dateB) return dateB - dateA;
+        return b.id.localeCompare(a.id);
+      });
+
+      return { rows, error: null as string | null };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to prepare withdrawal records.";
+      return { rows: [] as WithdrawalRow[], error: message };
+    }
+  }, [adminUsers]);
+
+  const withdrawals = withdrawalResult.rows;
+
+  const filteredWithdrawals = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return withdrawals.filter(withdrawal => {
+      const matchesStatus = filterStatus === "all" || withdrawal.displayStatus === filterStatus;
+      if (!query) return matchesStatus;
+
+      const searchable = [
+        withdrawal.id,
+        withdrawal.userName,
+        withdrawal.userEmail,
+        withdrawal.coin,
+        withdrawal.network,
+        withdrawal.destinationWallet,
+        withdrawal.amount.toString()
+      ].join(" ").toLowerCase();
+
+      return matchesStatus && searchable.includes(query);
     });
-  });
+  }, [withdrawals, filterStatus, searchQuery]);
 
-  const sorted = [...allWithdrawals].sort((a, b) => {
-    if (a.status === "pending" && b.status !== "pending") return -1;
-    if (b.status === "pending" && a.status !== "pending") return 1;
-    return b.id.localeCompare(a.id);
-  });
+  const stats = useMemo(() => ({
+    total: withdrawals.length,
+    pending: withdrawals.filter(withdrawal => withdrawal.displayStatus === "pending").length,
+    approved: withdrawals.filter(withdrawal => withdrawal.displayStatus === "approved").length,
+    rejected: withdrawals.filter(withdrawal => withdrawal.displayStatus === "rejected").length
+  }), [withdrawals]);
 
-  const filtered = sorted.filter(t => {
-    const matchesSearch = t.userName.toLowerCase().includes(searchQuery.toLowerCase()) || t.userEmail.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter = filterStatus === "all" || t.status === filterStatus;
-    return matchesSearch && matchesFilter;
-  });
+  const setNote = (withdrawalId: string, value: string) => {
+    setAdminNotes(prev => ({ ...prev, [withdrawalId]: value }));
+  };
 
-  const pendingCount = allWithdrawals.filter(w => w.status === "pending").length;
+  const showFeedback = (message: string) => {
+    setFeedback(message);
+    setTimeout(() => setFeedback(null), 3500);
+  };
 
-  const statusColors: Record<string, string> = {
-    pending: "text-yellow-400 bg-yellow-500/10 border-yellow-500/30",
-    completed: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
-    approved: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
-    failed: "text-red-400 bg-red-500/10 border-red-500/30",
-    rejected: "text-red-400 bg-red-500/10 border-red-500/30"
+  const handleApprove = (withdrawal: WithdrawalRow) => {
+    const confirmed = window.confirm(`Approve withdrawal ${withdrawal.id} for ${withdrawal.userEmail}?`);
+    if (!confirmed) return;
+
+    adminApproveWithdrawal(withdrawal.id, adminNotes[withdrawal.id] || undefined);
+    showFeedback(`Approved withdrawal ${withdrawal.id}`);
+  };
+
+  const handleReject = (withdrawal: WithdrawalRow) => {
+    const confirmed = window.confirm(`Reject withdrawal ${withdrawal.id} for ${withdrawal.userEmail}?`);
+    if (!confirmed) return;
+
+    adminRejectWithdrawal(withdrawal.id, adminNotes[withdrawal.id] || undefined);
+    showFeedback(`Rejected withdrawal ${withdrawal.id}`);
   };
 
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.3 }} className="space-y-6">
-      {/* Header */}
-      <div className="bg-orbit-card border border-orbit-border rounded-2xl p-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-bold text-orbit-white flex items-center gap-2">
-              <ArrowUpRight size={20} className="text-[#DFAD12]" /> Payout Requests (Withdrawals)
-            </h1>
-            <p className="text-xs text-orbit-gray-text mt-1">Approve or reject pending withdrawal requests.</p>
-          </div>
-          {pendingCount > 0 && (
-            <span className="flex items-center gap-2 text-[10px] font-bold text-yellow-400 bg-yellow-500/10 border border-yellow-500/30 px-3 py-1.5 rounded-full animate-pulse">
-              {pendingCount} Pending
-            </span>
-          )}
+      <div className="bg-orbit-card border border-orbit-border rounded-2xl p-6 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-5">
+        <div>
+          <h1 className="text-xl font-bold text-orbit-white flex items-center gap-2">
+            <ArrowUpRight size={20} className="text-[#DFAD12]" /> Withdrawal Management
+          </h1>
+          <p className="text-xs text-orbit-gray-text mt-1">Review payout destinations, approve verified withdrawals, or reject unsafe requests.</p>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+          <StatBadge label="Total" value={stats.total} />
+          <StatBadge label="Pending" value={stats.pending} tone="yellow" />
+          <StatBadge label="Approved" value={stats.approved} tone="green" />
+          <StatBadge label="Rejected" value={stats.rejected} tone="red" />
         </div>
       </div>
 
-      {/* Feedback */}
       {feedback && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold">
-          {feedback}
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-2">
+          <Check size={14} /> {feedback}
         </motion.div>
       )}
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex-1 relative">
-          <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-orbit-gray-text" />
-          <input type="text" placeholder="Search by user..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-11 pr-4 py-3 bg-orbit-card border border-orbit-border rounded-xl text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
-        </div>
-        <div className="flex gap-2">
-          {(["all", "pending", "completed", "failed"] as const).map(f => (
-            <button key={f} onClick={() => setFilterStatus(f)}
-              className={`px-3 py-2 text-[10px] font-bold uppercase rounded-lg border transition-colors cursor-pointer ${filterStatus === f ? "bg-orbit-accent text-orbit-bg border-orbit-accent" : "bg-orbit-card text-orbit-gray-text border-orbit-border hover:border-orbit-accent"}`}>
-              {f}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Withdrawals List */}
-      <div className="space-y-3">
-        {filtered.map(w => (
-          <div key={w.id} className={`bg-orbit-card border rounded-2xl p-4 space-y-3 ${w.status === "pending" ? "border-yellow-500/30" : "border-orbit-border"}`}>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#DFAD12] to-orange-600 flex items-center justify-center text-white text-[10px] font-black">
-                  {w.userName?.charAt(0) || "?"}
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-orbit-white">{w.userName}</p>
-                  <p className="text-[10px] text-orbit-gray-text">{w.userEmail}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-lg font-bold text-orbit-white font-data">${w.amount.toLocaleString()}</span>
-                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${statusColors[w.status] || "text-orbit-gray-text"}`}>
-                  {w.status.toUpperCase()}
-                </span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
-              <div><span className="text-orbit-gray-text">Asset:</span> <span className="text-orbit-white font-bold ml-1">{w.asset}</span></div>
-              <div><span className="text-orbit-gray-text">Date:</span> <span className="text-orbit-white font-bold ml-1">{w.date}</span></div>
-              {w.address && <div className="truncate col-span-2"><span className="text-orbit-gray-text">Destination:</span> <span className="text-orbit-accent font-bold ml-1">{w.address}</span></div>}
-            </div>
-
-            {w.bankDetails && (
-              <div className="grid grid-cols-2 gap-2 text-[10px] bg-orbit-bg/50 rounded-lg p-2">
-                <div><span className="text-orbit-gray-text">Bank:</span> <span className="text-orbit-white font-bold ml-1">{w.bankDetails.bankName}</span></div>
-                <div><span className="text-orbit-gray-text">Account:</span> <span className="text-orbit-white font-bold ml-1">{w.bankDetails.accountNumber}</span></div>
-                <div><span className="text-orbit-gray-text">Name:</span> <span className="text-orbit-white font-bold ml-1">{w.bankDetails.accountName}</span></div>
-                <div><span className="text-orbit-gray-text">Routing:</span> <span className="text-orbit-white font-bold ml-1">{w.bankDetails.routingCode}</span></div>
-              </div>
-            )}
-
-            {w.paypalEmail && <p className="text-[10px] text-orbit-gray-text">PayPal: <span className="text-orbit-accent font-bold">{w.paypalEmail}</span></p>}
-            {w.notes && <p className="text-[10px] text-orbit-gray-text italic">Notes: {w.notes}</p>}
-
-            {w.status === "pending" && (
-              <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-orbit-border/50">
-                <input placeholder="Approval notes..." value={approveNotes[w.id] || ""} onChange={e => setApproveNotes(prev => ({ ...prev, [w.id]: e.target.value }))}
-                  className="flex-1 px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-xs text-orbit-white placeholder:text-orbit-gray-text focus:outline-none" />
-                <button onClick={() => { adminApproveWithdrawal(w.id, approveNotes[w.id] || undefined); setFeedback(`Approved withdrawal ${w.id}`); setTimeout(() => setFeedback(null), 3000); }}
-                  className="flex items-center justify-center gap-1.5 px-4 py-2 bg-emerald-500 text-white font-bold text-xs uppercase rounded-lg hover:bg-emerald-600 cursor-pointer">
-                  <Check size={14} /> Approve
-                </button>
-                <input placeholder="Rejection reason..." value={rejectNotes[w.id] || ""} onChange={e => setRejectNotes(prev => ({ ...prev, [w.id]: e.target.value }))}
-                  className="flex-1 px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-xs text-orbit-white placeholder:text-orbit-gray-text focus:outline-none" />
-                <button onClick={() => { adminRejectWithdrawal(w.id, rejectNotes[w.id] || undefined); setFeedback(`Rejected withdrawal ${w.id}`); setTimeout(() => setFeedback(null), 3000); }}
-                  className="flex items-center justify-center gap-1.5 px-4 py-2 bg-red-500 text-white font-bold text-xs uppercase rounded-lg hover:bg-red-600 cursor-pointer">
-                  <X size={14} /> Reject
-                </button>
-              </div>
-            )}
+      <div className="bg-orbit-card border border-orbit-border rounded-2xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-orbit-border flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-orbit-white flex items-center gap-2">
+              <ClipboardList size={16} className="text-orbit-accent" /> Withdrawal Queue
+            </h2>
+            <p className="text-[11px] text-orbit-gray-text mt-1">Pending withdrawals stay at the top for faster treasury review.</p>
           </div>
-        ))}
+          <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
+            <div className="relative sm:w-72">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-orbit-gray-text" />
+              <input
+                value={searchQuery}
+                onChange={event => setSearchQuery(event.target.value)}
+                placeholder="Search withdrawals"
+                className="w-full pl-9 pr-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-xs text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(["all", "pending", "approved", "rejected"] as const).map(status => (
+                <button
+                  key={status}
+                  onClick={() => setFilterStatus(status)}
+                  className={`px-3 py-2 text-[10px] font-bold uppercase rounded-lg border transition-colors cursor-pointer ${filterStatus === status ? "bg-orbit-accent text-orbit-bg border-orbit-accent" : "bg-orbit-bg text-orbit-gray-text border-orbit-border hover:border-orbit-accent"}`}
+                >
+                  {status === "all" ? "All" : statusLabels[status]}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
 
-        {filtered.length === 0 && (
-          <div className="text-center py-12 text-orbit-gray-text text-sm">No withdrawal requests found.</div>
+        {isLoading && (
+          <StateMessage icon={<Loader2 size={18} className="animate-spin" />} title="Loading withdrawals" message="Preparing withdrawal requests for review." />
+        )}
+
+        {!isLoading && withdrawalResult.error && (
+          <StateMessage icon={<AlertCircle size={18} />} title="Unable to load withdrawals" message={withdrawalResult.error} tone="error" />
+        )}
+
+        {!isLoading && !withdrawalResult.error && (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1260px] text-left">
+                <thead className="bg-orbit-bg/60 border-b border-orbit-border">
+                  <tr className="text-[10px] uppercase tracking-wider text-orbit-gray-text">
+                    <th className="px-5 py-3 font-bold">Withdrawal ID</th>
+                    <th className="px-4 py-3 font-bold">User</th>
+                    <th className="px-4 py-3 font-bold">Email</th>
+                    <th className="px-4 py-3 font-bold">Coin</th>
+                    <th className="px-4 py-3 font-bold">Network</th>
+                    <th className="px-4 py-3 font-bold">Destination Wallet</th>
+                    <th className="px-4 py-3 font-bold">Amount</th>
+                    <th className="px-4 py-3 font-bold">Date</th>
+                    <th className="px-4 py-3 font-bold">Status</th>
+                    <th className="px-5 py-3 font-bold">Admin Notes</th>
+                    <th className="px-5 py-3 font-bold text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-orbit-border/70">
+                  {filteredWithdrawals.map(withdrawal => (
+                    <tr key={withdrawal.id} className="hover:bg-orbit-bg/40 transition-colors align-top">
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-2 text-xs font-bold text-orbit-white">
+                          <Hash size={12} className="text-orbit-gray-text" />
+                          <span title={withdrawal.id}>{shortValue(withdrawal.id, 12, 5)}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 text-xs font-bold text-orbit-white">{withdrawal.userName}</td>
+                      <td className="px-4 py-4 text-xs text-orbit-gray-text">{withdrawal.userEmail}</td>
+                      <td className="px-4 py-4 text-xs font-bold text-orbit-white">{withdrawal.coin}</td>
+                      <td className="px-4 py-4 text-xs text-orbit-accent font-bold">{withdrawal.network}</td>
+                      <td className="px-4 py-4">
+                        <span title={withdrawal.destinationWallet} className="block max-w-[220px] truncate text-xs text-orbit-white">{withdrawal.destinationWallet}</span>
+                        {withdrawal.destinationTag && <span className="mt-1 block text-[10px] text-orbit-gray-text">Tag: {withdrawal.destinationTag}</span>}
+                      </td>
+                      <td className="px-4 py-4 text-xs font-bold text-orbit-white">{formatMoney(withdrawal.amount)}</td>
+                      <td className="px-4 py-4 text-xs text-orbit-gray-text">{withdrawal.date}</td>
+                      <td className="px-4 py-4">
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full border text-[10px] font-bold ${statusStyles[withdrawal.displayStatus]}`}>
+                          {statusLabels[withdrawal.displayStatus]}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4">
+                        {withdrawal.displayStatus === "pending" ? (
+                          <textarea
+                            rows={2}
+                            placeholder="Optional admin notes"
+                            value={adminNotes[withdrawal.id] || ""}
+                            onChange={event => setNote(withdrawal.id, event.target.value)}
+                            className="w-[220px] px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-xs text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent resize-none"
+                          />
+                        ) : (
+                          <p className="max-w-[220px] text-[11px] text-orbit-gray-text">{withdrawal.notes || "No admin notes"}</p>
+                        )}
+                      </td>
+                      <td className="px-5 py-4">
+                        {withdrawal.displayStatus === "pending" ? (
+                          <div className="flex justify-end gap-2">
+                            <button onClick={() => handleApprove(withdrawal)} className="flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-500 text-white font-bold text-[10px] uppercase rounded-lg hover:bg-emerald-600 cursor-pointer">
+                              <Check size={12} /> Approve
+                            </button>
+                            <button onClick={() => handleReject(withdrawal)} className="flex items-center justify-center gap-1.5 px-3 py-2 bg-red-500 text-white font-bold text-[10px] uppercase rounded-lg hover:bg-red-600 cursor-pointer">
+                              <X size={12} /> Reject
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="text-right text-[10px] font-bold uppercase text-orbit-gray-text">Reviewed</p>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {filteredWithdrawals.length === 0 && (
+              <StateMessage title="No withdrawal records" message="No withdrawal requests match this view." />
+            )}
+          </>
         )}
       </div>
     </motion.div>
+  );
+};
+
+const StatBadge: React.FC<{ label: string; value: number; tone?: "default" | "yellow" | "green" | "red" }> = ({ label, value, tone = "default" }) => {
+  const toneClass = tone === "yellow"
+    ? "bg-yellow-500/10 border-yellow-500/20 text-yellow-400"
+    : tone === "green"
+      ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+      : tone === "red"
+        ? "bg-red-500/10 border-red-500/20 text-red-400"
+        : "bg-orbit-bg border-orbit-border text-orbit-white";
+
+  return (
+    <div className={`px-3 py-2 border rounded-lg min-w-[78px] ${toneClass}`}>
+      <p className="text-[9px] uppercase text-orbit-gray-text tracking-wider">{label}</p>
+      <p className="text-sm font-bold">{value}</p>
+    </div>
+  );
+};
+
+const StateMessage: React.FC<{ icon?: React.ReactNode; title: string; message: string; tone?: "default" | "error" }> = ({ icon, title, message, tone = "default" }) => {
+  const toneClass = tone === "error" ? "text-red-400" : "text-orbit-gray-text";
+
+  return (
+    <div className={`py-14 px-6 text-center ${toneClass}`}>
+      <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-orbit-bg border border-orbit-border">
+        {icon || <ClipboardList size={18} />}
+      </div>
+      <p className="text-sm font-bold text-orbit-white">{title}</p>
+      <p className="mt-1 text-xs text-orbit-gray-text">{message}</p>
+    </div>
   );
 };

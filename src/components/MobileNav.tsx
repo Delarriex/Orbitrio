@@ -1,5 +1,5 @@
 import React from "react";
-import { Home, LineChart, Gift, Repeat, TrendingUp } from "lucide-react";
+import { Home, Bell, Gift, Repeat, TrendingUp } from "lucide-react";
 import { useOrbit } from "../context/OrbitContext";
 
 interface MobileNavProps {
@@ -8,10 +8,11 @@ interface MobileNavProps {
 }
 
 export const MobileNav: React.FC<MobileNavProps> = ({ currentView, onNavigate }) => {
-  const { user } = useOrbit();
+  const { user, unreadNotificationsCount } = useOrbit();
+  if (!user.isLoggedIn || user.role === "admin") return null;
   const tabs = [
     { id: "home", label: "Home", icon: Home },
-    { id: "markets", label: "Markets", icon: LineChart },
+    { id: "dashboard-notifications", label: "Alerts", icon: Bell, badge: unreadNotificationsCount },
     { id: "dashboard-airdrops", label: "Airdrop", icon: Gift, isSpecial: true },
     { id: "dashboard-trading", label: "Trade", icon: Repeat },
     { id: "dashboard-plans", label: "Earn", icon: TrendingUp },
@@ -54,3 +55,5 @@ export const MobileNav: React.FC<MobileNavProps> = ({ currentView, onNavigate })
     </div>
   );
 };
+
+

@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useOrbit } from "../context/OrbitContext";
+import { getDepositWalletLabel } from "../services";
 import { X, Check, Copy, ArrowUpRight, Loader2, Info, AlertTriangle } from "lucide-react";
 
 interface GlobalModalsProps {
@@ -15,10 +16,9 @@ export function GlobalModals({
   withdrawModalOpen, setWithdrawModalOpen,
   setCurrentView
 }: GlobalModalsProps) {
-  const { user, deposit, withdraw, adminWallets, insufficientBalanceOpen, setInsufficientBalanceOpen } = useOrbit();
+  const { user, deposit, withdraw, enabledDepositWallets, insufficientBalanceOpen, setInsufficientBalanceOpen } = useOrbit();
 
   // Form states inside Quick Modals
-  const quickFileRef = useRef<HTMLInputElement>(null);
   const [depAmt, setDepAmt] = useState("");
   const [depCoin, setDepCoin] = useState("USDT");
   const [depNetwork, setDepNetwork] = useState("TRC20");
@@ -32,15 +32,35 @@ export function GlobalModals({
 
   const [modalFeedback, setModalFeedback] = useState<string | { title: string; description: string; type?: string } | null>(null);
 
+  const depositCoins = useMemo(
+    () => Array.from(new Set(enabledDepositWallets.map(wallet => wallet.coinName).filter(Boolean))),
+    [enabledDepositWallets]
+  );
+  const depositNetworks = useMemo(
+    () => enabledDepositWallets.filter(wallet => wallet.coinName === depCoin),
+    [depCoin, enabledDepositWallets]
+  );
+  const selectedDepositWallet = depositNetworks.find(wallet => wallet.network === depNetwork) || depositNetworks[0] || enabledDepositWallets[0];
+  const selectedDepositLabel = selectedDepositWallet ? getDepositWalletLabel(selectedDepositWallet) : "";
+  const selectedDepositQrCodeUrl = selectedDepositWallet?.qrCodeUrl || (
+    selectedDepositWallet?.walletAddress
+      ? `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(selectedDepositWallet.walletAddress)}`
+      : ""
+  );
+
   useEffect(() => {
-    if (depCoin === "USDT") {
-      setDepNetwork("TRC20");
-    } else if (depCoin === "BTC") {
-      setDepNetwork("BTC");
-    } else if (depCoin === "ETH") {
-      setDepNetwork("ERC20");
+    if (depositCoins.length === 0) return;
+    if (!depositCoins.includes(depCoin)) {
+      setDepCoin(depositCoins[0]);
     }
-  }, [depCoin]);
+  }, [depCoin, depositCoins]);
+
+  useEffect(() => {
+    if (depositNetworks.length === 0) return;
+    if (!depositNetworks.some(wallet => wallet.network === depNetwork)) {
+      setDepNetwork(depositNetworks[0].network);
+    }
+  }, [depNetwork, depositNetworks]);
 
   useEffect(() => {
     if (wdrCoin === "USDT") {
@@ -53,29 +73,6 @@ export function GlobalModals({
       setWdrNetwork("ACH");
     }
   }, [wdrCoin]);
-
-  const getNetworksForCoin = (coin: string) => {
-    switch (coin) {
-      case "USDT":
-        return [
-          { id: "TRC20", label: "TRC20 (Tron Network)", address: adminWallets?.USDT_TRC20 || "TYc8Dq6pB1A8C8xbeGf4mDqsD84Kda67vE" },
-          { id: "ERC20", label: "ERC20 (Ethereum Network)", address: adminWallets?.USDT_ERC20 || "0x981A7bFDE6D211a76B97A1f6DAe82b7814a60156" },
-          { id: "BEP20", label: "BEP20 (BNB Smart Chain)", address: adminWallets?.BNB || "0x3fC91A3afd20b00230230233ea86976828a923" }
-        ];
-      case "BTC":
-        return [
-          { id: "BTC", label: "Bitcoin Native Network (BTC)", address: adminWallets?.BTC || "bc1qxy2kg3ut7ytu6e8f4t9rga2dfws368ff66e5g8" }
-        ];
-      case "ETH":
-        return [
-          { id: "ERC20", label: "ERC20 (Ethereum Network)", address: adminWallets?.ETH || "0x7Fba9fB5994A1F62aB016a2E9D843D0B6A780E2e" }
-        ];
-      default:
-        return [
-          { id: "TRC20", label: "TRC20 Network", address: "TYc8Dq6pB1A8C8xbeGf4mDqsD84Kda67vE" }
-        ];
-    }
-  };
 
   const getNetworksForWdrCoin = (coin: string) => {
     switch (coin) {
@@ -119,15 +116,22 @@ export function GlobalModals({
     e.preventDefault();
     const amount = parseFloat(depAmt);
     if (!amount || amount <= 0) return;
+    if (!selectedDepositWallet) {
+      triggerModalFeedback("Error: No enabled deposit wallet is currently available.");
+      return;
+    }
+    if (amount < selectedDepositWallet.minimumDeposit) {
+      triggerModalFeedback(`Error: Minimum deposit is ${selectedDepositWallet.minimumDeposit.toLocaleString()} USD.`);
+      return;
+    }
 
-    const fullAssetLabel = depCoin === "USDT" ? `${depCoin} (${depNetwork})` : depCoin;
-    await deposit(amount, fullAssetLabel, depTxHash.trim() || "N/A", depProofName || "payment_proof_receipt.jpg");
+    await deposit(amount, selectedDepositLabel, depTxHash.trim() || "N/A", depProofName || "payment_proof_receipt.jpg");
     setDepAmt("");
     setDepTxHash("");
     setDepProofName("");
     triggerModalFeedback({
       title: "Deposit Processing",
-      description: `Your deposit of $${amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} USD equivalent of ${fullAssetLabel} is being processed. The funds will be credited to your account after network confirmation.`,
+      description: `Your deposit of $${amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} USD equivalent of ${selectedDepositLabel} is being processed. The funds will be credited to your account after network confirmation.`,
       type: "success"
     });
     setTimeout(() => {
@@ -175,9 +179,6 @@ export function GlobalModals({
     <>
       {/* QUICK DEPOSIT MODAL OUTLAY */}
       {depositModalOpen && (() => {
-        const activeNetworkList = getNetworksForCoin(depCoin);
-        const activeNetwork = activeNetworkList.find(n => n.id === depNetwork) || activeNetworkList[0];
-
         return (
           <div className="fixed inset-0 bg-[#000000]/80 backdrop-blur-sm overflow-y-auto p-4 z-50 flex items-center justify-center">
             <div className="bg-orbit-card border border-orbit-border rounded-2xl w-full max-w-md p-6 relative shadow-2xl space-y-5 max-h-[calc(100vh-2rem)] overflow-y-auto my-auto scrollbar-none">
@@ -232,7 +233,7 @@ export function GlobalModals({
                 <div className="space-y-1.5">
                   <label className="text-[10px] text-slate-400 font-sans uppercase font-bold tracking-wider block">Coin</label>
                   <div className="grid grid-cols-3 gap-2 text-xs font-bold font-sans">
-                    {["USDT", "BTC", "ETH"].map(coin => (
+                    {depositCoins.map(coin => (
                       <button
                         key={coin}
                         type="button"
@@ -247,69 +248,77 @@ export function GlobalModals({
                       </button>
                     ))}
                   </div>
+                  {depositCoins.length === 0 && (
+                    <p className="text-xs text-slate-400">No deposit wallets are currently enabled.</p>
+                  )}
                 </div>
 
                 {/* Step 2: Blockchain Network Selection */}
+                {depositNetworks.length > 0 && (
                 <div className="space-y-1.5">
                   <label className="text-[10px] text-slate-400 font-sans uppercase font-bold tracking-wider block">Blockchain Network</label>
                   <div className="flex flex-wrap gap-2 text-[11px] font-bold font-sans">
-                    {activeNetworkList.map((net) => (
+                    {depositNetworks.map((wallet) => (
                       <button
-                        key={net.id}
+                        key={wallet.id}
                         type="button"
-                        onClick={() => setDepNetwork(net.id)}
+                        onClick={() => setDepNetwork(wallet.network)}
                         className={`px-3 py-1.5 rounded-xl border text-center transition-all cursor-pointer ${
-                          depNetwork === net.id 
+                          selectedDepositWallet?.id === wallet.id
                             ? "border-orbit-accent bg-orbit-accent/10 text-orbit-accent font-extrabold" 
                             : "border-orbit-border/50 bg-[#121318] text-slate-400"
                         }`}
                       >
-                        {net.id}
+                        {wallet.network}
                       </button>
                     ))}
                   </div>
                 </div>
+                )}
 
                 {/* Step 3: Address / QR display */}
                 <div className="space-y-3 pt-1">
                   <div className="flex gap-4 items-center">
-                    <div className="w-24 h-24 bg-white p-1 rounded-xl shrink-0">
-                      <img 
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${activeNetwork.address}`}
-                        alt="Deposit QR Code"
-                        className="w-full h-full object-contain"
-                      />
-                    </div>
+                    {selectedDepositQrCodeUrl && (
+                      <div className="w-24 h-24 bg-white p-1 rounded-xl shrink-0">
+                        <img 
+                          src={selectedDepositQrCodeUrl}
+                          alt={`${selectedDepositLabel} deposit QR code`}
+                          className="w-full h-full object-contain"
+                        />
+                      </div>
+                    )}
 
                     <div className="flex-1 min-w-0 space-y-1.5 text-left">
                       <span className="text-[9px] text-slate-400 font-sans uppercase block font-bold tracking-wider">
-                        YOUR {depCoin} DEPOSIT ADDRESS
+                        YOUR {selectedDepositLabel || "CRYPTO"} DEPOSIT ADDRESS
                       </span>
                       <div className="bg-[#121318] border border-orbit-border/50 rounded-xl p-2 flex items-center justify-between gap-1.5">
                         <span className="font-mono text-[10px] break-all select-all text-orbit-white pr-1">
-                          {activeNetwork.address}
+                          {selectedDepositWallet?.walletAddress || "No enabled wallet address available"}
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => handleCopyAddress(activeNetwork.address)}
-                          className="p-1 px-1.5 rounded-lg bg-orbit-border/50 hover:bg-orbit-accent/10 text-orbit-gray-text hover:text-orbit-accent transition-all cursor-pointer select-none shrink-0"
-                          title="Copy Address"
-                        >
-                          {copied ? (
-                            <span className="text-[9px] text-orbit-green font-bold flex items-center gap-1">
-                              <Check size={10} /> COPIED
-                            </span>
-                          ) : (
-                            <Copy size={11} />
-                          )}
-                        </button>
+                        {selectedDepositWallet?.walletAddress && (
+                          <button
+                            type="button"
+                            onClick={() => handleCopyAddress(selectedDepositWallet.walletAddress)}
+                            className="p-1 px-1.5 rounded-lg bg-orbit-border/50 hover:bg-orbit-accent/10 text-orbit-gray-text hover:text-orbit-accent transition-all cursor-pointer select-none shrink-0"
+                            title="Copy Address"
+                          >
+                            {copied ? (
+                              <span className="text-[9px] text-orbit-green font-bold flex items-center gap-1">
+                                <Check size={10} /> COPIED
+                              </span>
+                            ) : (
+                              <Copy size={11} />
+                            )}
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
 
                   <div className="text-[10px] text-slate-400 italic space-y-0.5 text-left font-sans">
-                    <span>• Ensure you send only {depCoin} to this address.</span>
-                    <span className="block">• Assets are safely held 1:1.</span>
+                    <span>{selectedDepositWallet?.depositInstructions || "Deposit wallets are currently unavailable."}</span>
                   </div>
                 </div>
 
@@ -322,10 +331,10 @@ export function GlobalModals({
                     <input
                       type="number"
                       required
-                      min="100"
+                      min={selectedDepositWallet?.minimumDeposit || 0}
                       value={depAmt}
                       onChange={(e) => setDepAmt(e.target.value)}
-                      placeholder="Min. Deposit: 100 USD"
+                      placeholder={`Min. Deposit: ${(selectedDepositWallet?.minimumDeposit || 0).toLocaleString()} USD`}
                       className="w-full bg-[#121318] border border-orbit-border/80 focus:border-orbit-accent focus:ring-1 focus:ring-orbit-accent rounded-xl py-2.5 px-3 text-[11px] text-orbit-white font-mono font-semibold transition-all focus:outline-none placeholder:text-[10px] placeholder-slate-500"
                     />
                     <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono font-bold">
@@ -337,14 +346,15 @@ export function GlobalModals({
                 <div className="pt-1 select-none">
                   <p className="text-[10px] text-slate-400 flex items-start gap-1.5 leading-relaxed text-left">
                     <Info size={11} className="text-amber-500 shrink-0 mt-0.5" />
-                    <span>Minimum deposit: 100 USD. Deposits below this amount cannot be recovered.</span>
+                    <span>Minimum deposit: {(selectedDepositWallet?.minimumDeposit || 0).toLocaleString()} USD. Deposits below this amount cannot be recovered.</span>
                   </p>
                 </div>
 
                 <div className="pt-2">
                   <button
                     type="submit"
-                    className="w-full py-3.5 bg-orbit-accent hover:opacity-95 text-orbit-bg font-extrabold font-heading text-xs uppercase rounded-xl transition-all shadow-md shadow-orbit-accent/10 cursor-pointer tracking-wider text-center"
+                    disabled={!selectedDepositWallet}
+                    className="w-full py-3.5 bg-orbit-accent hover:opacity-95 disabled:opacity-50 text-orbit-bg font-extrabold font-heading text-xs uppercase rounded-xl transition-all shadow-md shadow-orbit-accent/10 cursor-pointer tracking-wider text-center"
                   >
                     CONFIRM DEPOSIT
                   </button>

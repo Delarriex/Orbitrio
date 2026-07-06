@@ -1,12 +1,12 @@
 import React, { useState, useMemo } from "react";
-import { History, ChevronDown, CheckCircle2, Clock, XCircle, AlertTriangle, ArrowDownLeft, ArrowUpRight } from "lucide-react";
+import { History, ChevronDown, CheckCircle2, Clock, XCircle, AlertTriangle, ArrowDownLeft, ArrowUpRight, WalletCards } from "lucide-react";
 import { useOrbit } from "../context/OrbitContext";
 
 export const DashboardTransactions: React.FC = () => {
   const { user } = useOrbit();
 
-  const [filterType, setFilterType] = useState<"" | "deposit" | "withdrawal">(""); 
-  const [filterStatus, setFilterStatus] = useState<"" | "completed" | "pending" | "failed" | "rejected">(""); 
+  const [filterType, setFilterType] = useState(""); 
+  const [filterStatus, setFilterStatus] = useState<"" | "completed" | "pending" | "failed" | "rejected" | "approved">(""); 
   const [filterTime, setFilterTime] = useState<"" | "7" | "30" | "90">(""); 
 
   const filtered = useMemo(() => {
@@ -61,7 +61,7 @@ export const DashboardTransactions: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 font-sans overflow-x-hidden">
+    <div className="space-y-4 pb-4 sm:pb-6 font-sans overflow-x-hidden">
       <div className="flex flex-col gap-4">
         <h2 className="text-xl font-bold font-heading text-orbit-white flex items-center gap-2">
           <History className="text-orbit-accent" size={24} />
@@ -79,6 +79,9 @@ export const DashboardTransactions: React.FC = () => {
               <option value="">All Types</option>
               <option value="deposit">Deposits</option>
               <option value="withdrawal">Withdrawals</option>
+              <option value="investment">Investments</option>
+              <option value="payout">Payouts</option>
+              <option value="adjustment">Adjustments</option>
             </select>
             <ChevronDown size={10} className="absolute top-1/2 right-2.5 -translate-y-1/2 text-orbit-gray-text pointer-events-none" />
           </div>
@@ -92,6 +95,7 @@ export const DashboardTransactions: React.FC = () => {
               <option value="completed">Completed</option>
               <option value="pending">Pending</option>
               <option value="failed">Failed</option>
+              <option value="approved">Approved</option>
               <option value="rejected">Rejected</option>
             </select>
             <ChevronDown size={10} className="absolute top-1/2 right-2.5 -translate-y-1/2 text-orbit-gray-text pointer-events-none" />
@@ -131,22 +135,26 @@ export const DashboardTransactions: React.FC = () => {
         ) : (
           <div className="flex flex-col divide-y divide-orbit-border/30">
             {filtered.map((tx) => {
-              const isDeposit = tx.type === "deposit";
-              const amountDisplay = isDeposit ? `+$${tx.amount.toLocaleString()}` : `-$${tx.amount.toLocaleString()}`;
+              const isCredit = tx.type === "deposit" || tx.type === "payout";
+              const isDebit = tx.type === "withdrawal" || tx.type === "investment";
+              const amountPrefix = isCredit ? "+" : isDebit ? "-" : "";
+              const amountDisplay = `${amountPrefix}$${tx.amount.toLocaleString()}`;
+              const Icon = isCredit ? ArrowDownLeft : isDebit ? ArrowUpRight : WalletCards;
 
               return (
-                <div key={tx.id} className="flex justify-between items-center py-4 px-4 hover:bg-orbit-darkcard/40 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${isDeposit ? "bg-orbit-green/10 text-orbit-green" : "bg-orbit-accent/10 text-orbit-accent"}`}>
-                      {isDeposit ? <ArrowDownLeft size={14} /> : <ArrowUpRight size={14} />}
+                <div key={tx.id} className="flex justify-between items-center py-4 px-4 hover:bg-orbit-darkcard/40 transition-colors gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${isCredit ? "bg-orbit-green/10 text-orbit-green" : "bg-orbit-accent/10 text-orbit-accent"}`}>
+                      <Icon size={14} />
                     </div>
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-sm font-medium text-orbit-white">{tx.type.charAt(0).toUpperCase() + tx.type.slice(1)}</span>
-                      <span className="text-[10px] text-orbit-gray-text font-mono">{tx.date} • {tx.asset}</span>
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                      <span className="text-sm font-medium text-orbit-white capitalize">{tx.type}</span>
+                      <span className="text-[10px] text-orbit-gray-text font-mono truncate">{tx.timestamp || tx.date} - {tx.currency || tx.asset}</span>
+                      <span className="text-[10px] text-orbit-gray-text font-mono truncate">ID: {tx.id}</span>
                     </div>
                   </div>
-                  <div className="flex flex-col items-end gap-0.5">
-                    <span className={`text-sm font-bold font-data ${isDeposit ? "text-orbit-green" : "text-orbit-white"}`}>
+                  <div className="flex flex-col items-end gap-0.5 shrink-0">
+                    <span className={`text-sm font-bold font-data ${isCredit ? "text-orbit-green" : "text-orbit-white"}`}>
                       {amountDisplay}
                     </span>
                     {statusBadge(tx.status)}

@@ -1,7 +1,7 @@
-import React, { useState, useRef } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useOrbit } from "../context/OrbitContext";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { storage } from "../lib/firebase";
+import { ref, uploadBytes, getDownloadURL, storage } from "../lib/firebase";
+import { getDepositWalletLabel } from "../services";
 import { 
   PlusSquare, 
   MinusSquare, 
@@ -28,7 +28,7 @@ interface DashboardWalletProps {
 }
 
 export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab = "deposit" }) => {
-  const { user, deposit, withdraw, createTicket, replyToTicket, adminWallets, addNotification } = useOrbit();
+  const { user, deposit, withdraw, createTicket, replyToTicket, enabledDepositWallets, addNotification } = useOrbit();
   const [activeSubTab, setActiveSubTab] = useState<"deposit" | "withdraw" | "ledger" | "support">(initialOpenTab);
   const [showBalance, setShowBalance] = useState(true);
 
@@ -41,24 +41,34 @@ export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab
   const [copiedAddress, setCopiedAddress] = useState(false);
   const [depositSuccessLog, setDepositSuccessLog] = useState<string | null>(null);
 
-  // Address generator stubs
-  const depositAddresses: Record<string, string> = {
-    "USDT ERC20": adminWallets.USDT_ERC20 || "0x981A7bFDE6D211a76B97A1f6DAe82b7814a60156",
-    "USDT TRC20": adminWallets.USDT_TRC20 || "TYc8Dq6pB1A8C8xbeGf4mDqsD84Kda67vE",
-    BTC: adminWallets.BTC || "bc1qxy2kg3ut7ytu6e8f4t9rga2dfws368ff66e5g8",
-    ETH: adminWallets.ETH || "0x7Fba9fB5994A1F62aB016a2E9D843D0B6A780E2e",
-    BNB: adminWallets.BNB || "0x3fC91A3afd20b00230230233ea86976828a923",
-    SOL: adminWallets.SOL || "7xKX3rncM9G9tve2S4g849mDsa9X8veFDSasf9adFad3",
-    XRP: adminWallets.XRP || "rEb8TK3gKLgai2asdaAdsaA324aFD9safAdadW"
-  };
+  const depositWalletOptions = useMemo(
+    () => enabledDepositWallets.map(wallet => ({ wallet, label: getDepositWalletLabel(wallet) })),
+    [enabledDepositWallets]
+  );
+  const selectedDepositWallet = depositWalletOptions.find(option => option.label === depositCurrency)?.wallet || depositWalletOptions[0]?.wallet;
+  const selectedDepositLabel = selectedDepositWallet ? getDepositWalletLabel(selectedDepositWallet) : depositCurrency;
+  const selectedMinimumDeposit = selectedDepositWallet?.minimumDeposit || 0;
+  const selectedQrCodeUrl = selectedDepositWallet?.qrCodeUrl || (selectedDepositWallet?.walletAddress ? `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(selectedDepositWallet.walletAddress)}` : "");
+
+  useEffect(() => {
+    if (depositWalletOptions.length === 0) return;
+    if (!depositWalletOptions.some(option => option.label === depositCurrency)) {
+      setDepositCurrency(depositWalletOptions[0].label);
+    }
+  }, [depositCurrency, depositWalletOptions]);
 
   const handleDepositSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setDepositSuccessLog(null);
 
+    if (!selectedDepositWallet) {
+      triggerDepositFeedback("Error: No enabled deposit wallet is currently available.");
+      return;
+    }
+
     const amount = parseFloat(depositAmountTxt);
-    if (!amount || amount < 100) {
-      triggerDepositFeedback("Error: The minimum deposit amount is $100 equivalent.");
+    if (!amount || amount < selectedMinimumDeposit) {
+      triggerDepositFeedback(`Error: The minimum deposit amount is $${selectedMinimumDeposit.toLocaleString()} equivalent.`);
       return;
     }
 
@@ -77,7 +87,7 @@ export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab
 
     const success = deposit(
       amount, 
-      depositCurrency, 
+      selectedDepositLabel, 
       depositTxHash.trim() || "N/A", 
       finalProofURL
     );
@@ -85,15 +95,15 @@ export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab
       setDepositAmountTxt("");
       setDepositTxHash("");
       setDepositProofName("");
-      triggerDepositFeedback(`Successfully submitted! Mapped $${amount} ${depositCurrency} secure deposit pending verification. ${depositTxHash.trim() ? "Transaction Hash registered." : ""}`);
+      triggerDepositFeedback(`Successfully submitted! Mapped $${amount} ${selectedDepositLabel} secure deposit pending verification. ${depositTxHash.trim() ? "Transaction Hash registered." : ""}`);
     } else {
       triggerDepositFeedback("Error occurred while processing deposit.");
     }
   };
 
   const handleCopyAddr = () => {
-    const addr = depositAddresses[depositCurrency] || "0x981A7bFDE6D211a76B97A1f6DAe82b7814a60156";
-    navigator.clipboard.writeText(addr);
+    if (!selectedDepositWallet?.walletAddress) return;
+    navigator.clipboard.writeText(selectedDepositWallet.walletAddress);
     setCopiedAddress(true);
     setTimeout(() => setCopiedAddress(false), 2000);
   };
@@ -279,7 +289,7 @@ export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab
   const activeTicketObj = user.tickets.find(t => t.id === selectedTicketId);
 
   return (
-    <div className="space-y-8 pb-20 font-sans">
+    <div className="space-y-4 pb-4 sm:pb-6 font-sans">
       
       {/* Page Header */}
       <div className="border-b border-orbit-border/50 pb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -348,14 +358,14 @@ export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab
       </div>
 
       {/* Main interactive Tab panels */}
-      <div className="bg-orbit-card border border-orbit-border rounded-xl p-6 shadow-2xl overflow-hidden min-h-[360px] font-sans">
+      <div className="bg-orbit-card border border-orbit-border rounded-2xl p-4 shadow-2xl overflow-hidden min-h-[340px] font-sans">
         
         {/* TAB 1: DEPOSIT ASSETS */}
         {activeSubTab === "deposit" && (
           <div className="max-w-xl mx-auto w-full">
             
             {/* Input form */}
-            <form onSubmit={handleDepositSubmit} className="space-y-6">
+            <form onSubmit={handleDepositSubmit} className="space-y-4">
               <div>
                 <h3 className="text-sm font-bold text-orbit-white">Deposit</h3>
                 <p className="text-xs text-orbit-gray-text mt-1">Select currency and enter deposit amount.</p>
@@ -376,23 +386,26 @@ export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab
                   <span>Select Crypto</span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
-                  {["USDT ERC20", "USDT TRC20", "BTC", "ETH", "BNB", "SOL", "XRP"].map((coin) => (
+                  {depositWalletOptions.map(({ label }) => (
                     <button
-                      key={coin}
+                      key={label}
                       type="button"
                       onClick={() => {
-                        setDepositCurrency(coin);
+                        setDepositCurrency(label);
                       }}
                       className={`p-2 py-2.5 rounded-lg border text-center text-[10px] font-bold font-data cursor-pointer transition-all ${
-                        depositCurrency === coin 
+                        selectedDepositLabel === label 
                           ? "border-orbit-accent bg-orbit-accent/10 text-orbit-accent" 
                           : "border-orbit-border bg-orbit-bg/50 text-orbit-gray-text"
                       }`}
                     >
-                      {coin}
+                      {label}
                     </button>
                   ))}
                 </div>
+                {depositWalletOptions.length === 0 && (
+                  <p className="text-xs text-orbit-gray-text">No deposit wallets are currently enabled.</p>
+                )}
               </div>
 
               {/* Repositioned: DEPOSIT INSTRUCTIONS address card */}
@@ -403,15 +416,21 @@ export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab
                 </div>
                 
                 <p className="text-xs text-orbit-gray-text leading-relaxed font-sans font-medium">
-                  Send only the selected coin to this address. Credits after 1 network confirmation.
+                  {selectedDepositWallet?.depositInstructions || "Deposit wallets are currently unavailable."}
                 </p>
+
+                {selectedQrCodeUrl && (
+                  <div className="w-24 h-24 bg-white p-1 rounded-xl">
+                    <img src={selectedQrCodeUrl} alt={`${selectedDepositLabel} deposit QR code`} className="w-full h-full object-contain" />
+                  </div>
+                )}
 
                 {/* Secure Key panel */}
                 <div className="p-3.5 rounded-xl border border-orbit-border bg-orbit-bg space-y-2 font-sans">
-                  <span className="text-[9px] uppercase tracking-normal text-orbit-gray-text font-subheading block">Your {depositCurrency} Deposit Address</span>
+                  <span className="text-[9px] uppercase tracking-normal text-orbit-gray-text font-subheading block">Your {selectedDepositLabel} Deposit Address</span>
                   <div className="flex items-center justify-between gap-3 text-xs">
                     <span className="text-orbit-white font-semibold select-all break-all pr-2 font-data">
-                      {depositAddresses[depositCurrency]}
+                      {selectedDepositWallet?.walletAddress || "No enabled wallet address available"}
                     </span>
                     <button
                       type="button"
@@ -424,7 +443,7 @@ export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab
                 </div>
 
                 {/* Optional XRP Destination Tag Box */}
-                {depositCurrency === "XRP" && (
+                {selectedDepositWallet?.coinName.toUpperCase() === "XRP" && (
                   <div className="p-3.5 rounded-xl border border-orbit-border bg-orbit-bg space-y-2 font-sans animate-fadeIn">
                     <span className="text-[9px] uppercase tracking-normal text-orbit-gray-text font-subheading block">Your XRP Deposit Destination Tag / Memo (Required)</span>
                     <div className="flex items-center justify-between gap-3 text-xs">
@@ -461,7 +480,7 @@ export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab
                     required
                     value={depositAmountTxt}
                     onChange={(e) => setDepositAmountTxt(e.target.value)}
-                    placeholder="Min. Deposit: 100 USD"
+                    placeholder={`Min. Deposit: ${selectedMinimumDeposit.toLocaleString()} USD`}
                     className="w-full bg-orbit-bg border border-orbit-border focus:border-orbit-accent rounded-xl pl-8 pr-4 py-2.5 text-xs text-orbit-white font-bold font-data placeholder:text-[11px] placeholder:font-medium"
                   />
                 </div>

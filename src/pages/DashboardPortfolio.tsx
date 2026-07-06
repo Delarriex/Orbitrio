@@ -10,6 +10,9 @@ export const DashboardPortfolio: React.FC<DashboardPortfolioProps> = ({ onNaviga
   const { user } = useOrbit();
 
   const totalHoldingValue = user.portfolioValue;
+  const activeCopyTrades = user.copyTrades.filter(trade => trade.status === "Running");
+  const completedCopyTrades = user.copyTrades.filter(trade => trade.status === "Completed");
+
 
   // Let's compute individual asset percentages
   const preProcessedPortfolio = user.portfolio.map(asset => {
@@ -35,12 +38,15 @@ export const DashboardPortfolio: React.FC<DashboardPortfolioProps> = ({ onNaviga
   const aggregatePnLPct = aggregateCost > 0 ? +((aggregatePnL / aggregateCost) * 100).toFixed(2) : 0;
 
   // Fix Total Equity to include user's actual balance and active investments
-  const activePlanCapital = user.activeInvestments.reduce((acc, current) => acc + current.amount, 0);
-  const activePlanProfits = user.activeInvestments.reduce((acc, current) => acc + current.accumulatedProfit, 0);
-  const totalEquity = +(user.balance + totalHoldingValue + activePlanCapital + activePlanProfits).toFixed(2);
+  const runningInvestments = user.activeInvestments.filter(item => item.status === "Running" || item.status === "active");
+  const activePlanCapital = runningInvestments.reduce((acc, current) => acc + current.amount, 0);
+  const activePlanProfits = runningInvestments.reduce((acc, current) => acc + current.accumulatedProfit, 0);
+  const activeCopyCapital = activeCopyTrades.reduce((acc, current) => acc + current.amountInvested, 0);
+  const activeCopyExpectedProfit = activeCopyTrades.reduce((acc, current) => acc + current.expectedProfit, 0);
+  const totalEquity = +(user.balance + totalHoldingValue + activePlanCapital + activePlanProfits + activeCopyCapital + activeCopyExpectedProfit).toFixed(2);
 
   return (
-    <div className="space-y-8 pb-20 font-sans">
+    <div className="space-y-4 pb-4 sm:pb-6 font-sans">
       
       {/* Header Info */}
       <div className="border-b border-orbit-border/50 pb-6">
@@ -54,8 +60,8 @@ export const DashboardPortfolio: React.FC<DashboardPortfolioProps> = ({ onNaviga
       </div>
 
       {/* Aggregate metrics box */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 font-sans">
-        <div className="bg-orbit-card border border-orbit-border rounded-xl p-6 space-y-2">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 font-sans">
+        <div className="bg-orbit-card border border-orbit-border rounded-2xl p-4 space-y-2">
           <div className="flex justify-between items-center text-[10px] text-orbit-gray-text font-subheading">
             <span>Total Equity</span>
             <Wallet size={14} className="text-orbit-gray-text/70 shrink-0" />
@@ -86,8 +92,8 @@ export const DashboardPortfolio: React.FC<DashboardPortfolioProps> = ({ onNaviga
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch font-sans">
         
         {/* Left column: Visual radial weights wheel (col-span-4) */}
-        <div className="lg:col-span-5 bg-orbit-card border border-orbit-border rounded-xl p-6 flex flex-col justify-between">
-          <div className="space-y-6">
+        <div className="lg:col-span-5 bg-orbit-card border border-orbit-border rounded-2xl p-4 flex flex-col justify-between">
+          <div className="space-y-4">
             <h3 className="text-sm font-bold font-heading text-orbit-white flex items-center gap-2">
               <PieChart size={16} className="text-orbit-accent" />
               Allocation Weights
@@ -139,7 +145,7 @@ export const DashboardPortfolio: React.FC<DashboardPortfolioProps> = ({ onNaviga
         </div>
 
         {/* Right column: Tabular details (col-span-8) */}
-        <div className="lg:col-span-7 bg-orbit-card border border-orbit-border rounded-xl p-6 space-y-6">
+        <div className="lg:col-span-7 bg-orbit-card border border-orbit-border rounded-2xl p-4 space-y-4">
           <div className="flex justify-between items-center border-b border-orbit-border/50 pb-4">
             <h3 className="text-sm font-bold font-heading text-orbit-white flex items-center gap-2">
               <Target size={16} className="text-orbit-accent" />
@@ -185,23 +191,74 @@ export const DashboardPortfolio: React.FC<DashboardPortfolioProps> = ({ onNaviga
 
       </div>
 
-      {/* Copy trading linkage feedback */}
-      <section className="bg-orbit-card border border-orbit-border rounded-xl p-6 font-sans">
-        <h3 className="text-sm font-bold font-heading text-orbit-white mb-4 flex items-center gap-2">
-          <Users size={16} className="text-orbit-accent" />
-          <span>Copy Trading Positions</span>
-        </h3>
-        <p className="text-xs text-orbit-gray-text leading-relaxed font-sans">
-          Your copy trading positions will automatically appear here once the traders you follow make new trades.
-        </p>
-        <button 
-          onClick={() => onNavigate("copy-trading")}
-          className="mt-4 px-5 py-2 rounded-lg bg-orbit-bg border border-orbit-border hover:border-orbit-accent text-orbit-white text-xs font-semibold font-subheading transition-colors cursor-pointer"
-        >
-          Check Copy Trading
-        </button>
+      {/* Copy trading positions */}
+      <section className="bg-orbit-card border border-orbit-border rounded-2xl p-4 font-sans space-y-5">
+        <div className="flex items-center justify-between gap-3 border-b border-orbit-border/50 pb-3">
+          <h3 className="text-sm font-bold font-heading text-orbit-white flex items-center gap-2">
+            <Users size={16} className="text-orbit-accent" />
+            <span>Active Copy Trades</span>
+          </h3>
+          <button 
+            onClick={() => onNavigate("copy-trading")}
+            className="px-4 py-2 rounded-lg bg-orbit-bg border border-orbit-border hover:border-orbit-accent text-orbit-white text-xs font-semibold font-subheading transition-colors cursor-pointer"
+          >
+            Copy Traders
+          </button>
+        </div>
+
+        {activeCopyTrades.length === 0 ? (
+          <p className="text-xs text-orbit-gray-text leading-relaxed font-sans py-4">
+            No active copy trades. Select a trader to start a timestamped copy allocation.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {activeCopyTrades.map(trade => (
+              <div key={trade.id} className="p-4 rounded-xl border border-orbit-border bg-orbit-bg/40 space-y-3 text-xs">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <strong className="text-orbit-white font-subheading block">{trade.traderName}</strong>
+                    <span className="text-[10px] text-orbit-gray-text font-data">{trade.remainingDays}d remaining</span>
+                  </div>
+                  <span className="px-2 py-1 rounded bg-orbit-accent/10 text-orbit-accent border border-orbit-accent/30 font-bold font-subheading text-[10px]">
+                    {trade.status}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[11px] font-data">
+                  <span className="text-orbit-gray-text">Invested <strong className="block text-orbit-white">${trade.amountInvested.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong></span>
+                  <span className="text-orbit-gray-text">ROI <strong className="block text-orbit-green">{trade.roiPercent}%</strong></span>
+                  <span className="text-orbit-gray-text">Expected profit <strong className="block text-orbit-green">${trade.expectedProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong></span>
+                  <span className="text-orbit-gray-text">Total return <strong className="block text-orbit-white">${trade.totalReturn.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong></span>
+                </div>
+                <div className="w-full bg-orbit-border h-1.5 rounded-full overflow-hidden">
+                  <div className="bg-orbit-accent h-full" style={{ width: `${trade.progress}%` }} />
+                </div>
+                <p className="text-[10px] text-orbit-gray-text font-data">Ends: {new Date(trade.endTimestamp).toLocaleString()}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="border-t border-orbit-border/50 pt-4 space-y-3">
+          <h4 className="text-xs font-bold font-heading text-orbit-white">Copy Trade History</h4>
+          {completedCopyTrades.length === 0 ? (
+            <p className="text-xs text-orbit-gray-text py-2">No completed copy trades yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {completedCopyTrades.map(trade => (
+                <div key={trade.id} className="grid grid-cols-2 md:grid-cols-6 gap-2 p-3 rounded-lg border border-orbit-border/60 bg-orbit-bg/30 text-[11px] font-data">
+                  <span className="text-orbit-white font-bold md:col-span-2">{trade.traderName}</span>
+                  <span className="text-orbit-gray-text">Invested ${trade.amountInvested.toLocaleString()}</span>
+                  <span className="text-orbit-green">Profit ${trade.expectedProfit.toLocaleString()}</span>
+                  <span className="text-orbit-white">Returned ${trade.totalReturn.toLocaleString()}</span>
+                  <span className="text-orbit-green font-subheading">{trade.payoutCompleted ? "Paid" : trade.status}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </section>
 
     </div>
   );
 };
+

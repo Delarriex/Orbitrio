@@ -8,7 +8,7 @@ interface AuthPageProps {
 }
 
 export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "register" }) => {
-  const { register, login, loginWithGoogle, sendPasswordReset } = useOrbit();
+  const { register, login, loginWithGoogle, sendPasswordReset, appSettings } = useOrbit();
   const [activeTab, setActiveTab] = useState<"login" | "register">(initialTab);
   
   // Login State
@@ -762,7 +762,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
             Security node active. End-to-end multi-layer data encryption active.
           </div>
           <div className="text-zinc-400">
-            Need assistance? <a href="mailto:support@orbitriotrades.com" className="text-orbit-accent hover:underline">Contact Support</a>
+            Need assistance? <a href={`mailto:${appSettings.supportEmail}`} className="text-orbit-accent hover:underline">Contact Support</a>
           </div>
         </div>
 
@@ -771,3 +771,4 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
     </div>
   );
 };
+

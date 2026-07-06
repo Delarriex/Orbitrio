@@ -1,160 +1,230 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useOrbit } from "../../../context/OrbitContext";
 import { motion } from "motion/react";
-import { UserCheck, Check, X, Search, Eye, Image } from "lucide-react";
+import { UserCheck, Check, X, Search, Eye, FileText, ExternalLink } from "lucide-react";
+import type { KycSubmission, KycStatus, SimulatedUser } from "../../../types";
+
+type KycRow = SimulatedUser & { kycStatus: KycStatus };
+
+const statusColors: Record<KycStatus, string> = {
+  pending: "text-yellow-400 bg-yellow-500/10 border-yellow-500/30",
+  approved: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
+  rejected: "text-red-400 bg-red-500/10 border-red-500/30",
+  unverified: "text-zinc-400 bg-zinc-500/10 border-zinc-500/30"
+};
+
+const formatDate = (value?: string) => {
+  if (!value) return "Not submitted";
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return value;
+  return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(parsed));
+};
+
+const getDocumentCount = (kyc?: KycSubmission) => [kyc?.frontImage, kyc?.backImage, kyc?.proofOfAddressImage].filter(Boolean).length;
 
 export const AdminKycTab: React.FC = () => {
   const { adminUsers, adminKycReview } = useOrbit();
   const [searchQuery, setSearchQuery] = useState("");
-  const [rejectionReasons, setRejectionReasons] = useState<Record<string, string>>({});
+  const [adminNotes, setAdminNotes] = useState<Record<string, string>>({});
   const [feedback, setFeedback] = useState<string | null>(null);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
-  const [filterStatus, setFilterStatus] = useState<"all" | "pending" | "approved" | "rejected" | "unverified">("all");
+  const [filterStatus, setFilterStatus] = useState<"all" | KycStatus>("all");
 
-  const usersWithKyc = adminUsers.filter(u => u.kyc);
-  const allUsers = filterStatus === "all" ? adminUsers : usersWithKyc.filter(u => u.kyc?.status === filterStatus);
-  const filtered = allUsers.filter(u =>
-    u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    u.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const rows = useMemo<KycRow[]>(() => adminUsers.map(user => ({
+    ...user,
+    kycStatus: user.kyc?.status || "unverified"
+  })), [adminUsers]);
 
-  const pendingCount = usersWithKyc.filter(u => u.kyc?.status === "pending").length;
+  const filtered = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return rows.filter(user => {
+      const matchesStatus = filterStatus === "all" || user.kycStatus === filterStatus;
+      if (!query) return matchesStatus;
+      const searchable = [
+        user.name,
+        user.email,
+        user.kyc?.documentType || user.kyc?.idType || "",
+        user.kyc?.idNumber || "",
+        user.kyc?.country || "",
+        user.kyc?.adminNotes || user.kyc?.rejectionReason || ""
+      ].join(" ").toLowerCase();
+      return matchesStatus && searchable.includes(query);
+    }).sort((a, b) => {
+      if (a.kycStatus === "pending" && b.kycStatus !== "pending") return -1;
+      if (b.kycStatus === "pending" && a.kycStatus !== "pending") return 1;
+      return Date.parse(b.kyc?.submissionDate || "0") - Date.parse(a.kyc?.submissionDate || "0");
+    });
+  }, [rows, filterStatus, searchQuery]);
 
-  const statusColors: Record<string, string> = {
-    pending: "text-yellow-400 bg-yellow-500/10 border-yellow-500/30",
-    approved: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
-    rejected: "text-red-400 bg-red-500/10 border-red-500/30",
-    unverified: "text-zinc-400 bg-zinc-500/10 border-zinc-500/30"
+  const pendingCount = rows.filter(user => user.kycStatus === "pending").length;
+
+  const showFeedback = (message: string) => {
+    setFeedback(message);
+    setTimeout(() => setFeedback(null), 3000);
+  };
+
+  const approve = (user: KycRow) => {
+    const note = adminNotes[user.email] || "Verified by admin.";
+    adminKycReview(user.email, "approved", note);
+    showFeedback(`KYC approved for ${user.email}`);
+  };
+
+  const reject = (user: KycRow) => {
+    const reason = adminNotes[user.email] || "Documents not sufficient.";
+    adminKycReview(user.email, "rejected", reason);
+    showFeedback(`KYC rejected for ${user.email}`);
   };
 
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.3 }} className="space-y-6">
-      {/* Header */}
       <div className="bg-orbit-card border border-orbit-border rounded-2xl p-6">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-xl font-bold text-orbit-white flex items-center gap-2">
-              <UserCheck size={20} className="text-orbit-accent" /> ID Verifications (KYC)
+              <UserCheck size={20} className="text-orbit-accent" /> ID Verifications
             </h1>
-            <p className="text-xs text-orbit-gray-text mt-1">Review and approve or reject user identity verification submissions.</p>
+            <p className="text-xs text-orbit-gray-text mt-1">Review identity documents, proof of address, notes, and verification outcomes.</p>
           </div>
-          {pendingCount > 0 && (
-            <span className="flex items-center gap-2 text-[10px] font-bold text-yellow-400 bg-yellow-500/10 border border-yellow-500/30 px-3 py-1.5 rounded-full animate-pulse">
-              {pendingCount} Pending Reviews
-            </span>
-          )}
+          <span className="flex items-center gap-2 text-[10px] font-bold text-yellow-400 bg-yellow-500/10 border border-yellow-500/30 px-3 py-1.5 rounded-full">
+            {pendingCount} Pending Reviews
+          </span>
         </div>
       </div>
 
-      {/* Feedback */}
       {feedback && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold">
           {feedback}
         </motion.div>
       )}
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex-1 relative">
-          <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-orbit-gray-text" />
-          <input type="text" placeholder="Search users..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-11 pr-4 py-3 bg-orbit-card border border-orbit-border rounded-xl text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          {(["all", "pending", "approved", "rejected", "unverified"] as const).map(f => (
-            <button key={f} onClick={() => setFilterStatus(f)}
-              className={`px-3 py-2 text-[10px] font-bold uppercase rounded-lg border transition-colors cursor-pointer ${filterStatus === f ? "bg-orbit-accent text-orbit-bg border-orbit-accent" : "bg-orbit-card text-orbit-gray-text border-orbit-border hover:border-orbit-accent"}`}>
-              {f}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Users */}
-      <div className="space-y-3">
-        {filtered.map(u => {
-          const kyc = u.kyc;
-          const isExpanded = expandedUser === u.email;
-          return (
-            <div key={u.email} className={`bg-orbit-card border rounded-2xl overflow-hidden ${kyc?.status === "pending" ? "border-yellow-500/30" : "border-orbit-border"}`}>
-              <button onClick={() => setExpandedUser(isExpanded ? null : u.email)}
-                className="w-full flex flex-col sm:flex-row sm:items-center justify-between p-4 hover:bg-orbit-border/20 transition-colors cursor-pointer text-left gap-2">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orbit-accent to-[#FF7F00] flex items-center justify-center text-orbit-bg text-[10px] font-black">
-                    {u.name.charAt(0)}
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-orbit-white">{u.name}</p>
-                    <p className="text-[10px] text-orbit-gray-text">{u.email}</p>
-                  </div>
-                </div>
-                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${statusColors[kyc?.status || "unverified"]}`}>
-                  {(kyc?.status || "unverified").toUpperCase()}
-                </span>
+      <div className="bg-orbit-card border border-orbit-border rounded-2xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-orbit-border flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div className="relative lg:w-80">
+            <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-orbit-gray-text" />
+            <input type="text" placeholder="Search verifications" value={searchQuery} onChange={event => setSearchQuery(event.target.value)}
+              className="w-full pl-11 pr-4 py-3 bg-orbit-bg border border-orbit-border rounded-xl text-sm text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent" />
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {(["all", "pending", "approved", "rejected", "unverified"] as const).map(status => (
+              <button key={status} onClick={() => setFilterStatus(status)}
+                className={`px-3 py-2 text-[10px] font-bold uppercase rounded-lg border transition-colors cursor-pointer ${filterStatus === status ? "bg-orbit-accent text-orbit-bg border-orbit-accent" : "bg-orbit-bg text-orbit-gray-text border-orbit-border hover:border-orbit-accent"}`}>
+                {status}
               </button>
+            ))}
+          </div>
+        </div>
 
-              {isExpanded && kyc && (
-                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} className="border-t border-orbit-border p-4 space-y-4 bg-orbit-bg/50">
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-[10px]">
-                    <div><span className="text-orbit-gray-text">ID Type:</span> <span className="text-orbit-white font-bold ml-1">{kyc.idType}</span></div>
-                    <div><span className="text-orbit-gray-text">ID Number:</span> <span className="text-orbit-white font-bold ml-1">{kyc.idNumber}</span></div>
-                    <div><span className="text-orbit-gray-text">DOB:</span> <span className="text-orbit-white font-bold ml-1">{kyc.dob}</span></div>
-                    <div><span className="text-orbit-gray-text">Address:</span> <span className="text-orbit-white font-bold ml-1">{kyc.address}</span></div>
-                    <div><span className="text-orbit-gray-text">City:</span> <span className="text-orbit-white font-bold ml-1">{kyc.city}</span></div>
-                    <div><span className="text-orbit-gray-text">Country:</span> <span className="text-orbit-white font-bold ml-1">{kyc.country}</span></div>
-                  </div>
-
-                  {/* ID Images */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {kyc.frontImage && (
-                      <div className="bg-orbit-card border border-orbit-border rounded-lg p-3">
-                        <p className="text-[9px] text-orbit-gray-text uppercase font-bold mb-2 flex items-center gap-1"><Image size={10} /> Front ID</p>
-                        <img src={kyc.frontImage} alt="Front ID" className="w-full h-auto rounded-lg border border-orbit-border" />
-                      </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1180px] text-left">
+            <thead className="bg-orbit-bg/60 border-b border-orbit-border">
+              <tr className="text-[10px] uppercase tracking-wider text-orbit-gray-text">
+                <th className="px-5 py-3 font-bold">User</th>
+                <th className="px-4 py-3 font-bold">Submission Date</th>
+                <th className="px-4 py-3 font-bold">Document Type</th>
+                <th className="px-4 py-3 font-bold">Documents</th>
+                <th className="px-4 py-3 font-bold">Status</th>
+                <th className="px-4 py-3 font-bold">Admin Notes</th>
+                <th className="px-5 py-3 font-bold text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-orbit-border/70">
+              {filtered.map(user => {
+                const kyc = user.kyc;
+                const isExpanded = expandedUser === user.email;
+                return (
+                  <React.Fragment key={user.email}>
+                    <tr className="hover:bg-orbit-bg/40 transition-colors align-top">
+                      <td className="px-5 py-4">
+                        <p className="text-xs font-bold text-orbit-white">{user.name}</p>
+                        <p className="text-[10px] text-orbit-gray-text">{user.email}</p>
+                      </td>
+                      <td className="px-4 py-4 text-xs text-orbit-gray-text">{formatDate(kyc?.submissionDate)}</td>
+                      <td className="px-4 py-4 text-xs font-bold text-orbit-white">{kyc?.documentType || kyc?.idType || "Not submitted"}</td>
+                      <td className="px-4 py-4">
+                        <button disabled={!kyc} onClick={() => setExpandedUser(isExpanded ? null : user.email)} className="inline-flex items-center gap-1.5 px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-[10px] font-bold text-orbit-white disabled:opacity-50 cursor-pointer hover:border-orbit-accent">
+                          <Eye size={12} /> View ({getDocumentCount(kyc)})
+                        </button>
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full border text-[10px] font-bold ${statusColors[user.kycStatus]}`}>
+                          {user.kycStatus.toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4">
+                        <input
+                          value={adminNotes[user.email] ?? kyc?.adminNotes ?? kyc?.rejectionReason ?? ""}
+                          onChange={event => setAdminNotes(prev => ({ ...prev, [user.email]: event.target.value }))}
+                          placeholder="Approval note or rejection reason"
+                          className="w-[250px] px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-xs text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent"
+                        />
+                      </td>
+                      <td className="px-5 py-4">
+                        {kyc?.status === "pending" ? (
+                          <div className="flex justify-end gap-2">
+                            <button onClick={() => approve(user)} className="flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-500 text-white font-bold text-[10px] uppercase rounded-lg hover:bg-emerald-600 cursor-pointer">
+                              <Check size={12} /> Approve
+                            </button>
+                            <button onClick={() => reject(user)} className="flex items-center justify-center gap-1.5 px-3 py-2 bg-red-500 text-white font-bold text-[10px] uppercase rounded-lg hover:bg-red-600 cursor-pointer">
+                              <X size={12} /> Reject
+                            </button>
+                          </div>
+                        ) : (
+                          <p className="text-right text-[10px] font-bold uppercase text-orbit-gray-text">No action</p>
+                        )}
+                      </td>
+                    </tr>
+                    {isExpanded && kyc && (
+                      <tr className="bg-orbit-bg/50">
+                        <td colSpan={7} className="px-5 py-5">
+                          <DocumentPanel kyc={kyc} />
+                        </td>
+                      </tr>
                     )}
-                    {kyc.backImage && (
-                      <div className="bg-orbit-card border border-orbit-border rounded-lg p-3">
-                        <p className="text-[9px] text-orbit-gray-text uppercase font-bold mb-2 flex items-center gap-1"><Image size={10} /> Back ID</p>
-                        <img src={kyc.backImage} alt="Back ID" className="w-full h-auto rounded-lg border border-orbit-border" />
-                      </div>
-                    )}
-                  </div>
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
 
-                  {kyc.rejectionReason && (
-                    <p className="text-[10px] text-red-400 italic">Previous rejection: {kyc.rejectionReason}</p>
-                  )}
-
-                  {/* Actions */}
-                  {kyc.status === "pending" && (
-                    <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-orbit-border/50">
-                      <button onClick={() => { adminKycReview(u.email, "approved"); setFeedback(`KYC approved for ${u.email}`); setTimeout(() => setFeedback(null), 3000); }}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-emerald-500 text-white font-bold text-xs uppercase rounded-lg hover:bg-emerald-600 cursor-pointer">
-                        <Check size={14} /> Approve KYC
-                      </button>
-                      <input placeholder="Rejection reason..." value={rejectionReasons[u.email] || ""} onChange={e => setRejectionReasons(prev => ({ ...prev, [u.email]: e.target.value }))}
-                        className="flex-1 px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-xs text-orbit-white placeholder:text-orbit-gray-text focus:outline-none" />
-                      <button onClick={() => { adminKycReview(u.email, "rejected", rejectionReasons[u.email] || "Documents not sufficient."); setFeedback(`KYC rejected for ${u.email}`); setTimeout(() => setFeedback(null), 3000); }}
-                        className="flex items-center justify-center gap-1.5 px-4 py-2 bg-red-500 text-white font-bold text-xs uppercase rounded-lg hover:bg-red-600 cursor-pointer">
-                        <X size={14} /> Reject
-                      </button>
-                    </div>
-                  )}
-                </motion.div>
-              )}
-
-              {isExpanded && !kyc && (
-                <div className="border-t border-orbit-border p-4 bg-orbit-bg/50">
-                  <p className="text-xs text-orbit-gray-text">This user has not submitted KYC documents yet.</p>
-                </div>
-              )}
-            </div>
-          );
-        })}
-
-        {filtered.length === 0 && (
-          <div className="text-center py-12 text-orbit-gray-text text-sm">No users found.</div>
-        )}
+        {filtered.length === 0 && <div className="py-14 text-center text-sm text-orbit-gray-text">No verification records match this view.</div>}
       </div>
     </motion.div>
   );
 };
+
+const DocumentPanel: React.FC<{ kyc: KycSubmission }> = ({ kyc }) => (
+  <div className="space-y-4">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-[11px]">
+      <Info label="Document Number" value={kyc.idNumber || "Not captured"} />
+      <Info label="Date of Birth" value={kyc.dob || "Not captured"} />
+      <Info label="Country" value={kyc.country || "Not captured"} />
+      <Info label="Address" value={[kyc.address, kyc.city].filter(Boolean).join(", ") || "Not captured"} />
+    </div>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <DocumentLink title="Primary Document" url={kyc.frontImage} />
+      <DocumentLink title="Back Document" url={kyc.backImage} />
+      <DocumentLink title="Proof of Address" url={kyc.proofOfAddressImage} optional />
+    </div>
+  </div>
+);
+
+const Info: React.FC<{ label: string; value: string }> = ({ label, value }) => (
+  <div className="bg-orbit-card border border-orbit-border rounded-lg p-3">
+    <p className="text-[9px] uppercase tracking-wider text-orbit-gray-text font-bold">{label}</p>
+    <p className="mt-1 text-orbit-white font-bold break-words">{value}</p>
+  </div>
+);
+
+const DocumentLink: React.FC<{ title: string; url?: string; optional?: boolean }> = ({ title, url, optional }) => (
+  <div className="bg-orbit-card border border-orbit-border rounded-xl p-3 min-h-[120px]">
+    <p className="text-[10px] text-orbit-gray-text uppercase font-bold mb-2 flex items-center gap-1"><FileText size={11} /> {title}</p>
+    {url ? (
+      <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-bold text-orbit-accent hover:text-orbit-white">
+        Open uploaded document <ExternalLink size={12} />
+      </a>
+    ) : (
+      <p className="text-xs text-orbit-gray-text">{optional ? "Not provided" : "Missing document"}</p>
+    )}
+  </div>
+);

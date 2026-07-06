@@ -1,12 +1,15 @@
 import React from "react";
 import { motion } from "motion/react";
 import { ShieldCheck, UserCheck, UserPlus, LayoutGrid, AlertTriangle, Ban, Lock, Scale, RefreshCw, Mail } from "lucide-react";
+import { useOrbit } from "../context/OrbitContext";
 
 interface TermsPageProps {
   onNavigate: (view: string) => void;
 }
 
 export const TermsPage: React.FC<TermsPageProps> = ({ onNavigate }) => {
+  const { appSettings } = useOrbit();
+
   return (
     <motion.div 
       initial={{ opacity: 0 }}
@@ -111,9 +114,13 @@ export const TermsPage: React.FC<TermsPageProps> = ({ onNavigate }) => {
             <Mail className="w-6 h-6 text-orbit-accent" />
             9. Contact
           </h2>
-          <p>support@orbitriotrades.com</p>
+          <p>{appSettings.supportEmail}</p>
         </section>
       </div>
     </motion.div>
   );
 };
+
+
+
+
