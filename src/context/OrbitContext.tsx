@@ -687,7 +687,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     let seededDefaults = false;
     const unsubscribe = watchInvestmentPlans((loadedPlans) => {
-      if (loadedPlans.length === 0 && !seededDefaults) {
+      if (loadedPlans.length === 0 && !seededDefaults && auth.currentUser?.email && isAdminEmail(auth.currentUser.email)) {
         seededDefaults = true;
         seedDefaultInvestmentPlans().catch((error) => {
           handleFirestoreError(error, OperationType.WRITE, INVESTMENT_PLANS_COLLECTION);
@@ -737,6 +737,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     return createLoggedOutUser();
   });
+  const [authReady, setAuthReady] = useState(USE_MOCK_DATA || localDev);
 
   const [insufficientBalanceOpen, setInsufficientBalanceOpen] = useState(false);
   const enrichUserTransaction = (
@@ -771,10 +772,14 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const userAnnouncements = filterActiveAnnouncements(adminAnnouncements);
   useEffect(() => {
     if (USE_MOCK_DATA) return;
+    if (!authReady || !user.isLoggedIn) {
+      setAdminAnnouncements([]);
+      return;
+    }
 
     const announcementsCol = collection(db, "announcements");
     const unsubscribe = onSnapshot(announcementsCol, (snapshot) => {
-      if (snapshot.empty) {
+      if (snapshot.empty && user.isAdmin) {
         INITIAL_ANNOUNCEMENTS.forEach(async (announcement) => {
           const normalized = normalizeAnnouncement(announcement, announcement.id);
           await setDoc(doc(db, "announcements", normalized.id), normalized);
@@ -790,7 +795,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [authReady, user.isLoggedIn]);
 
   const [adminAuditLogs, setAdminAuditLogs] = useState<AuditLog[]>(() => {
     const saved = localStorage.getItem("orbitrio_audit_logs");
@@ -810,15 +815,16 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return;
     }
 
+    if (!authReady || !user.email) {
+      setAirdrops([]);
+      setAdminAirdropClaims([]);
+      return;
+    }
+
     const airdropsCol = collection(db, "airdrops");
     const unsubAirdrops = onSnapshot(airdropsCol, (snapshot) => {
       setAirdrops(snapshot.docs.map(doc => doc.data() as Airdrop));
     });
-
-    if (!user.email) {
-      setAdminAirdropClaims([]);
-      return () => unsubAirdrops();
-    }
 
     const claimsRef = user.isAdmin
       ? collection(db, "airdrop_claims")
@@ -833,7 +839,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       unsubAirdrops();
       unsubClaims();
     };
-  }, [user.email, user.isAdmin]);
+  }, [authReady, user.email, user.isAdmin]);
   const adminApproveAirdrop = async (claimId: string) => {
     const claim = adminAirdropClaims.find(c => c.id === claimId);
     if (!claim || claim.status !== "Pending") {
@@ -1190,7 +1196,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       handleFirestoreError(error, OperationType.GET, "traders");
     });
     return () => unsubscribe();
-  }, [user.isAdmin]);
+  }, [authReady, user.isAdmin]);
 
   // Frontend development reads deposit wallets from the shared in-app mock store. Firebase sync is only used when mock data is disabled.
   useEffect(() => {
@@ -1198,6 +1204,12 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const loaded = getMockDepositWallets(depositWallets);
       setDepositWallets(loaded);
       setAdminWallets(mapDepositWalletsToAddressBook(loaded));
+      return;
+    }
+
+    if (!authReady || !user.isLoggedIn) {
+      setDepositWallets([]);
+      setAdminWallets({});
       return;
     }
 
@@ -1213,11 +1225,11 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       handleFirestoreError(error, OperationType.GET, "depositWallets");
     });
     return () => unsubscribe();
-  }, []);
+  }, [authReady, user.isLoggedIn]);
 
   // Synchronically listen to all registered users from Firestore
   useEffect(() => {
-    if (!user.isAdmin) {
+    if (!authReady || !user.isAdmin) {
       setAdminUsers([]);
       return;
     }
@@ -1288,7 +1300,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       console.error("Firestore user sync error: ", error);
     });
     return () => unsubscribe();
-  }, [user.isAdmin]);
+  }, [authReady, user.isAdmin]);
 
   const lastSyncedRef = useRef<string>("");
   const lastTickSyncRef = useRef<number>(0);
@@ -1339,8 +1351,6 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       portfolio: user.portfolio,
       transactions: user.transactions,
       tickets: user.tickets,
-      status: user.status || "active",
-      role: user.role || "user",
       username: user.username || "",
       firstName: user.firstName || "",
       lastName: user.lastName || "",
@@ -1435,7 +1445,12 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           }
         } catch (err) {
           console.error("Error setting up user from Firestore: ", err);
+        } finally {
+          setAuthReady(true);
         }
+      } else {
+        setUser(createSignedOutUser());
+        setAuthReady(true);
       }
     });
 
@@ -1466,7 +1481,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     localStorage.setItem("orbitrio_notifications", JSON.stringify(notifications));
   }, [notifications]);
   useEffect(() => {
-    if (!user.email) {
+    if (!authReady || !user.isLoggedIn || !user.email) {
       setNotifications([]);
       return;
     }
@@ -1483,7 +1498,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       console.error("Notification sync error:", error);
     });
     return () => unsubscribe();
-  }, [user.email]);
+  }, [authReady, user.isLoggedIn, user.email]);
 
   useEffect(() => {
     localStorage.setItem("orbitrio_airdrops", JSON.stringify(airdrops));
@@ -3134,22 +3149,5 @@ export const useOrbit = () => {
   }
   return context;
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 

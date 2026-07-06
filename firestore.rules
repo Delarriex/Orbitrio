@@ -94,9 +94,16 @@ service cloud.firestore {
         hasSafeInitialFinancialState();
     }
 
-    function ownerCanOnlyChangeProfileFields() {
+    function ownerCanOnlyChangeUserOwnedFields() {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
         "name",
+        "balance",
+        "portfolioValue",
+        "activeInvestments",
+        "copyTrades",
+        "portfolio",
+        "transactions",
+        "tickets",
         "username",
         "firstName",
         "lastName",
@@ -108,7 +115,9 @@ service cloud.firestore {
         "lastLoginDevice",
         "kyc",
         "connectedWalletName",
-        "readAnnouncementIds"
+        "readAnnouncementIds",
+        "referralCount",
+        "points"
       ]);
     }
 
@@ -152,7 +161,7 @@ service cloud.firestore {
       allow list: if isAdmin();
       allow create: if hasNoWalletSecrets() && hasValidUserKeys() && (isAdmin() || ownerCreateHasSafeRole(email));
       allow update: if hasNoWalletSecrets() && hasValidUserKeys() && (isAdmin() || (
-        isOwner(email) && ownerCanOnlyChangeProfileFields() && ownerKycChangeIsSubmissionOnly()
+        isOwner(email) && ownerCanOnlyChangeUserOwnedFields() && ownerKycChangeIsSubmissionOnly()
       ));
       allow delete: if isAdmin();
     }
