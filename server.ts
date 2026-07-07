@@ -47,7 +47,7 @@ async function startServer() {
       // Mock data fallback and stocks
       const fallbackData = {
         crypto: [
-          { symbol: "BTC/USD", name: "Bitcoin", price: 89432.50, change: 2.45, high: 90200.00, low: 87100.00, volume: "24.1B" },
+          { symbol: "BTC/USD", name: "Bitcoin", price: 98400.00, change: 2.45, high: 99200.00, low: 97100.00, volume: "24.1B" },
           { symbol: "ETH/USD", name: "Ethereum", price: 3412.80, change: -1.22, high: 3520.00, low: 3380.00, volume: "12.8B" },
           { symbol: "SOL/USD", name: "Solana", price: 187.65, change: 5.82, high: 191.00, low: 175.20, volume: "4.5B" },
           { symbol: "XRP/USD", name: "Ripple", price: 1.14, change: 10.15, high: 1.22, low: 1.02, volume: "3.2B" },
@@ -73,16 +73,16 @@ async function startServer() {
       try {
         // Fetch accurate live pricing from Binance free API
         const symbolsMap: Record<string, any> = {
-          "BTCUSDT": { symbol: "BTC/USD", name: "Bitcoin" },
-          "ETHUSDT": { symbol: "ETH/USD", name: "Ethereum" },
-          "SOLUSDT": { symbol: "SOL/USD", name: "Solana" },
-          "XRPUSDT": { symbol: "XRP/USD", name: "Ripple" },
-          "ADAUSDT": { symbol: "ADA/USD", name: "Cardano" },
-          "BNBUSDT": { symbol: "BNB/USD", name: "Binance Coin" },
-          "DOTUSDT": { symbol: "DOT/USD", name: "Polkadot" },
-          "DOGEUSDT": { symbol: "DOGE/USD", name: "Dogecoin" },
-          "SHIBUSDT": { symbol: "SHIB/USD", name: "Shiba Inu" },
-          "LTCUSDT": { symbol: "LTC/USD", name: "Litecoin" },
+          "BTCUSDT": { symbol: "BTC/USD", name: "Bitcoin", cgId: "bitcoin" },
+          "ETHUSDT": { symbol: "ETH/USD", name: "Ethereum", cgId: "ethereum" },
+          "SOLUSDT": { symbol: "SOL/USD", name: "Solana", cgId: "solana" },
+          "XRPUSDT": { symbol: "XRP/USD", name: "Ripple", cgId: "ripple" },
+          "ADAUSDT": { symbol: "ADA/USD", name: "Cardano", cgId: "cardano" },
+          "BNBUSDT": { symbol: "BNB/USD", name: "Binance Coin", cgId: "binancecoin" },
+          "DOTUSDT": { symbol: "DOT/USD", name: "Polkadot", cgId: "polkadot" },
+          "DOGEUSDT": { symbol: "DOGE/USD", name: "Dogecoin", cgId: "dogecoin" },
+          "SHIBUSDT": { symbol: "SHIB/USD", name: "Shiba Inu", cgId: "shiba-inu" },
+          "LTCUSDT": { symbol: "LTC/USD", name: "Litecoin", cgId: "litecoin" },
         };
         const symbolsArray = Object.keys(symbolsMap);
         const binanceUrl = `https://api.binance.com/api/v3/ticker/24hr?symbols=${encodeURIComponent(JSON.stringify(symbolsArray))}`;
@@ -105,9 +105,34 @@ async function startServer() {
              const keys = Object.values(symbolsMap).map(s => s.symbol);
              return keys.indexOf(a.symbol) - keys.indexOf(b.symbol);
           });
+        } else {
+          throw new Error(`Binance status ${binanceRes.status}`);
         }
       } catch (err) {
-        console.error("Failed to fetch live crypto from Binance, using fallback", err);
+        console.error("Failed to fetch live crypto from Binance, trying CoinGecko fallback...", err);
+        try {
+          const cgIds = ["bitcoin", "ethereum", "solana", "ripple", "cardano", "binancecoin", "polkadot", "dogecoin", "shiba-inu", "litecoin"].join(",");
+          const cgRes = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${cgIds}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true`);
+          if (cgRes.ok) {
+            const cgData = await cgRes.json();
+            liveCrypto = liveCrypto.map(asset => {
+              const cgId = asset.name.toLowerCase().replace(" ", "-");
+              const idMap: Record<string, string> = { "bitcoin": "bitcoin", "ethereum": "ethereum", "solana": "solana", "ripple": "ripple", "cardano": "cardano", "binance-coin": "binancecoin", "polkadot": "polkadot", "dogecoin": "dogecoin", "shiba-inu": "shiba-inu", "litecoin": "litecoin" };
+              const mappedId = idMap[cgId];
+              if (mappedId && cgData[mappedId]) {
+                return {
+                  ...asset,
+                  price: cgData[mappedId].usd,
+                  change: cgData[mappedId].usd_24h_change,
+                  volume: (cgData[mappedId].usd_24h_vol / 1000000).toFixed(1) + "M"
+                };
+              }
+              return asset;
+            });
+          }
+        } catch (cgErr) {
+          console.error("CoinGecko fallback failed, using default mock values.", cgErr);
+        }
       }
 
       return res.json({

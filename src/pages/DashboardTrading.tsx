@@ -15,7 +15,7 @@ export const DashboardTrading: React.FC<DashboardTradingProps> = ({ initialAsset
 
   const fullMarketList = [...marketCrypto, ...marketStocks];
   const activeAsset = fullMarketList.find(a => a.symbol === selectedAssetSymbol) || marketCrypto[0] || {
-    symbol: "BTC/USD", name: "Bitcoin", price: 89432.50, change: 2.45, high: 90200, low: 87100, volume: "24.1B"
+    symbol: "BTC/USD", name: "Bitcoin", price: 98400.00, change: 2.45, high: 99200, low: 97100, volume: "24.1B"
   };
 
   // Buy/Sell form parameters

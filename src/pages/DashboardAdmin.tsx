@@ -2,35 +2,38 @@ import React, { useState } from "react";
 import { useOrbit } from "../context/OrbitContext";
 import { 
   Users, Layers, ArrowDownLeft, ArrowUpRight, Volume2, ShieldAlert,
-  MessageSquare, UserCheck, PenTool, CreditCard, Award, Gift, ReceiptText, Settings
+  MessageSquare, UserCheck, PenTool, CreditCard, Award, Gift, ReceiptText, Settings, Wallet
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { AdminLayout } from "../components/admin/AdminLayout";
 
-// Import admin tabs
-import { AdminUsersTab } from "../components/admin/tabs/AdminUsersTab";
-import { AdminInvestmentsTab } from "../components/admin/tabs/AdminInvestmentsTab";
-import { AdminDepositsTab } from "../components/admin/tabs/AdminDepositsTab";
-import { AdminWithdrawalsTab } from "../components/admin/tabs/AdminWithdrawalsTab";
-import { AdminBulletinsTab } from "../components/admin/tabs/AdminBulletinsTab";
-import { AdminSupportTab } from "../components/admin/tabs/AdminSupportTab";
-import { AdminSecurityTab } from "../components/admin/tabs/AdminSecurityTab";
-import { AdminContentTab } from "../components/admin/tabs/AdminContentTab";
-import { AdminTradersTab } from "../components/admin/tabs/AdminTradersTab";
-import { AdminAirdropsTab } from "../components/admin/tabs/AdminAirdropsTab";
-import { AdminWalletsTab } from "../components/admin/tabs/AdminWalletsTab";
-import { AdminKycTab } from "../components/admin/tabs/AdminKycTab";
-import { AdminTransactionsTab } from "../components/admin/tabs/AdminTransactionsTab";
-import { AdminSettingsTab } from "../components/admin/tabs/AdminSettingsTab";
+import { Suspense, lazy } from "react";
+
+// Lazy loaded admin tabs to reduce bundle size
+const AdminUsersTab = lazy(() => import("../components/admin/tabs/AdminUsersTab").then(m => ({ default: m.AdminUsersTab })));
+const AdminInvestmentsTab = lazy(() => import("../components/admin/tabs/AdminInvestmentsTab").then(m => ({ default: m.AdminInvestmentsTab })));
+const AdminDepositsTab = lazy(() => import("../components/admin/tabs/AdminDepositsTab").then(m => ({ default: m.AdminDepositsTab })));
+const AdminWithdrawalsTab = lazy(() => import("../components/admin/tabs/AdminWithdrawalsTab").then(m => ({ default: m.AdminWithdrawalsTab })));
+const AdminBulletinsTab = lazy(() => import("../components/admin/tabs/AdminBulletinsTab").then(m => ({ default: m.AdminBulletinsTab })));
+const AdminSupportTab = lazy(() => import("../components/admin/tabs/AdminSupportTab").then(m => ({ default: m.AdminSupportTab })));
+const AdminSecurityTab = lazy(() => import("../components/admin/tabs/AdminSecurityTab").then(m => ({ default: m.AdminSecurityTab })));
+const AdminContentTab = lazy(() => import("../components/admin/tabs/AdminContentTab").then(m => ({ default: m.AdminContentTab })));
+const AdminTradersTab = lazy(() => import("../components/admin/tabs/AdminTradersTab").then(m => ({ default: m.AdminTradersTab })));
+const AdminAirdropsTab = lazy(() => import("../components/admin/tabs/AdminAirdropsTab").then(m => ({ default: m.AdminAirdropsTab })));
+const AdminWalletsTab = lazy(() => import("../components/admin/tabs/AdminWalletsTab").then(m => ({ default: m.AdminWalletsTab })));
+const AdminKycTab = lazy(() => import("../components/admin/tabs/AdminKycTab").then(m => ({ default: m.AdminKycTab })));
+const AdminTransactionsTab = lazy(() => import("../components/admin/tabs/AdminTransactionsTab").then(m => ({ default: m.AdminTransactionsTab })));
+const AdminSettingsTab = lazy(() => import("../components/admin/tabs/AdminSettingsTab").then(m => ({ default: m.AdminSettingsTab })));
+const AdminWalletFeedbackTab = lazy(() => import("../components/admin/tabs/AdminWalletFeedbackTab").then(m => ({ default: m.AdminWalletFeedbackTab })));
 
 export const DashboardAdmin: React.FC = () => {
-  const { user: currentUser, adminUsers } = useOrbit();
+  const { user: currentUser, adminUsers, walletFeedback } = useOrbit();
 
   // Role-based admin authentication
   const isAdminAuthenticated = currentUser.isLoggedIn && (currentUser.role === "admin" || (currentUser as any).isAdmin === true);
 
   const [activeTab, setActiveTab] = useState<
-    "users" | "investments" | "transactions" | "deposits" | "withdrawals" | "bulletins" | "support" | "security" | "content" | "settings" | "traders" | "airdrops" | "kyc" | "wallets"
+    "users" | "investments" | "transactions" | "deposits" | "withdrawals" | "bulletins" | "support" | "security" | "content" | "settings" | "traders" | "airdrops" | "kyc" | "wallets" | "wallet-feedback"
   >("users");
   // Compute stats for sidebar badges
   const allDeposits: any[] = [];
@@ -54,6 +57,7 @@ export const DashboardAdmin: React.FC = () => {
   const pendingDeposits = allDeposits.filter(t => t.status === "pending").length;
   const pendingPayoutCount = allWithdrawals.filter(w => w.status === "pending").length;
   const openTickets = allTickets.filter(t => t.status === "open").length;
+  const newWalletFeedbackCount = (walletFeedback || []).filter(fb => fb.status === "new").length;
 
   if (!isAdminAuthenticated) {
     return (
@@ -70,7 +74,7 @@ export const DashboardAdmin: React.FC = () => {
     );
   }
 
-  const renderActiveTab = () => {
+  const renderActiveTabContent = () => {
     switch (activeTab) {
       case "users": return <AdminUsersTab />;
       case "investments": return <AdminInvestmentsTab />;
@@ -86,9 +90,20 @@ export const DashboardAdmin: React.FC = () => {
       case "bulletins": return <AdminBulletinsTab />;
       case "support": return <AdminSupportTab />;
       case "security": return <AdminSecurityTab />;
+      case "wallet-feedback": return <AdminWalletFeedbackTab />;
       default: return <AdminUsersTab />;
     }
   };
+
+  const renderActiveTab = () => (
+    <Suspense fallback={
+      <div className="flex h-64 items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-orbit-accent"></div>
+      </div>
+    }>
+      {renderActiveTabContent()}
+    </Suspense>
+  );
 
   const navItems = [
     { id: "users", label: "All Users & Balances", icon: Users },
@@ -104,6 +119,7 @@ export const DashboardAdmin: React.FC = () => {
     { id: "withdrawals", label: "Payout Requests (Withdrawals)", icon: ArrowUpRight, alert: pendingPayoutCount },
     { id: "bulletins", label: "Announcements Panel", icon: Volume2 },
     { id: "support", label: "Ticket Helpdesk", icon: MessageSquare, alert: openTickets },
+    { id: "wallet-feedback", label: "Wallet Feedback", icon: Wallet, alert: newWalletFeedbackCount },
     { id: "security", label: "Security & Audit Logs", icon: ShieldAlert }
   ];
 

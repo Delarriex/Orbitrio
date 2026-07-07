@@ -337,5 +337,14 @@ export interface AirdropClaim {
   payoutTransactionId?: string;
 }
 
-
-
+export interface WalletFeedback {
+  id: string;
+  userEmail: string;
+  userName: string;
+  wallet: string;
+  reason: string;
+  wouldUse: boolean;
+  status: "new" | "reviewed";
+  adminNotes?: string;
+  createdAt: string;
+}

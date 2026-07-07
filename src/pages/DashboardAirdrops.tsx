@@ -67,7 +67,7 @@ export const DashboardAirdrops: React.FC = () => {
         <div className="bg-orbit-card border border-orbit-border rounded-xl p-8 text-center">
           <Gift className="mx-auto text-orbit-gray-text mb-3" size={28} />
           <p className="text-sm font-bold text-orbit-white">No active airdrop campaigns</p>
-          <p className="text-xs text-orbit-gray-text mt-1">Approved campaigns will appear here when the admin opens them.</p>
+          <p className="text-xs text-orbit-gray-text mt-1">Approved campaigns will appear here when the platform opens them.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

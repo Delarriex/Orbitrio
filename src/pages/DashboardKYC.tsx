@@ -121,7 +121,7 @@ export const DashboardKYC: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
           <Info label="Document Type" value={currentKyc.documentType || currentKyc.idType || "Not submitted"} />
           <Info label="Reviewed" value={formatDate(currentKyc.reviewedAt)} />
-          <Info label="Admin Notes" value={currentKyc.adminNotes || currentKyc.rejectionReason || "No notes yet"} />
+          <Info label="Review Notes" value={currentKyc.adminNotes || currentKyc.rejectionReason || "No notes yet"} />
         </div>
 
         {currentKyc.status === "approved" && (
@@ -132,7 +132,7 @@ export const DashboardKYC: React.FC = () => {
 
         {currentKyc.status === "pending" && (
           <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-xl text-sm text-yellow-300">
-            Your documents are under admin review. You can monitor the status here.
+            Your documents are under platform review. You can monitor the status here.
           </div>
         )}
 

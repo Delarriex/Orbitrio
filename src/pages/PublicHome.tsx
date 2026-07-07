@@ -103,7 +103,7 @@ export const PublicHome: React.FC<{ onNavigate: (view: string) => void }> = ({ o
 
   // Safe slice & check fallback for asset showcases
   const spotlightCrypto = marketCrypto && marketCrypto.length > 0 ? marketCrypto.slice(0, 5) : [
-    { symbol: "BTC", name: "Bitcoin", price: 89432.50, change: 4.82, sparkline: [88000, 88200, 88500, 88300, 88700, 89100, 89432] },
+    { symbol: "BTC", name: "Bitcoin", price: 98400.00, change: 4.82, sparkline: [98000, 98200, 98500, 98300, 98700, 99100, 98400] },
     { symbol: "ETH", name: "Ethereum", price: 3412.80, change: 2.15, sparkline: [3350, 3360, 3390, 3380, 3400, 3405, 3412] },
     { symbol: "SOL", name: "Solana", price: 184.20, change: -1.45, sparkline: [189, 187, 186, 185, 184, 185, 184] },
     { symbol: "BNB", name: "BNB", price: 588.60, change: 0.95, sparkline: [582, 584, 585, 583, 587, 588, 588] },

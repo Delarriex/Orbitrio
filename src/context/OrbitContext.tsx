@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from "react";
+import toast from "react-hot-toast";
 import type {
   MarketAsset,
   TraderProfile,
@@ -14,7 +15,8 @@ import type {
   AppSettings,
   Airdrop,
   AirdropClaim,
-  KycSubmission
+  KycSubmission,
+  WalletFeedback
 } from "../types";
 import {
   doc,
@@ -233,6 +235,12 @@ interface OrbitContextType {
   adminUpdateTrader: (traderId: string, updatedData: Partial<TraderProfile>) => Promise<void>;
   adminCreateTrader: (trader: Omit<TraderProfile, "id">) => Promise<void>;
   adminDeleteTrader: (traderId: string) => Promise<void>;
+
+  // Wallet Feedback
+  walletFeedback: WalletFeedback[];
+  submitWalletFeedback: (wallet: string, reason: string, wouldUse: boolean) => Promise<void>;
+  adminUpdateWalletFeedback: (id: string, status: "new" | "reviewed", adminNotes?: string) => Promise<void>;
+  adminDeleteWalletFeedback: (id: string) => Promise<void>;
 }
 
 const OrbitContext = createContext<OrbitContextType | undefined>(undefined);
@@ -404,7 +412,7 @@ const INITIAL_MOCK_USERS: SimulatedUser[] = [
     ],
     copyTrades: [],
     portfolio: [
-      { symbol: "BTC", name: "Bitcoin", amount: 0.05, avgBuyPrice: 87500.00, currentPrice: 89432.50, type: "crypto" },
+      { symbol: "BTC", name: "Bitcoin", amount: 0.05, avgBuyPrice: 87500.00, currentPrice: 98400.00, type: "crypto" },
       { symbol: "ETH", name: "Ethereum", amount: 0.6, avgBuyPrice: 3300.00, currentPrice: 3412.80, type: "crypto" }
     ],
     transactions: [
@@ -481,7 +489,7 @@ const INITIAL_MOCK_USERS: SimulatedUser[] = [
     ],
     copyTrades: [],
     portfolio: [
-      { symbol: "BTC", name: "Bitcoin", amount: 1.25, avgBuyPrice: 85400.00, currentPrice: 89432.50, type: "crypto" }
+      { symbol: "BTC", name: "Bitcoin", amount: 1.25, avgBuyPrice: 85400.00, currentPrice: 98400.00, type: "crypto" }
     ],
     transactions: [
       { id: "tx-dep-john", type: "deposit", amount: 150000.00, status: "completed", asset: "BTC", date: "2026-06-05" }
@@ -826,17 +834,20 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const [adminAirdropClaims, setAdminAirdropClaims] = useState<AirdropClaim[]>([]);
   const [airdrops, setAirdrops] = useState<Airdrop[]>([]);
+  const [walletFeedback, setWalletFeedback] = useState<WalletFeedback[]>([]);
 
   useEffect(() => {
     if (USE_MOCK_DATA) {
       setAirdrops(getMockAirdrops());
       setAdminAirdropClaims(getMockAirdropClaims());
+      setWalletFeedback([]);
       return;
     }
 
     if (!authReady || !user.email) {
       setAirdrops([]);
       setAdminAirdropClaims([]);
+      setWalletFeedback([]);
       return;
     }
 
@@ -854,9 +865,19 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       handleFirestoreError(error, OperationType.LIST, "airdrop_claims");
     });
 
+    const feedbackRef = user.isAdmin
+      ? collection(db, "wallet_feedback")
+      : query(collection(db, "wallet_feedback"), where("userEmail", "==", user.email));
+    const unsubFeedback = onSnapshot(feedbackRef, (snapshot) => {
+      setWalletFeedback(snapshot.docs.map(doc => doc.data() as WalletFeedback));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, "wallet_feedback");
+    });
+
     return () => {
       unsubAirdrops();
       unsubClaims();
+      unsubFeedback();
     };
   }, [authReady, user.email, user.isAdmin]);
   const adminApproveAirdrop = async (claimId: string) => {
@@ -1143,14 +1164,16 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (USE_MOCK_DATA) {
       saveMockAirdropClaim(newClaim);
       setAdminAirdropClaims(getMockAirdropClaims());
-      addNotification("Your airdrop claim has been submitted for admin approval.", { title: "Airdrop claim submitted", type: "info", eventKey: `airdrop:submitted:${newClaim.id}`, action: { label: "View airdrops", view: "dashboard-airdrops" } });
+      addNotification("Your airdrop claim has been submitted for platform approval.", { title: "Airdrop claim submitted", type: "info", eventKey: `airdrop:submitted:${newClaim.id}`, action: { label: "View airdrops", view: "dashboard-airdrops" } });
       notifyAdmins(`${user.email || "A user"} submitted an airdrop claim for ${newClaim.token}.`, { title: "Airdrop claim requires review", type: "warning", eventKey: `airdrop:review:${newClaim.id}`, action: { label: "Review airdrops", view: "dashboard-admin" } });
+      toast.success("Airdrop claim submitted successfully");
       return;
     }
 
     await setDoc(doc(db, "airdrop_claims", newClaim.id), newClaim);
-    addNotification("Your airdrop claim has been submitted for admin approval.", { title: "Airdrop claim submitted", type: "info", eventKey: `airdrop:submitted:${newClaim.id}`, action: { label: "View airdrops", view: "dashboard-airdrops" } });
+    addNotification("Your airdrop claim has been submitted for platform approval.", { title: "Airdrop claim submitted", type: "info", eventKey: `airdrop:submitted:${newClaim.id}`, action: { label: "View airdrops", view: "dashboard-airdrops" } });
       notifyAdmins(`${user.email || "A user"} submitted an airdrop claim for ${newClaim.token}.`, { title: "Airdrop claim requires review", type: "warning", eventKey: `airdrop:review:${newClaim.id}`, action: { label: "Review airdrops", view: "dashboard-admin" } });
+      toast.success("Airdrop claim submitted successfully");
   };
   const withdrawEarnings = () => {
     if (!user.points || user.points < 100) return;
@@ -1333,6 +1356,9 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const firebaseUser = auth.currentUser;
     if (!firebaseUser || firebaseUser.email !== user.email) return;
 
+    // Filter out ephemeral properties (like live currentPrice) to prevent continuous Firestore syncs
+    const cleanPortfolio = user.portfolio.map(({ currentPrice, ...rest }) => rest);
+
     const meaningfulSnapshot = JSON.stringify({
       balance: user.balance,
       transactions: user.transactions,
@@ -1348,7 +1374,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       country: user.country,
       currency: user.currency,
       readAnnouncementIds: user.readAnnouncementIds,
-      portfolio: user.portfolio,
+      portfolio: cleanPortfolio,
       kyc: user.kyc,
       connectedWalletName: user.connectedWalletName,
       activeInvestments: user.activeInvestments,
@@ -1366,7 +1392,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       portfolioValue: user.portfolioValue,
       activeInvestments: user.activeInvestments,
       copyTrades: user.copyTrades,
-      portfolio: user.portfolio,
+      portfolio: cleanPortfolio,
       transactions: user.transactions,
       tickets: user.tickets,
       username: user.username || "",
@@ -1381,11 +1407,12 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     const userDocRef = doc(db, "users", user.email);
+    
+    // Prevent infinite retry loop on permission denied by updating the ref immediately
+    lastSyncedRef.current = meaningfulSnapshot;
+    lastTickSyncRef.current = now;
+
     setDoc(userDocRef, fieldsToUpdate, { merge: true })
-      .then(() => {
-        lastSyncedRef.current = meaningfulSnapshot;
-        lastTickSyncRef.current = now;
-      })
       .catch(err => {
         logFirestoreError(err, OperationType.UPDATE, `users/${user.email}`);
       });
@@ -1543,7 +1570,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     } catch (e) {
       const mockC: MarketAsset[] = [
-        { symbol: "BTC/USD", name: "Bitcoin", price: 89432.50, change: 2.45, high: 90200.00, low: 87100.00, volume: "24.1B", sparkline: [88100, 88300, 87900, 88200, 88900, 88600, 89100, 88900, 89200, 89432.5] },
+        { symbol: "BTC/USD", name: "Bitcoin", price: 98400.00, change: 2.45, high: 99200.00, low: 97100.00, volume: "24.1B", sparkline: [98100, 98300, 97900, 98200, 98900, 98600, 99100, 98900, 99200, 98400.00] },
         { symbol: "ETH/USD", name: "Ethereum", price: 3412.80, change: -1.22, high: 3520.00, low: 3380.00, volume: "12.8B", sparkline: [3480, 3460, 3490, 3450, 3420, 3440, 3410, 3430, 3405, 3412.8] },
         { symbol: "SOL/USD", name: "Solana", price: 187.65, change: 5.82, high: 191.00, low: 175.20, volume: "4.5B", sparkline: [176, 178, 175, 180, 182, 185, 183, 188, 186, 187.65] },
         { symbol: "XRP/USD", name: "Ripple", price: 1.14, change: 10.15, high: 1.22, low: 1.02, volume: "3.2B", sparkline: [1.01, 1.03, 1.05, 1.02, 1.08, 1.12, 1.10, 1.15, 1.13, 1.14] },
@@ -1939,6 +1966,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       notifyAdmins(`${user.email || "A user"} submitted a ${currency} deposit of ${amount} for review.`, { title: "Deposit requires review", type: "warning", eventKey: `deposit:review:${newTx.id}`, action: { label: "Review deposits", view: "dashboard-admin" } });
     }
 
+    toast.success(`Deposit request submitted for ${amount} ${currency}`);
     return true;
   };
 
@@ -1963,18 +1991,19 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       transactions: [newTx, ...prev.transactions]
     }));
 
-    handleLog("Asset Withdrawal Action", `Requested payout of $${amount} ${currency} to ${displayAddress}. Queued for Admin.`, user.email || "system", "warning");
+    handleLog("Asset Withdrawal Action", `Requested payout of $${amount} ${currency} to ${displayAddress}. Queued for Review.`, user.email || "system", "warning");
     addNotification(`Your withdrawal request of $${amount} ${currency} has been submitted for review.`, { title: "Withdrawal submitted", type: "info", eventKey: `withdrawal:submitted:${newTx.id}`, action: { label: "View wallet", view: "dashboard-wallet" } });
     dispatchTransactionalEmail(user.email, "WITHDRAWAL_SUBMITTED", `withdrawal:submitted:${newTx.id}`, { name: user.name, amount, asset: currency, destination: displayAddress, walletAddress: displayAddress, transactionId: newTx.id, status: newTx.status });
     notifyAdmins(`${user.email || "A user"} submitted a withdrawal request of $${amount} ${currency}.`, { title: "Withdrawal requires review", type: "warning", eventKey: `withdrawal:review:${newTx.id}`, action: { label: "Review withdrawals", view: "dashboard-admin" } });
     
-    return { success: true, message: `Payout request queued. Balance deducted. Pending Admin Approval.` };
+    toast.success("Withdrawal request submitted successfully");
+    return { success: true, message: `Payout request queued. Balance deducted. Pending Platform Approval.` };
   };
 
   const investInPlan = (planId: string, amount: number): { success: boolean; message: string } => {
     const selectedPlan = plans.find(p => p.id === planId);
     if (!selectedPlan) return { success: false, message: "Selected plan not recognized." };
-    if (!selectedPlan.enabled || selectedPlan.status !== "active") return { success: false, message: "This yield program is temporarily locked by platform admin nodes." };
+    if (!selectedPlan.enabled || selectedPlan.status !== "active") return { success: false, message: "This yield program is temporarily locked by platform nodes." };
 
     if (!Number.isFinite(amount) || amount <= 0) {
       return { success: false, message: "Please specify a valid numeric capital amount." };
@@ -2020,8 +2049,10 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     addNotification(`Your $${amount} allocation to ${selectedPlan.name} is now running.`, { title: "Investment started", type: "success", eventKey: `investment:started:${newActive.id}`, action: { label: "View portfolio", view: "dashboard-portfolio" } });
     dispatchTransactionalEmail(user.email, "INVESTMENT_STARTED", `investment:started:${newActive.id}`, { name: user.name, amount, planName: selectedPlan.name, investmentName: newActive.name, totalReturn: newActive.totalReturn, endDate: newActive.endDate, transactionId: investmentTx.id });
     
+    toast.success(`Investment in ${selectedPlan.name} started successfully`);
     return { success: true, message: `Investment started. Total return at maturity: $${newActive.totalReturn.toLocaleString()}.` };
   };
+
 
   const claimPlanPayout = (investmentId: string) => {
     const item = user.activeInvestments.find(inv => inv.id === investmentId);
@@ -2108,6 +2139,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     releaseBalanceDebit(actionKey, topUpAmount);
 
     addNotification(`Added $${amount.toFixed(2)} to ${investment.name}.`);
+    toast.success("Investment top-up completed successfully");
     return { success: true, message: "Top-up completed successfully." };
   };
 
@@ -2299,6 +2331,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       handleLog("Market Order Fulfilled", `Purchased $${amount} of ${symbol} at $${price}`, user.email, "success");
       addNotification(`Market Buy Executed: ${quantity} ${symbol.split("/")[0]} filled.`);
+      toast.success("Trade executed successfully");
 
       return { success: true, message: `Market Buy Order completed successfully.` };
 
@@ -2344,6 +2377,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       handleLog("Market Sale Settled", `Liquidated ${quantityToSell} ${symbol.split("/")[0]} for $${amount}`, user.email, "success");
       addNotification(`Market Sell Executed: ${quantityToSell} ${symbol.split("/")[0]} discharged.`);
+      toast.success("Trade executed successfully");
       return { success: true, message: `Market Sell Order completed successfully.` };
     }
   };
@@ -2683,7 +2717,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (user.email && user.email.toLowerCase() === email.toLowerCase()) {
         setUser(prev => ({ ...prev, kyc: reviewedKyc }));
       }
-      handleLog("KYC Verification Result", `Admin reviewed KYC for ${email}. Result: ${status}.`, user.email || "admin", status === "approved" ? "success" : "alert");
+      handleLog("KYC Verification Result", `Verification team reviewed KYC for ${email}. Result: ${status}.`, user.email || "system", status === "approved" ? "success" : "alert");
       addNotification(`KYC verification for ${email} marked as ${status}.`, { title: `KYC ${status}`, type: status === "approved" ? "success" : "warning", eventKey: `admin:kyc:${status}:${email}` });
       addNotification(status === "approved" ? "Your KYC verification was approved." : "Your KYC verification was rejected. Please review the notes and resubmit.", { title: status === "approved" ? "KYC approved" : "KYC rejected", type: status === "approved" ? "success" : "error", recipientEmail: email, eventKey: `kyc:${status}:${email}:${reviewedKyc.reviewedAt || reviewedKyc.submissionDate}`, action: { label: "View KYC", view: "dashboard-kyc" } });
       dispatchTransactionalEmail(email, status === "approved" ? "KYC_APPROVED" : "KYC_REJECTED", `kyc:${status}:${email}:${reviewedKyc.reviewedAt || reviewedKyc.submissionDate}`, { name: targetUser?.name || email.split("@")[0], documentType: reviewedKyc.documentType || reviewedKyc.idType, reason: reviewedKyc.rejectionReason || reason, status });
@@ -2707,6 +2741,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       addNotification("Your KYC submission has been sent for admin review.", { title: "KYC submitted", type: "info", eventKey: `kyc:submitted:${submission.submissionDate || user.email}`, action: { label: "View KYC", view: "dashboard-kyc" } });
       dispatchTransactionalEmail(user.email, "KYC_SUBMITTED", `kyc:submitted:${submission.submissionDate || user.email}`, { name: user.name, documentType: submission.documentType || submission.idType, status: "pending" });
       notifyAdmins(`${user.email} submitted KYC documents for review.`, { title: "KYC requires review", type: "warning", eventKey: `kyc:review:${user.email}:${submission.submissionDate || submission.idNumber}`, action: { label: "Review KYC", view: "dashboard-admin" } });
+      toast.success("KYC documents submitted for review");
     } catch (e) {
       console.error("Error submitting KYC in Firestore:", e);
     }
@@ -2728,7 +2763,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const assertAdminPermission = () => {
     if (!user.isLoggedIn || (user.role !== "admin" && user.isAdmin !== true)) {
-      throw new Error("Admin permission is required to manage investment plans.");
+      throw new Error("Platform permission is required to manage investment plans.");
     }
   };
 
@@ -3121,6 +3156,62 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  const submitWalletFeedback = async (wallet: string, reason: string, wouldUse: boolean) => {
+    if (!user.email || USE_MOCK_DATA) return;
+    
+    // Prevent duplicates
+    const isDuplicate = walletFeedback.some(
+      fb => fb.userEmail === user.email && fb.wallet === wallet && fb.reason === reason
+    );
+    if (isDuplicate) {
+      toast.success("Successful");
+      return;
+    }
+
+    const id = `wf-${Date.now()}`;
+    const newFeedback: WalletFeedback = {
+      id,
+      userEmail: user.email,
+      userName: user.name || "Unknown",
+      wallet,
+      reason,
+      wouldUse,
+      status: "new",
+      createdAt: new Date().toISOString()
+    };
+
+    try {
+      await setDoc(doc(db, "wallet_feedback", id), newFeedback);
+      toast.success("Successful");
+      handleLog("Wallet Feedback", `User submitted feedback for ${wallet}`, user.email, "success");
+    } catch (e) {
+      console.error("Error submitting wallet feedback:", e);
+      toast.error("Failed to submit feedback");
+    }
+  };
+
+  const adminUpdateWalletFeedback = async (id: string, status: "new" | "reviewed", adminNotes?: string) => {
+    if (USE_MOCK_DATA) return;
+    try {
+      const updateData: Partial<WalletFeedback> = { status };
+      if (adminNotes !== undefined) {
+        updateData.adminNotes = adminNotes;
+      }
+      await updateDoc(doc(db, "wallet_feedback", id), updateData);
+    } catch (e) {
+      console.error("Error updating wallet feedback:", e);
+    }
+  };
+
+  const adminDeleteWalletFeedback = async (id: string) => {
+    if (USE_MOCK_DATA) return;
+    try {
+      await deleteDoc(doc(db, "wallet_feedback", id));
+    } catch (e) {
+      console.error("Error deleting wallet feedback:", e);
+    }
+  };
+
   return (
     <OrbitContext.Provider value={{
       user,
@@ -3201,6 +3292,12 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       clearNotifications,
       submitKyc,
       saveWalletConnection,
+      
+      // Wallet Feedback
+      walletFeedback,
+      submitWalletFeedback,
+      adminUpdateWalletFeedback,
+      adminDeleteWalletFeedback,
 
       // Site content editing
       siteContent,

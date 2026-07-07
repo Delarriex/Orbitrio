@@ -34,6 +34,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
   const secondaryLinks = [
     { id: "copy-trading", label: "Copy Trading", icon: <User className="text-violet-400" size={14} /> },
     { id: "dashboard-airdrops", label: "Airdrops", icon: <Gift className="text-rose-400" size={14} /> },
+    { id: "dashboard-wallet-feedback", label: "Link Wallet", icon: <Wallet2 className="text-pink-400" size={14} /> },
     { id: "dashboard-kyc", label: user.kyc?.status === "approved" ? "Verified" : "Verify Identity", icon: user.kyc?.status === "approved" ? <CheckCircle2 size={14} className="text-emerald-400" /> : <Shield size={14} className="text-amber-400" /> },
     { id: "dashboard-notifications", label: "Notifications", icon: <Bell className="text-orbit-accent" size={14} />, badge: unreadNotificationsCount },
     { id: "dashboard-support", label: "Support", icon: <MessageSquare className="text-sky-400" size={14} /> },

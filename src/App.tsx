@@ -7,28 +7,30 @@ import { ScrollAnimatedBackground } from "./components/ScrollAnimatedBackground"
 import { TawkChat } from "./components/TawkChat";
 import { GlobalModals } from "./components/GlobalModals";
 
-// Pages
-import { PublicHome } from "./pages/PublicHome";
-import { PublicMarkets } from "./pages/PublicMarkets";
-import { PublicCopyTrading } from "./pages/PublicCopyTrading";
-import { PublicPlans } from "./pages/PublicPlans";
-import { AuthPage } from "./pages/AuthPage";
-import { TermsPage } from "./pages/TermsPage";
-import { PrivacyPage } from "./pages/PrivacyPage";
-import { MaintenancePage } from "./pages/MaintenancePage";
+import { Suspense, lazy } from "react";
 
-// Dashboard
-import { DashboardOverview } from "./pages/DashboardOverview";
-import { DashboardTrading } from "./pages/DashboardTrading";
-import { DashboardPortfolio } from "./pages/DashboardPortfolio";
-import { DashboardPlans } from "./pages/DashboardPlans";
-import { DashboardWallet } from "./pages/DashboardWallet";
-import { DashboardAdmin } from "./pages/DashboardAdmin";
-import { DashboardTransactions } from "./pages/DashboardTransactions";
-import { DashboardAirdrops } from "./pages/DashboardAirdrops";
-import { DashboardKYC } from "./pages/DashboardKYC";
-import { DashboardWalletConnect } from "./pages/DashboardWalletConnect";
-import { DashboardNotifications } from "./pages/DashboardNotifications";
+// Pages (Lazy Loaded)
+const PublicHome = lazy(() => import("./pages/PublicHome").then(m => ({ default: m.PublicHome })));
+const PublicMarkets = lazy(() => import("./pages/PublicMarkets").then(m => ({ default: m.PublicMarkets })));
+const PublicCopyTrading = lazy(() => import("./pages/PublicCopyTrading").then(m => ({ default: m.PublicCopyTrading })));
+const PublicPlans = lazy(() => import("./pages/PublicPlans").then(m => ({ default: m.PublicPlans })));
+const AuthPage = lazy(() => import("./pages/AuthPage").then(m => ({ default: m.AuthPage })));
+const TermsPage = lazy(() => import("./pages/TermsPage").then(m => ({ default: m.TermsPage })));
+const PrivacyPage = lazy(() => import("./pages/PrivacyPage").then(m => ({ default: m.PrivacyPage })));
+const MaintenancePage = lazy(() => import("./pages/MaintenancePage").then(m => ({ default: m.MaintenancePage })));
+
+// Dashboard (Lazy Loaded)
+const DashboardOverview = lazy(() => import("./pages/DashboardOverview").then(m => ({ default: m.DashboardOverview })));
+const DashboardTrading = lazy(() => import("./pages/DashboardTrading").then(m => ({ default: m.DashboardTrading })));
+const DashboardPortfolio = lazy(() => import("./pages/DashboardPortfolio").then(m => ({ default: m.DashboardPortfolio })));
+const DashboardPlans = lazy(() => import("./pages/DashboardPlans").then(m => ({ default: m.DashboardPlans })));
+const DashboardWallet = lazy(() => import("./pages/DashboardWallet").then(m => ({ default: m.DashboardWallet })));
+const DashboardAdmin = lazy(() => import("./pages/DashboardAdmin").then(m => ({ default: m.DashboardAdmin })));
+const DashboardTransactions = lazy(() => import("./pages/DashboardTransactions").then(m => ({ default: m.DashboardTransactions })));
+const DashboardAirdrops = lazy(() => import("./pages/DashboardAirdrops").then(m => ({ default: m.DashboardAirdrops })));
+const DashboardKYC = lazy(() => import("./pages/DashboardKYC").then(m => ({ default: m.DashboardKYC })));
+const DashboardWalletFeedback = lazy(() => import("./pages/DashboardWalletFeedback").then(m => ({ default: m.DashboardWalletFeedback })));
+const DashboardNotifications = lazy(() => import("./pages/DashboardNotifications").then(m => ({ default: m.DashboardNotifications })));
 
 const AUTHENTICATED_PUBLIC_REDIRECT_VIEWS = new Set([
   "home",
@@ -295,8 +297,8 @@ function MainAppContent() {
         return <DashboardTransactions />;
       case "dashboard-airdrops":
         return <DashboardAirdrops />;
-      case "dashboard-wallet-connect":
-        return <DashboardWalletConnect />;
+      case "dashboard-wallet-feedback":
+        return <DashboardWalletFeedback />;
       case "dashboard-kyc":
         return <DashboardKYC />;
       case "dashboard-notifications":
@@ -330,7 +332,13 @@ function MainAppContent() {
             ? "pb-24 sm:pb-28"
             : "max-w-7xl mx-auto px-3 sm:px-5 lg:px-6 mt-2 pb-20 sm:pb-24"
       }`}>
-        {renderView()}
+        <Suspense fallback={
+          <div className="flex h-[70vh] items-center justify-center">
+            <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-orbit-accent"></div>
+          </div>
+        }>
+          {renderView()}
+        </Suspense>
       </main>
 
       {/* Global Standard Footer - Hidden on mobile */}

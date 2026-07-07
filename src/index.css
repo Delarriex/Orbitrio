@@ -28,10 +28,7 @@
     margin: 0;
     padding: 0;
     width: 100%;
-    height: 100%;
     overflow-x: hidden;
-    overflow-y: auto;
-    overscroll-behavior: none; /* Prevents rubber-band / elastic background bounce */
     -webkit-text-size-adjust: 100%; /* Prevents automatic element magnification */
     -webkit-tap-highlight-color: transparent; /* Removes iOS touch flicker */
     -webkit-overflow-scrolling: touch; /* Smooth kinetic scroll inertia */
