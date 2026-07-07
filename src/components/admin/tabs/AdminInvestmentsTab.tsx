@@ -54,6 +54,7 @@ export const AdminInvestmentsTab: React.FC = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [formData, setFormData] = useState<PlanForm>(emptyForm(nextOrder));
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const showFeedback = (message: string) => {
     setFeedback(message);
@@ -101,12 +102,14 @@ export const AdminInvestmentsTab: React.FC = () => {
   };
 
   const handleSubmit = async () => {
+    if (isSaving) return;
     const validated = validateForm();
     if (validated.error || !validated.plan) {
       showFeedback(validated.error || "Unable to save plan.");
       return;
     }
 
+    setIsSaving(true);
     try {
       if (editingPlan) {
         await adminUpdatePlan({ ...editingPlan, ...validated.plan });
@@ -116,9 +119,10 @@ export const AdminInvestmentsTab: React.FC = () => {
         showFeedback(`Created plan: ${validated.plan.name}`);
       }
       resetForm();
-    } catch (error) {
-      console.error("Unable to save investment plan:", error);
+    } catch {
       showFeedback("Unable to save plan. Confirm admin permissions and try again.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -140,15 +144,18 @@ export const AdminInvestmentsTab: React.FC = () => {
     const targetPlan = orderedPlans[targetIndex];
     if (!targetPlan) return;
 
+    if (isSaving) return;
+    setIsSaving(true);
     try {
       await Promise.all([
         adminUpdatePlan({ ...plan, displayOrder: targetPlan.displayOrder }),
         adminUpdatePlan({ ...targetPlan, displayOrder: plan.displayOrder })
       ]);
       showFeedback(`Moved ${plan.name} ${direction}.`);
-    } catch (error) {
-      console.error("Unable to reorder investment plan:", error);
+    } catch {
       showFeedback("Unable to update display order. Try again.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -197,8 +204,8 @@ export const AdminInvestmentsTab: React.FC = () => {
             </label>
           </div>
 
-          <button onClick={handleSubmit} className="flex items-center gap-2 px-6 py-2 bg-orbit-accent text-orbit-bg font-bold text-xs uppercase rounded-lg hover:opacity-90 transition-colors cursor-pointer">
-            <Save size={14} /> {editingPlan ? "Save Changes" : "Create Plan"}
+          <button onClick={handleSubmit} disabled={isSaving} className="flex items-center gap-2 px-6 py-2 bg-orbit-accent text-orbit-bg font-bold text-xs uppercase rounded-lg hover:opacity-90 transition-colors cursor-pointer">
+            <Save size={14} /> {isSaving ? "Saving..." : editingPlan ? "Save Changes" : "Create Plan"}
           </button>
         </motion.div>
       )}
@@ -226,28 +233,33 @@ export const AdminInvestmentsTab: React.FC = () => {
             </div>
             <p className="text-[10px] text-orbit-gray-text leading-relaxed line-clamp-2">{plan.description}</p>
             <div className="flex flex-wrap gap-2 pt-2 border-t border-orbit-border/50">
-              <button onClick={() => movePlan(plan, "up")} disabled={index === 0} className="px-2 py-1.5 bg-orbit-border/40 border border-orbit-border text-orbit-white text-[10px] font-bold rounded-lg disabled:opacity-30 cursor-pointer"><ArrowUp size={12} /></button>
-              <button onClick={() => movePlan(plan, "down")} disabled={index === orderedPlans.length - 1} className="px-2 py-1.5 bg-orbit-border/40 border border-orbit-border text-orbit-white text-[10px] font-bold rounded-lg disabled:opacity-30 cursor-pointer"><ArrowDown size={12} /></button>
+              <button onClick={() => movePlan(plan, "up")} disabled={isSaving || index === 0} className="px-2 py-1.5 bg-orbit-border/40 border border-orbit-border text-orbit-white text-[10px] font-bold rounded-lg disabled:opacity-30 cursor-pointer"><ArrowUp size={12} /></button>
+              <button onClick={() => movePlan(plan, "down")} disabled={isSaving || index === orderedPlans.length - 1} className="px-2 py-1.5 bg-orbit-border/40 border border-orbit-border text-orbit-white text-[10px] font-bold rounded-lg disabled:opacity-30 cursor-pointer"><ArrowDown size={12} /></button>
               <button onClick={() => startEdit(plan)} className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-orbit-accent/10 border border-orbit-accent/30 text-orbit-accent text-[10px] font-bold rounded-lg hover:bg-orbit-accent/20 cursor-pointer"><Edit3 size={10} /> Edit</button>
               <button onClick={async () => {
                   try {
+                    if (isSaving) return;
+                    setIsSaving(true);
                     await adminSetPlanStatus(plan.id, plan.enabled ? "paused" : "active");
                     showFeedback(`${plan.name} ${plan.enabled ? "disabled" : "enabled"}.`);
-                  } catch (error) {
-                    console.error("Unable to update investment plan status:", error);
+                  } catch {
                     showFeedback("Unable to update plan status. Try again.");
+                  } finally {
+                    setIsSaving(false);
                   }
                 }} className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-bold rounded-lg cursor-pointer border ${plan.enabled ? "bg-yellow-500/10 border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/20" : "bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20"}`}>
                 {plan.enabled ? <><Pause size={10} /> Disable</> : <><Play size={10} /> Enable</>}
               </button>
               <button onClick={async () => {
-                  if (!window.confirm(`Delete "${plan.name}"?`)) return;
+                  if (isSaving || !window.confirm(`Delete "${plan.name}"?`)) return;
+                  setIsSaving(true);
                   try {
                     await adminDeletePlan(plan.id);
                     showFeedback(`Deleted plan: ${plan.name}`);
-                  } catch (error) {
-                    console.error("Unable to delete investment plan:", error);
+                  } catch {
                     showFeedback("Unable to delete plan. Try again.");
+                  } finally {
+                    setIsSaving(false);
                   }
                 }} className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-red-500/10 border border-red-500/30 text-red-400 text-[10px] font-bold rounded-lg hover:bg-red-500/20 cursor-pointer"><Trash2 size={10} /></button>
             </div>
@@ -257,3 +269,4 @@ export const AdminInvestmentsTab: React.FC = () => {
     </motion.div>
   );
 };
+

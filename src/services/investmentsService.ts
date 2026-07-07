@@ -308,7 +308,7 @@ export const buildInvestmentTransaction = (
   userEmail?: string | null,
   relatedReferenceId?: string
 ): Transaction => {
-  const id = timestampId("tx-plan");
+  const id = relatedReferenceId ? `tx-plan-${relatedReferenceId}` : timestampId("tx-plan");
 
   return enrichTransaction({
     id,
@@ -328,7 +328,7 @@ export const buildPayoutTransaction = (
   userEmail?: string | null,
   relatedReferenceId?: string
 ): Transaction => {
-  const id = timestampId("tx-pay");
+  const id = relatedReferenceId ? `tx-pay-${relatedReferenceId}` : timestampId("tx-pay");
 
   return enrichTransaction({
     id,
@@ -361,5 +361,4 @@ export const buildTopUpTransaction = (
     userEmail: userEmail || FALLBACK_GUEST_EMAIL
   }, { userEmail }, { relatedReferenceId: relatedReferenceId || id });
 };
-
 

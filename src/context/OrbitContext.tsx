@@ -524,7 +524,25 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [siteContent, setSiteContent] = useState<SiteContent>(DEFAULT_SITE_CONTENT);
   const [appSettings, setAppSettings] = useState<AppSettings>(() => loadLocalAppSettings());
   const sentEmailEventIdsRef = useRef<Set<string>>(new Set(localStorageGet<string[]>("orbitrio_sent_email_events", [])));
+  const pendingBalanceDebitsRef = useRef(0);
+  const pendingActionKeysRef = useRef<Set<string>>(new Set());
 
+  const tryReserveBalanceDebit = (actionKey: string, amount: number): "reserved" | "duplicate" | "insufficient" => {
+    const debitAmount = +amount.toFixed(2);
+    if (pendingActionKeysRef.current.has(actionKey)) return "duplicate";
+    const availableBalance = +(user.balance - pendingBalanceDebitsRef.current).toFixed(2);
+    if (availableBalance < debitAmount) return "insufficient";
+    pendingActionKeysRef.current.add(actionKey);
+    pendingBalanceDebitsRef.current = +(pendingBalanceDebitsRef.current + debitAmount).toFixed(2);
+    return "reserved";
+  };
+
+  const releaseBalanceDebit = (actionKey: string, amount: number) => {
+    globalThis.setTimeout(() => {
+      pendingActionKeysRef.current.delete(actionKey);
+      pendingBalanceDebitsRef.current = Math.max(0, +(pendingBalanceDebitsRef.current - amount).toFixed(2));
+    }, 750);
+  };
   const emailSettingsMetadata = () => ({
     companyName: appSettings.companyName,
     supportEmail: appSettings.supportEmail,
@@ -1339,9 +1357,8 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const now = Date.now();
     const meaningfulChanged = meaningfulSnapshot !== lastSyncedRef.current;
-    const tickIntervalPassed = now - lastTickSyncRef.current > 60000;
 
-    if (!meaningfulChanged && !tickIntervalPassed) return;
+    if (!authReady || !meaningfulChanged) return;
 
     const fieldsToUpdate = {
       name: user.name,
@@ -1372,7 +1389,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       .catch(err => {
         logFirestoreError(err, OperationType.UPDATE, `users/${user.email}`);
       });
-  }, [user]);
+  }, [user, authReady]);
 
   // Synchronize Firebase Auth state to restore logged session after page refresh
   useEffect(() => {
@@ -1687,11 +1704,14 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       const settlement = settleMaturedInvestments(prev.activeInvestments, plans, prev.email);
       const copySettlement = settleMaturedCopyTrades(prev.copyTrades, prev.email);
-      const settledTransactions = [...copySettlement.transactions, ...settlement.transactions];
+      const existingTransactionIds = new Set(prev.transactions.map(transaction => transaction.id));
+      const settledTransactions = [...copySettlement.transactions, ...settlement.transactions]
+        .filter(transaction => !existingTransactionIds.has(transaction.id));
+      const settledPayoutAmount = settledTransactions.reduce((sum, transaction) => +(sum + transaction.amount).toFixed(2), 0);
 
       return {
         ...prev,
-        balance: +(prev.balance + settlement.payoutAmount + copySettlement.payoutAmount).toFixed(2),
+        balance: +(prev.balance + settledPayoutAmount).toFixed(2),
         portfolio: updatedPort,
         activeInvestments: settlement.investments,
         copyTrades: copySettlement.trades,
@@ -1970,15 +1990,31 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return { success: false, message: "INSUFFICIENT_BALANCE" };
     }
 
-    const newActive = buildActiveInvestment(selectedPlan, amount);
-    const investmentTx = buildInvestmentTransaction(amount, selectedPlan.name, user.email, newActive.id);
+    const debitAmount = +amount.toFixed(2);
+    const actionKey = `investment:${planId}:${debitAmount}`;
+    const reservation = tryReserveBalanceDebit(actionKey, debitAmount);
+    if (reservation === "duplicate") {
+      return { success: false, message: "This investment request is already being processed." };
+    }
+    if (reservation === "insufficient") {
+      setInsufficientBalanceOpen(true);
+      return { success: false, message: "INSUFFICIENT_BALANCE" };
+    }
 
-    setUser(prev => ({
-      ...prev,
-      balance: +(prev.balance - amount).toFixed(2),
-      activeInvestments: [newActive, ...prev.activeInvestments],
-      transactions: [investmentTx, ...prev.transactions]
-    }));
+    const newActive = buildActiveInvestment(selectedPlan, debitAmount);
+    const investmentTx = buildInvestmentTransaction(debitAmount, selectedPlan.name, user.email, newActive.id);
+
+    setUser(prev => {
+      const existingTransactionIds = new Set(prev.transactions.map(transaction => transaction.id));
+      if (prev.balance < debitAmount || existingTransactionIds.has(investmentTx.id)) return prev;
+      return {
+        ...prev,
+        balance: +(prev.balance - debitAmount).toFixed(2),
+        activeInvestments: [newActive, ...prev.activeInvestments],
+        transactions: [investmentTx, ...prev.transactions]
+      };
+    });
+    releaseBalanceDebit(actionKey, debitAmount);
 
     handleLog("Compound Allocation Enrolled", `Subscribed to ${selectedPlan.name} worth $${amount}.`, user.email || "system", "success");
     addNotification(`Your $${amount} allocation to ${selectedPlan.name} is now running.`, { title: "Investment started", type: "success", eventKey: `investment:started:${newActive.id}`, action: { label: "View portfolio", view: "dashboard-portfolio" } });
@@ -1994,14 +2030,18 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const settlement = settleMaturedInvestments([item], plans, user.email);
     if (!settlement.transactions.length) return;
 
-    setUser(prev => ({
-      ...prev,
-      balance: +(prev.balance + settlement.payoutAmount).toFixed(2),
-      activeInvestments: prev.activeInvestments.map(inv =>
-        inv.id === investmentId ? settlement.investments[0] : inv
-      ),
-      transactions: [...settlement.transactions, ...prev.transactions]
-    }));
+    setUser(prev => {
+      const payoutTransaction = settlement.transactions[0];
+      if (!payoutTransaction || prev.transactions.some(transaction => transaction.id === payoutTransaction.id)) return prev;
+      return {
+        ...prev,
+        balance: +(prev.balance + payoutTransaction.amount).toFixed(2),
+        activeInvestments: prev.activeInvestments.map(inv =>
+          inv.id === investmentId ? settlement.investments[0] : inv
+        ),
+        transactions: [payoutTransaction, ...prev.transactions]
+      };
+    });
 
     handleLog("Investment Settled", `Recovered contract capital with profit. Paid $${settlement.payoutAmount.toFixed(2)}`, user.email || "system", "success");
     addNotification(`Your investment matured and $${settlement.payoutAmount.toFixed(2)} was credited to your wallet.`, { title: "Investment completed", type: "success", eventKey: `investment:completed:${investmentId}`, action: { label: "View portfolio", view: "dashboard-portfolio" } });
@@ -2016,6 +2056,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return { success: false, message: "Please enter a valid amount." };
     }
     if (user.balance < amount) {
+      setInsufficientBalanceOpen(true);
       return { success: false, message: "INSUFFICIENT_BALANCE" };
     }
 
@@ -2028,29 +2069,43 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     const plan = plans.find(item => item.id === investment.planId);
-    const roiPercent = investment.roiPercent ?? plan?.roiPercent ?? 0;
-    const nextAmount = +(investment.amount + amount).toFixed(2);
-    const expectedProfit = +(nextAmount * (roiPercent / 100)).toFixed(2);
-    const updatedInvestment = {
-      ...investment,
-      amount: nextAmount,
-      roiPercent,
-      expectedProfit,
-      totalReturn: +(nextAmount + expectedProfit).toFixed(2),
-      accumulatedProfit: 0,
-      progress: 0,
-      remainingDays: investment.remainingDays,
-      status: "Running" as const
-    };
+    const topUpAmount = +amount.toFixed(2);
+    const actionKey = `topup:${investmentId}:${topUpAmount}`;
+    const reservation = tryReserveBalanceDebit(actionKey, topUpAmount);
+    if (reservation === "duplicate") {
+      return { success: false, message: "This top-up is already being processed." };
+    }
+    if (reservation === "insufficient") {
+      setInsufficientBalanceOpen(true);
+      return { success: false, message: "INSUFFICIENT_BALANCE" };
+    }
 
-    const topUpTx = buildTopUpTransaction(amount, investment.name, user.email, investmentId);
+    const topUpTx = buildTopUpTransaction(topUpAmount, investment.name, user.email, investmentId);
 
-    setUser(prev => ({
-      ...prev,
-      balance: +(prev.balance - amount).toFixed(2),
-      activeInvestments: prev.activeInvestments.map(inv => inv.id === investmentId ? updatedInvestment : inv),
-      transactions: [topUpTx, ...prev.transactions]
-    }));
+    setUser(prev => {
+      const currentInvestment = prev.activeInvestments.find(inv => inv.id === investmentId);
+      if (!currentInvestment || currentInvestment.status === "Completed" || currentInvestment.status === "completed" || currentInvestment.payoutTransactionId || prev.balance < topUpAmount) {
+        return prev;
+      }
+      const currentRoiPercent = currentInvestment.roiPercent ?? plan?.roiPercent ?? 0;
+      const currentNextAmount = +(currentInvestment.amount + topUpAmount).toFixed(2);
+      const currentExpectedProfit = +(currentNextAmount * (currentRoiPercent / 100)).toFixed(2);
+      const currentUpdatedInvestment = {
+        ...currentInvestment,
+        amount: currentNextAmount,
+        roiPercent: currentRoiPercent,
+        expectedProfit: currentExpectedProfit,
+        totalReturn: +(currentNextAmount + currentExpectedProfit).toFixed(2),
+        status: "Running" as const
+      };
+      return {
+        ...prev,
+        balance: +(prev.balance - topUpAmount).toFixed(2),
+        activeInvestments: prev.activeInvestments.map(inv => inv.id === investmentId ? currentUpdatedInvestment : inv),
+        transactions: [topUpTx, ...prev.transactions]
+      };
+    });
+    releaseBalanceDebit(actionKey, topUpAmount);
 
     addNotification(`Added $${amount.toFixed(2)} to ${investment.name}.`);
     return { success: true, message: "Top-up completed successfully." };
@@ -2089,15 +2144,35 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return { success: false, message: "INSUFFICIENT_BALANCE" };
     }
 
+    if (user.copyTrades.some(trade => trade.traderId === traderId && trade.status === "Running" && !trade.payoutCompleted)) {
+      return { success: false, message: `You are already copying ${t.name}.` };
+    }
+
+    const actionKey = `copy:${traderId}:${copyAmount}`;
+    const reservation = tryReserveBalanceDebit(actionKey, copyAmount);
+    if (reservation === "duplicate") {
+      return { success: false, message: "This copy trade request is already being processed." };
+    }
+    if (reservation === "insufficient") {
+      setInsufficientBalanceOpen(true);
+      return { success: false, message: "INSUFFICIENT_BALANCE" };
+    }
+
     const newCopyTrade = buildCopyTrade(t, copyAmount, user.email);
     const newTx = buildCopyTransaction(copyAmount, t.name, user.email, newCopyTrade.id);
 
-    setUser(prev => ({
-      ...prev,
-      balance: +(prev.balance - copyAmount).toFixed(2),
-      copyTrades: [newCopyTrade, ...prev.copyTrades],
-      transactions: [newTx, ...prev.transactions]
-    }));
+    setUser(prev => {
+      const alreadyCopying = prev.copyTrades.some(trade => trade.traderId === traderId && trade.status === "Running" && !trade.payoutCompleted);
+      const existingTransactionIds = new Set(prev.transactions.map(transaction => transaction.id));
+      if (alreadyCopying || prev.balance < copyAmount || existingTransactionIds.has(newTx.id)) return prev;
+      return {
+        ...prev,
+        balance: +(prev.balance - copyAmount).toFixed(2),
+        copyTrades: [newCopyTrade, ...prev.copyTrades],
+        transactions: [newTx, ...prev.transactions]
+      };
+    });
+    releaseBalanceDebit(actionKey, copyAmount);
 
     if (!USE_MOCK_DATA) {
       setDoc(doc(db, "copyTrades", newCopyTrade.id), {

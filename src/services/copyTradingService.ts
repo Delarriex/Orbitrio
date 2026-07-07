@@ -128,7 +128,7 @@ export const buildCopyTransaction = (
   userEmail: string,
   relatedReferenceId?: string
 ): Transaction => {
-  const id = timestampId("tx-copy");
+  const id = relatedReferenceId ? `tx-copy-${relatedReferenceId}` : timestampId("tx-copy");
 
   return enrichTransaction({
     id,
@@ -148,7 +148,7 @@ export const buildCopyPayoutTransaction = (
   userEmail?: string | null,
   relatedReferenceId?: string
 ): Transaction => {
-  const id = timestampId("tx-copy-pay");
+  const id = relatedReferenceId ? `tx-copy-pay-${relatedReferenceId}` : timestampId("tx-copy-pay");
 
   return enrichTransaction({
     id,
@@ -180,3 +180,4 @@ export const buildUncopyTransaction = (
     userEmail: userEmail || FALLBACK_GUEST_EMAIL
   }, { userEmail }, { relatedReferenceId: relatedReferenceId || id });
 };
+

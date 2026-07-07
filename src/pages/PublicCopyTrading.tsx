@@ -36,7 +36,7 @@ export const PublicCopyTrading: React.FC<PublicCopyTradingProps> = ({ onNavigate
 
   const handleAllocateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!allocatingTrader) return;
+    if (allocateLoading || !allocatingTrader) return;
 
     const amt = parseFloat(allocateAmt);
     if (isNaN(amt) || amt <= 0) {
@@ -344,3 +344,4 @@ export const PublicCopyTrading: React.FC<PublicCopyTradingProps> = ({ onNavigate
     </div>
   );
 };
+
