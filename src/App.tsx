@@ -318,14 +318,14 @@ function MainAppContent() {
   };
 
   return (
-    <div className={`relative flex flex-col min-h-screen bg-orbit-bg text-[#F5F6F8] font-sans ${showUserNavigation ? "pt-16 sm:pt-20" : ""}`}>
+    <div className={`relative flex min-h-screen flex-col bg-orbit-bg text-[#F5F6F8] font-sans ${showUserNavigation ? "pt-16 sm:pt-20" : ""}`}>
       <ScrollAnimatedBackground />
       
       {/* Dynamic top bar links */}
       {showUserNavigation && <Navigation currentView={currentView} onNavigate={handleNavigate} />}
 
       {/* Primary content area container */}
-      <main className={`relative z-10 w-full ${
+      <main className={`relative z-10 flex-1 w-full ${
         isAdminView
           ? ""
           : currentView === "home" || currentView === "contact"

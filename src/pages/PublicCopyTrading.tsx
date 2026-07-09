@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useOrbit } from "../context/OrbitContext";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { UserCheck, Users, TrendingUp, ShieldAlert, Award, ArrowUpRight, CheckCircle2, Calendar, X, DollarSign, Wallet, ShieldCheck, Info, Loader2 } from "lucide-react";
 
 interface PublicCopyTradingProps {
@@ -10,6 +11,7 @@ export const PublicCopyTrading: React.FC<PublicCopyTradingProps> = ({ onNavigate
   const { traders, copyTrader, user, setInsufficientBalanceOpen } = useOrbit();
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [allocatingTrader, setAllocatingTrader] = useState<any | null>(null);
+  useBodyScrollLock(Boolean(allocatingTrader));
   const [allocateAmt, setAllocateAmt] = useState("");
   const [allocateLoading, setAllocateLoading] = useState(false);
 

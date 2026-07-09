@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useOrbit } from "../context/OrbitContext";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { Wallet, Info } from "lucide-react";
 
 const TrustWalletLogo = () => (
@@ -110,6 +111,7 @@ export const DashboardWalletConnect: React.FC = () => {
   const { saveWalletConnection, addNotification } = useOrbit();
   const [selectedWallet, setSelectedWallet] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
+  useBodyScrollLock(showModal);
   const [isLoading, setIsLoading] = useState(false);
 
   const wallets = [

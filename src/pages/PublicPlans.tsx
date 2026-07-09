@@ -9,7 +9,7 @@ interface PublicPlansProps {
 export const PublicPlans: React.FC<PublicPlansProps> = ({ onNavigate }) => {
   const { plans, user, siteContent } = useOrbit();
   const enabledPlans = useMemo(() => plans.filter((plan) => plan.enabled && plan.status === "active").sort((a, b) => a.displayOrder - b.displayOrder || a.minDeposit - b.minDeposit), [plans]);
-  
+
   // Calculator States
   const [selectedCalcPlan, setSelectedCalcPlan] = useState("plan-gold");
   const [calcAmount, setCalcAmount] = useState(5000);
@@ -53,7 +53,7 @@ export const PublicPlans: React.FC<PublicPlansProps> = ({ onNavigate }) => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-16 pb-20">
-      
+
       {/* Page Header */}
       <div className="text-center max-w-2xl mx-auto space-y-3">
         <span className="text-xs font-subheading text-orbit-accent uppercase tracking-widest bg-orbit-accent/15 px-3 py-1 rounded-full">
@@ -100,7 +100,7 @@ export const PublicPlans: React.FC<PublicPlansProps> = ({ onNavigate }) => {
           };
 
           return (
-            <div 
+            <div
               key={plan.id}
               className="bg-orbit-card border border-orbit-border rounded-2xl p-6 relative overflow-hidden transition-all flex flex-col justify-between hover:scale-[1.01] hover:border-orbit-accent/40 shadow-xl"
             >
@@ -177,7 +177,7 @@ export const PublicPlans: React.FC<PublicPlansProps> = ({ onNavigate }) => {
         <div className="absolute top-0 right-0 w-[200px] h-[200px] bg-orbit-accent/5 rounded-full blur-[60px]" />
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center relative z-10">
-          
+
           {/* Left Calculator Panel Inputs */}
           <div className="lg:col-span-7 space-y-6 font-sans">
             <div>
@@ -205,11 +205,10 @@ export const PublicPlans: React.FC<PublicPlansProps> = ({ onNavigate }) => {
                       setSelectedCalcPlan(p.id);
                       setCalcAmount(p.minDeposit);
                     }}
-                    className={`p-3 rounded-lg border text-center text-xs font-semibold font-subheading cursor-pointer transition-all ${
-                      selectedCalcPlan === p.id 
-                        ? "border-orbit-accent bg-orbit-accent/10 text-orbit-accent shadow" 
+                    className={`p-3 rounded-lg border text-center text-xs font-semibold font-subheading cursor-pointer transition-all ${selectedCalcPlan === p.id
+                        ? "border-orbit-accent bg-orbit-accent/10 text-orbit-accent shadow"
                         : "border-orbit-border/80 bg-orbit-bg text-orbit-gray-text"
-                    }`}
+                      }`}
                   >
                     {p.name}
                   </button>
@@ -225,7 +224,7 @@ export const PublicPlans: React.FC<PublicPlansProps> = ({ onNavigate }) => {
                   Limits: ${activeCalcPlanObj.minDeposit.toLocaleString()} - {activeCalcPlanObj.maxDeposit === 1000000 ? "Unlimited" : `$${activeCalcPlanObj.maxDeposit.toLocaleString()}`}
                 </span>
               </div>
-              
+
               <div className="relative">
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-orbit-gray-text font-data text-sm">
                   $
@@ -312,7 +311,7 @@ export const PublicPlans: React.FC<PublicPlansProps> = ({ onNavigate }) => {
           <ShieldCheck size={16} className="text-orbit-accent" />
           <span>Safety & Settlement FAQ</span>
         </h3>
-        
+
         <div className="space-y-4">
           {siteContent?.faq_question_1 && (
             <div className="p-4 rounded-xl border border-orbit-border/40 bg-orbit-card/45 text-xs">

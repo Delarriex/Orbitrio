@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useOrbit } from "../context/OrbitContext";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { Menu, X, User, LogOut, LayoutDashboard, Coins, Briefcase, Wallet2, TrendingUp, LogIn, UserPlus, History, Gift, Shield, CheckCircle2, ChevronDown, MoreHorizontal, MessageSquare, Settings, Bell } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -12,6 +13,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
   const { user, logout, unreadNotificationsCount } = useOrbit();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  useBodyScrollLock(mobileMenuOpen);
 
   if (user.isLoggedIn && user.role === "admin") return null;
 
@@ -285,7 +287,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "tween", duration: 0.22, ease: "easeOut" }}
-            className="lg:hidden fixed inset-0 bg-[#07090E]/98 backdrop-blur-md z-[100] overflow-y-auto px-5 py-5 flex flex-col pb-24 shadow-2xl border-l border-orbit-border/30"
+            className="lg:hidden fixed inset-0 bg-[#07090E]/98 backdrop-blur-md z-[100] overflow-y-auto overscroll-contain px-5 py-5 flex flex-col pb-24 shadow-2xl border-l border-orbit-border/30"
           >
 
             <div className="flex flex-col space-y-6 min-h-full">

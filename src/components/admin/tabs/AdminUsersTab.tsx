@@ -21,6 +21,7 @@ import {
   X
 } from "lucide-react";
 import { useOrbit } from "../../../context/OrbitContext";
+import { useBodyScrollLock } from "../../../hooks/useBodyScrollLock";
 import type { SimulatedUser, Transaction } from "../../../types";
 
 type Feedback = { type: "success" | "error"; message: string };
@@ -117,6 +118,7 @@ export const AdminUsersTab: React.FC = () => {
 
   const users = userResult.rows;
   const selectedUser = users.find(user => user.email === selectedEmail) || null;
+  useBodyScrollLock(Boolean(selectedUser));
 
   useEffect(() => {
     if (selectedEmail && !selectedUser) setSelectedEmail(null);

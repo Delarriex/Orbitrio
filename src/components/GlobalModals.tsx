@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useOrbit } from "../context/OrbitContext";
 import { getDepositWalletLabel } from "../services";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { X, Check, Copy, ArrowUpRight, Loader2, Info, AlertTriangle } from "lucide-react";
 
 interface GlobalModalsProps {
@@ -31,6 +32,9 @@ export function GlobalModals({
   const [wdrAddr, setWdrAddr] = useState("");
 
   const [modalFeedback, setModalFeedback] = useState<string | { title: string; description: string; type?: string } | null>(null);
+  const hasActiveModal = depositModalOpen || withdrawModalOpen || insufficientBalanceOpen;
+
+  useBodyScrollLock(hasActiveModal);
 
   const depositCoins = useMemo(
     () => Array.from(new Set(enabledDepositWallets.map(wallet => wallet.coinName).filter(Boolean))),
@@ -180,7 +184,7 @@ export function GlobalModals({
       {/* QUICK DEPOSIT MODAL OUTLAY */}
       {depositModalOpen && (() => {
         return (
-          <div className="fixed inset-0 bg-[#000000]/80 backdrop-blur-sm overflow-y-auto p-4 z-50 flex items-center justify-center">
+          <div className="fixed inset-0 bg-[#000000]/80 backdrop-blur-sm p-4 z-50 flex items-center justify-center">
             <div className="bg-orbit-card border border-orbit-border rounded-2xl w-full max-w-md p-6 relative shadow-2xl space-y-5 max-h-[85dvh] overflow-y-auto my-auto scrollbar-none">
               <button 
                 onClick={() => { setDepositModalOpen(false); setModalFeedback(null); }}
@@ -370,7 +374,7 @@ export function GlobalModals({
 
       {/* QUICK WITHDRAWAL MODAL OUTLAY */}
       {withdrawModalOpen && (
-        <div className="fixed inset-0 bg-[#000000]/80 backdrop-blur-sm overflow-y-auto p-4 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 bg-[#000000]/80 backdrop-blur-sm p-4 z-50 flex items-center justify-center">
           <div className="bg-orbit-card border border-orbit-border rounded-2xl w-full max-w-md p-6 relative shadow-2xl space-y-5 max-h-[85dvh] overflow-y-auto my-auto">
             <button 
               onClick={() => { setWithdrawModalOpen(false); setModalFeedback(null); }}

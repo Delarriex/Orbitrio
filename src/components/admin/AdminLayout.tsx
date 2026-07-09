@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Compass, Menu, ShieldAlert, X } from "lucide-react";
 import { useOrbit } from "../../context/OrbitContext";
+import { useBodyScrollLock } from "../../hooks/useBodyScrollLock";
 
 type AdminNavItem = {
   id: string;
@@ -20,6 +21,7 @@ interface AdminLayoutProps {
 export const AdminLayout: React.FC<AdminLayoutProps> = ({ activeTab, navItems, onTabChange, children }) => {
   const { logout } = useOrbit();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  useBodyScrollLock(isMobileMenuOpen);
 
   const handleLockAdminTerminal = async () => {
     await logout();
@@ -76,9 +78,9 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ activeTab, navItems, o
             animate={{ x: 0 }}
             exit={{ x: "-100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="lg:hidden fixed inset-0 z-50 flex"
+            className="lg:hidden fixed inset-0 z-50 flex overscroll-contain"
           >
-            <aside className="w-[85%] max-w-sm bg-orbit-card border-r border-orbit-border h-full flex flex-col p-5 shadow-2xl relative">
+            <aside className="w-[85%] max-w-sm bg-orbit-card border-r border-orbit-border h-full flex flex-col p-5 shadow-2xl relative overflow-y-auto">
               <div className="flex justify-between items-center mb-6 border-b border-orbit-border pb-4">
                 <div className="flex items-center gap-3">
                   <span className="p-2 rounded-xl bg-gradient-to-tr from-[#FF7F00] to-orbit-accent text-orbit-bg">
@@ -116,7 +118,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ activeTab, navItems, o
         )}
       </AnimatePresence>
 
-      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8 grid grid-cols-1 lg:grid-cols-12 gap-8 relative">
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8 grid grid-cols-1 lg:grid-cols-12 gap-8 relative overflow-visible">
         <aside className="hidden lg:flex lg:col-span-3 bg-orbit-card border border-orbit-border rounded-2xl p-5 flex-col justify-between self-start sticky top-8">
           <div className="space-y-6">
             <div className="border-b border-orbit-border pb-4 flex items-center gap-3">
