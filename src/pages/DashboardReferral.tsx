@@ -28,7 +28,7 @@ export const DashboardReferral: React.FC = () => {
       </h2>
 
       {/* Hero Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-orbit-card border border-orbit-border rounded-xl p-4 flex flex-col items-center">
           <Users className="text-orbit-gray-text mb-1.5" size={20} />
           <p className="text-sm font-bold text-orbit-white font-data">{referralCount}</p>

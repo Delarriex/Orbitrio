@@ -66,7 +66,8 @@ export const DashboardPlans: React.FC = () => {
   }
 
   // Calculates estimated returns for the input amount
-  const getProjections = () => {
+  const projections = useMemo(() => {
+    if (!activePlanObj) return null;
     const amt = parseFloat(investAmountText) || 0;
     const profit = amt * (activePlanObj.roiPercent / 100);
     return {
@@ -74,9 +75,7 @@ export const DashboardPlans: React.FC = () => {
       total: +(amt + profit).toFixed(2),
       daily: +(profit / activePlanObj.durationDays).toFixed(2)
     };
-  };
-
-  const projections = getProjections();
+  }, [activePlanObj, investAmountText]);
 
   return (
     <div className="space-y-4 pb-4 sm:pb-6 font-sans">

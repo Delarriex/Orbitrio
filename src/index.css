@@ -29,6 +29,7 @@
     padding: 0;
     width: 100%;
     overflow-x: hidden;
+    overscroll-behavior-y: none; /* Prevents rubber-band / elastic background bounce */
     -webkit-text-size-adjust: 100%; /* Prevents automatic element magnification */
     -webkit-tap-highlight-color: transparent; /* Removes iOS touch flicker */
     -webkit-overflow-scrolling: touch; /* Smooth kinetic scroll inertia */
@@ -59,6 +60,10 @@
   :focus-visible {
     outline: 2px solid rgba(255, 177, 26, 0.7);
     outline-offset: 2px;
+  }
+
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
   }
 }
 
@@ -112,8 +117,31 @@
   @apply inline-flex items-center justify-center gap-2 rounded-2xl border border-orbit-border/70 bg-[#11151B]/80 px-5 py-3 font-semibold text-orbit-white transition-all duration-200 hover:border-orbit-accent/60 hover:text-orbit-accent;
 }
 
+
+@media (max-width: 767px) {
+  body {
+    background-attachment: scroll;
+  }
+
+  .orb-card-hover:hover,
+  .orb-button:hover,
+  .orb-button-secondary:hover {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
 /* Push Tawk.to chat bubble above mobile bottom nav */
-@media (max-width: 1023px) {
+@media (max-width: 639px) {
   iframe[title="chat widget"],
   .widget-visible iframe,
   #tawk-bubble-container,

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef, useMemo, useCallback } from "react";
 import toast from "react-hot-toast";
 import type {
   MarketAsset,
@@ -66,7 +66,7 @@ import {
   saveNotification,
   sortNotifications,
   watchNotifications,
-  createKycSubmission,
+  createSubmission,
   buildRegistrationUserDoc,
   buildSimulatedUserFromRegistration,
   buildTopUpTransaction,
@@ -97,7 +97,7 @@ import {
   createSignedOutUser,
   decrementTraderFollowers,
   DEFAULT_INVESTMENT_PLANS,
-  reviewKycSubmission,
+  adminReview,
   deleteInvestmentPlan,
   formatWithdrawalAddress,
   getEnabledDepositWallets,
@@ -186,43 +186,43 @@ interface OrbitContextType {
   markNotificationRead: (notificationId: string) => Promise<void>;
   markAllNotificationsRead: () => Promise<void>;
   deleteNotification: (notificationId: string) => Promise<void>;
-  
+
   updateAdminWallets: (wallets: Record<string, string>) => void;
   adminSaveDepositWallet: (wallet: DepositWallet | Omit<DepositWallet, "id">) => Promise<void>;
   adminDeleteDepositWallet: (walletId: string) => Promise<void>;
   adminUpdateUserBalance: (email: string, amount: number, txData?: { type: "credit" | "debit"; amount: number; label: string; notes: string; }) => Promise<void>;
   adminChangeUserStatus: (email: string, status: "active" | "suspended" | "banned") => void;
   adminResetUserPassword: (email: string) => void;
-  adminKycReview: (email: string, status: "approved" | "rejected", reason?: string) => void;
-  
+  adminKycReview: (email: string, status: "approved" | "rejected", reason?: string) => Promise<void>;
+
   adminCreatePlan: (plan: Omit<InvestmentPlan, "id">) => Promise<void>;
   adminUpdatePlan: (plan: InvestmentPlan) => Promise<void>;
   adminDeletePlan: (planId: string) => Promise<void>;
   adminSetPlanStatus: (planId: string, status: "active" | "paused") => Promise<void>;
-  
+
   adminApproveDeposit: (txId: string, notes?: string) => void;
   adminRejectDeposit: (txId: string, notes?: string) => void;
   adminApproveWithdrawal: (txId: string, notes?: string) => void;
   adminRejectWithdrawal: (txId: string, notes?: string) => void;
-  
+
   adminApproveAirdrop: (claimId: string) => void;
   adminRejectAirdrop: (claimId: string) => void;
   adminCreateAirdrop: (airdrop: Omit<Airdrop, "id">) => void;
   adminUpdateAirdrop: (airdrop: Airdrop) => void;
   adminDeleteAirdrop: (airdropId: string) => void;
-  
+
   adminCreateAnnouncement: (announcement: Omit<Announcement, "id" | "date" | "updatedAt"> & Partial<Pick<Announcement, "id" | "date" | "updatedAt">>) => Promise<void>;
   adminUpdateAnnouncement: (announcement: Announcement) => Promise<void>;
   adminDeleteAnnouncement: (announcementId: string) => Promise<void>;
   markAnnouncementRead: (announcementId: string) => Promise<void>;
-  
+
   adminReplyToTicket: (ticketId: string, text: string) => void;
   adminCloseTicket: (ticketId: string) => void;
   adminSetTicketPriority: (ticketId: string, priority: "low" | "medium" | "high") => void;
-  
+
   addNotification: (text: string, options?: BuildNotificationOptions) => void;
   clearNotifications: () => void;
-  submitKyc: (kyc: KycSubmission) => void;
+  submitKyc: (kyc: KycSubmission) => Promise<void>;
   saveWalletConnection: (walletName?: string) => void;
 
   // Real-time site content editing
@@ -786,7 +786,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const saved = localStorage.getItem("orbitrio_deposit_wallets");
     return saved ? safeParse<DepositWallet[]>(saved, []) : [];
   });
-  const enabledDepositWallets = getEnabledDepositWallets(depositWallets);
+  const enabledDepositWallets = useMemo(() => getEnabledDepositWallets(depositWallets), [depositWallets]);
   const [adminWallets, setAdminWallets] = useState<Record<string, string>>(() =>
     mapDepositWalletsToAddressBook(depositWallets)
   );
@@ -796,7 +796,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const parsed = saved ? safeParse<Announcement[]>(saved, INITIAL_ANNOUNCEMENTS) : INITIAL_ANNOUNCEMENTS;
     return sortAnnouncementsForAdmin(parsed.map(item => normalizeAnnouncement(item, item.id)));
   });
-  const userAnnouncements = filterActiveAnnouncements(adminAnnouncements);
+  const userAnnouncements = useMemo(() => filterActiveAnnouncements(adminAnnouncements), [adminAnnouncements]);
   useEffect(() => {
     if (USE_MOCK_DATA) return;
     if (!authReady || !user.isLoggedIn) {
@@ -1177,7 +1177,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
   const withdrawEarnings = () => {
     if (!user.points || user.points < 100) return;
-    const usdAmount = user.points * 1; 
+    const usdAmount = user.points * 1;
     setUser(prev => ({
       ...prev,
       balance: prev.balance + usdAmount,
@@ -1198,7 +1198,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const parsed = saved ? safeParse<Array<Partial<NotificationItem> & { id?: string }>>(saved, fallback) : fallback;
     return sortNotifications(parsed.map(item => normalizeNotification(item, item.id)));
   });
-  const unreadNotificationsCount = notifications.filter(item => !item.read).length;
+  const unreadNotificationsCount = useMemo(() => notifications.filter(item => !item.read).length, [notifications]);
 
   const [marketCrypto, setMarketCrypto] = useState<MarketAsset[]>([]);
   const [marketStocks, setMarketStocks] = useState<MarketAsset[]>([]);
@@ -1386,36 +1386,40 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     if (!authReady || !meaningfulChanged) return;
 
-    const fieldsToUpdate = {
-      name: user.name,
-      balance: user.balance,
-      portfolioValue: user.portfolioValue,
-      activeInvestments: user.activeInvestments,
-      copyTrades: user.copyTrades,
-      portfolio: cleanPortfolio,
-      transactions: user.transactions,
-      tickets: user.tickets,
-      username: user.username || "",
-      firstName: user.firstName || "",
-      lastName: user.lastName || "",
-      gender: user.gender || "",
-      phone: user.phone || "",
-      accountType: user.accountType || "",
-      country: user.country || "",
-      currency: user.currency || "",
-      readAnnouncementIds: user.readAnnouncementIds || []
-    };
+    const timeoutId = setTimeout(() => {
+      const fieldsToUpdate = {
+        name: user.name,
+        balance: user.balance,
+        portfolioValue: user.portfolioValue,
+        activeInvestments: user.activeInvestments,
+        copyTrades: user.copyTrades,
+        portfolio: cleanPortfolio,
+        transactions: user.transactions,
+        tickets: user.tickets,
+        username: user.username || "",
+        firstName: user.firstName || "",
+        lastName: user.lastName || "",
+        gender: user.gender || "",
+        phone: user.phone || "",
+        accountType: user.accountType || "",
+        country: user.country || "",
+        currency: user.currency || "",
+        readAnnouncementIds: user.readAnnouncementIds || []
+      };
 
-    const userDocRef = doc(db, "users", user.email);
-    
-    // Prevent infinite retry loop on permission denied by updating the ref immediately
-    lastSyncedRef.current = meaningfulSnapshot;
-    lastTickSyncRef.current = now;
+      const userDocRef = doc(db, "users", user.email!);
 
-    setDoc(userDocRef, fieldsToUpdate, { merge: true })
-      .catch(err => {
-        logFirestoreError(err, OperationType.UPDATE, `users/${user.email}`);
-      });
+      // Prevent infinite retry loop on permission denied by updating the ref immediately
+      lastSyncedRef.current = meaningfulSnapshot;
+      lastTickSyncRef.current = Date.now();
+
+      setDoc(userDocRef, fieldsToUpdate, { merge: true })
+        .catch(err => {
+          logFirestoreError(err, OperationType.UPDATE, `users/${user.email}`);
+        });
+    }, 1000);
+
+    return () => clearTimeout(timeoutId);
   }, [user, authReady]);
 
   // Synchronize Firebase Auth state to restore logged session after page refresh
@@ -1424,7 +1428,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (firebaseUser?.email) {
         const userEmail = firebaseUser.email;
         const docRef = doc(db, "users", userEmail);
-        
+
         try {
           const userSnap = await getDoc(docRef);
           if (userSnap.exists()) {
@@ -1480,12 +1484,12 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               readAnnouncementIds: []
             };
             await setDoc(docRef, initialUser);
-            
+
             setUser({
               isLoggedIn: true,
               ...initialUser
             });
-            
+
             addNotification(`Profile created successfully for ${initialName}!`);
           }
         } catch (err) {
@@ -1685,15 +1689,21 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   useEffect(() => {
+    const isMobileViewport = window.matchMedia("(max-width: 767px)").matches;
+    const refreshMs = isMobileViewport ? 60000 : 25000;
     loadMarketsData();
-    const fetchInterval = setInterval(loadMarketsData, 25000);
+    const fetchInterval = setInterval(() => {
+      if (!document.hidden) loadMarketsData();
+    }, refreshMs);
     return () => clearInterval(fetchInterval);
   }, []);
 
   // Fluctuations
   useEffect(() => {
+    const isMobileViewport = window.matchMedia("(max-width: 767px)").matches;
     const marketFlux = setInterval(() => {
-      setMarketCrypto(prev => 
+      if (document.hidden) return;
+      setMarketCrypto(prev =>
         prev.map(asset => {
           const delta = (Math.random() * 0.003 - 0.0015);
           const nextPrice = +(asset.price * (1 + delta)).toFixed(asset.price > 10 ? 2 : 4);
@@ -1708,7 +1718,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           };
         })
       );
-    }, 4500);
+    }, isMobileViewport ? 12000 : 4500);
     return () => clearInterval(marketFlux);
   }, []);
 
@@ -1718,12 +1728,16 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (!prev.isLoggedIn) return prev;
 
       let totalAssetVal = 0;
+      let hasSignificantPriceChange = false;
       const updatedPort = prev.portfolio.map(holding => {
         const matchingLive = [...marketCrypto, ...marketStocks].find(
           m => m.symbol.split("/")[0] === holding.symbol
         );
         if (matchingLive) {
           totalAssetVal += holding.amount * matchingLive.price;
+          if (holding.currentPrice && Math.abs(matchingLive.price - holding.currentPrice) / holding.currentPrice > 0.00001) {
+            hasSignificantPriceChange = true;
+          }
           return { ...holding, currentPrice: matchingLive.price };
         }
         return holding;
@@ -1735,6 +1749,11 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const settledTransactions = [...copySettlement.transactions, ...settlement.transactions]
         .filter(transaction => !existingTransactionIds.has(transaction.id));
       const settledPayoutAmount = settledTransactions.reduce((sum, transaction) => +(sum + transaction.amount).toFixed(2), 0);
+
+      // Skip unnecessary state updates if nothing meaningful changed
+      if (!hasSignificantPriceChange && settledTransactions.length === 0 && Math.abs(totalAssetVal - prev.portfolioValue) < 0.01) {
+        return prev;
+      }
 
       return {
         ...prev,
@@ -1750,12 +1769,17 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   }, [marketCrypto, marketStocks, plans]);
 
+  const notifiedMaturityIds = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     if (!user.isLoggedIn || !user.email) return;
 
     user.activeInvestments
       .filter(investment => (investment.status === "Completed" || investment.status === "completed") && investment.payoutTransactionId)
       .forEach(investment => {
+        if (notifiedMaturityIds.current.has(investment.id)) return;
+        notifiedMaturityIds.current.add(investment.id);
+
         addNotification(`${investment.name} completed and funds were credited to your wallet.`, {
           title: "Investment completed",
           type: "success",
@@ -1775,6 +1799,9 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     user.copyTrades
       .filter(trade => trade.status === "Completed" && trade.payoutCompleted)
       .forEach(trade => {
+        if (notifiedMaturityIds.current.has(trade.id)) return;
+        notifiedMaturityIds.current.add(trade.id);
+
         addNotification(`Copy trade with ${trade.traderName} completed and returns were credited.`, {
           title: "Copy trade completed",
           type: "success",
@@ -1835,7 +1862,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const login = async (email: string, password?: string) => {
     const isMock = ["john.wealth@outlook.com", "sarah.crypto@gmail.com", "banned.scammer@gmail.com"].includes(email.toLowerCase());
-    
+
     if (isMock) {
       const isOwner = email.toLowerCase() === "henrikaram1@gmail.com";
       const match = adminUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
@@ -1867,7 +1894,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setUser(userObj);
       handleLog("Account Access Authenticated", `Login verified.`, email, "success");
       addNotification(`Authenticated logged session: ${userObj.name}`);
-      
+
       try {
         const userDocRef = doc(db, "users", email);
         const userDocSnap = await getDoc(userDocRef);
@@ -1995,7 +2022,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     addNotification(`Your withdrawal request of $${amount} ${currency} has been submitted for review.`, { title: "Withdrawal submitted", type: "info", eventKey: `withdrawal:submitted:${newTx.id}`, action: { label: "View wallet", view: "dashboard-wallet" } });
     dispatchTransactionalEmail(user.email, "WITHDRAWAL_SUBMITTED", `withdrawal:submitted:${newTx.id}`, { name: user.name, amount, asset: currency, destination: displayAddress, walletAddress: displayAddress, transactionId: newTx.id, status: newTx.status });
     notifyAdmins(`${user.email || "A user"} submitted a withdrawal request of $${amount} ${currency}.`, { title: "Withdrawal requires review", type: "warning", eventKey: `withdrawal:review:${newTx.id}`, action: { label: "Review withdrawals", view: "dashboard-admin" } });
-    
+
     toast.success("Withdrawal request submitted successfully");
     return { success: true, message: `Payout request queued. Balance deducted. Pending Platform Approval.` };
   };
@@ -2048,7 +2075,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     handleLog("Compound Allocation Enrolled", `Subscribed to ${selectedPlan.name} worth $${amount}.`, user.email || "system", "success");
     addNotification(`Your $${amount} allocation to ${selectedPlan.name} is now running.`, { title: "Investment started", type: "success", eventKey: `investment:started:${newActive.id}`, action: { label: "View portfolio", view: "dashboard-portfolio" } });
     dispatchTransactionalEmail(user.email, "INVESTMENT_STARTED", `investment:started:${newActive.id}`, { name: user.name, amount, planName: selectedPlan.name, investmentName: newActive.name, totalReturn: newActive.totalReturn, endDate: newActive.endDate, transactionId: investmentTx.id });
-    
+
     toast.success(`Investment in ${selectedPlan.name} started successfully`);
     return { success: true, message: `Investment started. Total return at maturity: $${newActive.totalReturn.toLocaleString()}.` };
   };
@@ -2383,8 +2410,8 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const createTicket = (
-    subject: string, 
-    category: "deposit" | "withdrawal" | "trading" | "general", 
+    subject: string,
+    category: "deposit" | "withdrawal" | "trading" | "general",
     initialMsg: string,
     priority: "low" | "medium" | "high" = "medium"
   ) => {
@@ -2408,7 +2435,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }));
 
     handleLog("Support Ticket Created", `Submitted ticket regarding topic: ${subject}`, user.email || "guest@gmail.com", "success");
-    
+
     // Auto simulated response
     setTimeout(() => {
       adminReplyToTicket(newTkt.id, `Dear orbitrio Member, thank you for writing. Dynamic agent node assigned. We are actively auditing your ${category} logs. Please stand by.`);
@@ -2594,18 +2621,18 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const adminUpdateUserBalance = async (
-    email: string, 
-    amount: number, 
-    txData?: { 
-      type: "credit" | "debit"; 
-      amount: number; 
-      label: string; 
-      notes: string; 
+    email: string,
+    amount: number,
+    txData?: {
+      type: "credit" | "debit";
+      amount: number;
+      label: string;
+      notes: string;
     }
   ) => {
     try {
       const userDocRef = doc(db, "users", email);
-      
+
       let updatedTransactions: Transaction[] = [];
       const userSnap = await getDoc(userDocRef);
       if (userSnap.exists()) {
@@ -2659,7 +2686,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         fieldsToUpdate.transactions = updatedTransactions;
       }
       await updateDoc(userDocRef, fieldsToUpdate);
-      
+
       if (user.email && user.email.toLowerCase() === email.toLowerCase()) {
         setUser(prev => {
           const updated: any = { ...prev, balance: amount };
@@ -2697,16 +2724,10 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     addNotification(`Sent reset token dispatch to ${email}.`);
   };
 
-  const adminKycReview = async (email: string, status: "approved" | "rejected", reason?: string) => {
+  const adminKycReview = async (email: string, status: "approved" | "rejected", reason?: string): Promise<void> => {
     try {
-      const userDocRef = doc(db, "users", email);
-      const userSnap = await getDoc(userDocRef);
       const targetUser = adminUsers.find(item => item.email.toLowerCase() === email.toLowerCase());
-      const currentKyc = (userSnap.exists() ? userSnap.data().kyc : targetUser?.kyc) as KycSubmission | undefined;
-      if (!currentKyc) return;
-
-      const reviewedKyc = reviewKycSubmission(currentKyc, status, reason || (status === "approved" ? "Verified by admin." : "Documents not sufficient."));
-      await updateDoc(userDocRef, { kyc: reviewedKyc });
+      const reviewedKyc = await adminReview(email, status, reason || (status === "approved" ? "Verified by admin." : "Documents not sufficient."));
 
       setAdminUsers(prev => prev.map(adminUser =>
         adminUser.email.toLowerCase() === email.toLowerCase()
@@ -2722,16 +2743,15 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       addNotification(status === "approved" ? "Your KYC verification was approved." : "Your KYC verification was rejected. Please review the notes and resubmit.", { title: status === "approved" ? "KYC approved" : "KYC rejected", type: status === "approved" ? "success" : "error", recipientEmail: email, eventKey: `kyc:${status}:${email}:${reviewedKyc.reviewedAt || reviewedKyc.submissionDate}`, action: { label: "View KYC", view: "dashboard-kyc" } });
       dispatchTransactionalEmail(email, status === "approved" ? "KYC_APPROVED" : "KYC_REJECTED", `kyc:${status}:${email}:${reviewedKyc.reviewedAt || reviewedKyc.submissionDate}`, { name: targetUser?.name || email.split("@")[0], documentType: reviewedKyc.documentType || reviewedKyc.idType, reason: reviewedKyc.rejectionReason || reason, status });
     } catch (e) {
-      console.error("Error updating KYC in Firestore:", e);
+      toast.error("Failed to update KYC review");
+      throw e;
     }
   };
 
-  const submitKyc = async (kyc: KycSubmission) => {
-    if (!user.email) return;
+  const submitKyc = async (kyc: KycSubmission): Promise<void> => {
+    if (!user.email) throw new Error("You must be signed in to submit KYC.");
     try {
-      const submission = createKycSubmission(kyc);
-      const userDocRef = doc(db, "users", user.email);
-      await updateDoc(userDocRef, { kyc: submission });
+      const submission = await createSubmission(user.email, kyc);
       setUser(prev => ({ ...prev, kyc: submission }));
       setAdminUsers(prev => prev.map(adminUser =>
         adminUser.email.toLowerCase() === user.email?.toLowerCase()
@@ -2743,7 +2763,8 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       notifyAdmins(`${user.email} submitted KYC documents for review.`, { title: "KYC requires review", type: "warning", eventKey: `kyc:review:${user.email}:${submission.submissionDate || submission.idNumber}`, action: { label: "Review KYC", view: "dashboard-admin" } });
       toast.success("KYC documents submitted for review");
     } catch (e) {
-      console.error("Error submitting KYC in Firestore:", e);
+      toast.error("Failed to submit KYC documents");
+      throw e;
     }
   };
 
@@ -2948,7 +2969,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const targetUser = adminUsers.find(u => u.transactions.some(t => t.id === txId));
     if (!targetUser) return;
 
-    const updatedTransactions = targetUser.transactions.map(t => 
+    const updatedTransactions = targetUser.transactions.map(t =>
       t.id === txId ? { ...t, status: "completed" as const, notes: noteText } : t
     );
 
@@ -2968,7 +2989,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       handleLog("Withdrawing Dispatched", `Released payout ID: ${txId}. Notes: ${noteText}`, user.email || "admin", "success");
       addNotification(`Settled withdrawal invoice ${txId}. Funds successfully dispatched.`, { title: "Withdrawal approved", type: "success", eventKey: `admin:withdrawal:approved:${txId}` });
       addNotification(`Your withdrawal ${txId} was approved and dispatched.`, { title: "Withdrawal approved", type: "success", recipientEmail: targetUser.email, eventKey: `withdrawal:approved:${txId}`, action: { label: "View wallet", view: "dashboard-wallet" } });
-      
+
       const tx = targetUser.transactions.find(t => t.id === txId);
       if (tx) {
         dispatchTransactionalEmail(targetUser.email, "WITHDRAWAL_APPROVED", `withdrawal:approved:${txId}`, {
@@ -2993,7 +3014,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!matched) return;
 
     const refundAmount = matched.amount;
-    const updatedTransactions = targetUser.transactions.map(t => 
+    const updatedTransactions = targetUser.transactions.map(t =>
       t.id === txId ? { ...t, status: "failed" as const, notes: noteTextByAdmin } : t
     );
     const updatedBalance = +(targetUser.balance + refundAmount).toFixed(2);
@@ -3108,7 +3129,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const targetUser = adminUsers.find(u => u.tickets.some(t => t.id === ticketId));
     if (!targetUser) return;
 
-    const updatedTickets = targetUser.tickets.map(tkt => 
+    const updatedTickets = targetUser.tickets.map(tkt =>
       tkt.id === ticketId ? { ...tkt, status: "resolved" as const } : tkt
     );
 
@@ -3135,7 +3156,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const targetUser = adminUsers.find(u => u.tickets.some(t => t.id === ticketId));
     if (!targetUser) return;
 
-    const updatedTickets = targetUser.tickets.map(t => 
+    const updatedTickets = targetUser.tickets.map(t =>
       t.id === ticketId ? { ...t, priority: rate } : t
     );
 
@@ -3158,7 +3179,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const submitWalletFeedback = async (wallet: string, reason: string, wouldUse: boolean) => {
     if (!user.email || USE_MOCK_DATA) return;
-    
+
     // Prevent duplicates
     const isDuplicate = walletFeedback.some(
       fb => fb.userEmail === user.email && fb.wallet === wallet && fb.reason === reason
@@ -3238,7 +3259,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       executeTrade,
       createTicket,
       replyToTicket,
-      
+
       // Administrative Exports
       adminUsers,
       adminWallets,
@@ -3254,7 +3275,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       markNotificationRead,
       markAllNotificationsRead,
       deleteNotification,
-      
+
       updateAdminWallets,
       adminSaveDepositWallet,
       adminDeleteDepositWallet,
@@ -3262,13 +3283,13 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       adminChangeUserStatus,
       adminResetUserPassword,
       adminKycReview,
-      
+
       adminCreatePlan,
       adminUpdatePlan,
       adminDeletePlan,
       adminSetPlanStatus,
       topUpInvestment,
-      
+
       adminApproveDeposit,
       adminRejectDeposit,
       adminApproveWithdrawal,
@@ -3283,16 +3304,16 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       adminUpdateAnnouncement,
       adminDeleteAnnouncement,
       markAnnouncementRead,
-      
+
       adminReplyToTicket,
       adminCloseTicket,
       adminSetTicketPriority,
-      
+
       addNotification,
       clearNotifications,
       submitKyc,
       saveWalletConnection,
-      
+
       // Wallet Feedback
       walletFeedback,
       submitWalletFeedback,

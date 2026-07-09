@@ -27,7 +27,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({ currentView, onNavigate })
   };
 
   return (
-    <div className="fixed bottom-0 left-0 w-full z-50 bg-[#06080D]/95 backdrop-blur-xl border-t border-orbit-border/60 shadow-[0_-8px_30px_rgba(0,0,0,0.35)] md:hidden pb-safe">
+    <div className="fixed bottom-0 left-0 w-full z-50 bg-[#06080D]/98 backdrop-blur-md border-t border-orbit-border/60 shadow-[0_-8px_30px_rgba(0,0,0,0.35)] md:hidden pb-safe">
       <div className="grid grid-cols-5 items-center justify-items-center py-2 px-2">
         {tabs.map((tab) => {
           const Icon = tab.icon;
@@ -40,7 +40,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({ currentView, onNavigate })
               aria-label={tab.label}
               aria-current={isActive ? "page" : undefined}
               onClick={() => handleTabClick(tab.id)}
-              className={`flex flex-col items-center gap-1 cursor-pointer rounded-2xl px-2 py-2 transition-all duration-200 ${
+              className={`flex flex-col items-center gap-1 cursor-pointer rounded-2xl px-2 py-2 transition-colors duration-150 ${
                 isActive ? "text-amber-500 bg-amber-500/10 shadow-sm" : "text-neutral-400 hover:text-white"
               }`}
             >
@@ -55,5 +55,4 @@ export const MobileNav: React.FC<MobileNavProps> = ({ currentView, onNavigate })
     </div>
   );
 };
-
 

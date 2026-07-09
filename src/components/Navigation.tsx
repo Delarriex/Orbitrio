@@ -68,11 +68,11 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
 
   return (
     <>
-      <nav role="navigation" aria-label="Main navigation" className="fixed top-0 left-0 right-0 w-full h-16 sm:h-20 bg-[#07090E]/85 backdrop-blur-xl border-b border-orbit-border/80 z-50 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
+      <nav role="navigation" aria-label="Main navigation" className="fixed top-0 left-0 right-0 w-full h-16 sm:h-20 bg-[#07090E]/95 backdrop-blur-md sm:bg-[#07090E]/85 sm:backdrop-blur-xl border-b border-orbit-border/80 z-50 shadow-[0_10px_40px_rgba(0,0,0,0.35)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-6 lg:py-4 flex items-center justify-between">
-          
+
           {/* Logo Brand Title (Upper Hemisphere Orange-Gold, Bottom Metallic White) */}
-          <div 
+          <div
             onClick={() => onNavigate(user.isLoggedIn ? "dashboard" : "home")}
             className="flex items-center gap-3 cursor-pointer group"
           >
@@ -92,29 +92,29 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
                   <stop offset="100%" stopColor="#A3AABF" />
                 </linearGradient>
               </defs>
-              
+
               {/* Top-left Orange Crescent loop */}
-              <path 
-                d="M 18,50 A 30,30 0 0,1 78,28 L 71,35 A 20,20 0 0,0 26,50 Z" 
-                fill="url(#navGoldGrad)" 
+              <path
+                d="M 18,50 A 30,30 0 0,1 78,28 L 71,35 A 20,20 0 0,0 26,50 Z"
+                fill="url(#navGoldGrad)"
               />
-              
+
               {/* Diagonal premium sweeping logo slash */}
-              <path 
-                d="M 18,50 C 23,48 45,38 78,28 C 65,37 40,45 18,50" 
-                fill="url(#navGoldGrad)" 
+              <path
+                d="M 18,50 C 23,48 45,38 78,28 C 65,37 40,45 18,50"
+                fill="url(#navGoldGrad)"
               />
 
               {/* Bottom-right Silver/White Crescent loop */}
-              <path 
-                d="M 23,55 A 30,30 0 0,0 82,50 A 30,30 0 0,0 78,28 L 71,35 A 20,20 0 0,1 74,50 A 20,20 0 0,1 28,54 Z" 
-                fill="url(#navSilverGrad)" 
+              <path
+                d="M 23,55 A 30,30 0 0,0 82,50 A 30,30 0 0,0 78,28 L 71,35 A 20,20 0 0,1 74,50 A 20,20 0 0,1 28,54 Z"
+                fill="url(#navSilverGrad)"
               />
 
               {/* Top right orange brand accent satellite dot */}
               <circle cx="85" cy="22" r="5.5" fill="#F7931A" />
             </svg>
-            
+
             <div>
               <span className="font-brand font-bold tracking-[0.02em] text-lg sm:text-xl text-orbit-white block leading-none lowercase">
                 orbit<span className="text-orbit-accent">rio</span>
@@ -140,18 +140,17 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
                             if (el) el.scrollIntoView({ behavior: 'smooth' });
                             window.history.pushState(null, '', `/#${link.id}`);
                           } else {
-                            onNavigate("home#"+link.id);
+                            onNavigate("home#" + link.id);
                           }
                         } else {
-                           onNavigate(link.id);
+                          onNavigate(link.id);
                         }
                         setMobileMenuOpen(false);
                       }}
-                      className={`px-3.5 py-1.5 rounded-lg transition-all duration-200 cursor-pointer ${
-                        isLinkActive(link.id)
+                      className={`px-3.5 py-1.5 rounded-lg transition-all duration-200 cursor-pointer ${isLinkActive(link.id)
                           ? "text-orbit-accent bg-orbit-accent/10 font-bold shadow-inner shadow-orbit-accent/10"
                           : "hover:text-orbit-white hover:bg-white/5"
-                      }`}
+                        }`}
                     >
                       {link.label}
                     </button>
@@ -187,11 +186,10 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
                     <button
                       key={link.id}
                       onClick={() => handleAuthenticatedNav(link.id)}
-                      className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg transition-all duration-200 cursor-pointer ${
-                        isLinkActive(link.id)
+                      className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg transition-all duration-200 cursor-pointer ${isLinkActive(link.id)
                           ? "text-orbit-accent bg-orbit-accent/10 font-bold shadow-inner shadow-orbit-accent/10"
                           : "hover:text-orbit-white hover:bg-white/5"
-                      }`}
+                        }`}
                     >
                       {link.icon}
                       <span>{link.label}</span>
@@ -221,11 +219,10 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
                             <button
                               key={link.id}
                               onClick={() => handleAuthenticatedNav(link.id)}
-                              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-all ${
-                                isLinkActive(link.id)
+                              className={`flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-all ${isLinkActive(link.id)
                                   ? "text-orbit-accent bg-orbit-accent/10"
                                   : "text-orbit-gray-text hover:text-orbit-white hover:bg-white/5"
-                              }`}
+                                }`}
                             >
                               {link.icon}
                               <span>{link.label}</span>
@@ -247,7 +244,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
                       Admin
                     </button>
                   )}
-                  
+
                   <div className="flex flex-col text-right">
                     <span className="text-[10px] font-mono text-orbit-white font-bold leading-none">
                       UID: {getUID(user.email)}
@@ -270,7 +267,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
           </div>
 
           {/* Mobile Activator hamburger */}
-          <button 
+          <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="lg:hidden p-2 text-orbit-gray-text hover:text-orbit-white cursor-pointer"
           >
@@ -283,19 +280,19 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
       {/* Mobile drop-down drawer overlay */}
       <AnimatePresence>
         {mobileMenuOpen && (
-          <motion.div 
+          <motion.div
             initial={{ x: "100%" }}
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
-            transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="lg:hidden fixed inset-0 bg-[#07090E]/95 backdrop-blur-xl z-[100] overflow-y-auto px-5 py-5 flex flex-col pb-24 shadow-2xl border-l border-orbit-border/30"
+            transition={{ type: "tween", duration: 0.22, ease: "easeOut" }}
+            className="lg:hidden fixed inset-0 bg-[#07090E]/98 backdrop-blur-md z-[100] overflow-y-auto px-5 py-5 flex flex-col pb-24 shadow-2xl border-l border-orbit-border/30"
           >
-            
+
             <div className="flex flex-col space-y-6 min-h-full">
               {/* Mobile Header Bar inside overlay */}
               <div className="flex items-center justify-between border-b border-orbit-border/50 pb-4 shrink-0">
                 {/* Logo Brand Title */}
-                <div 
+                <div
                   onClick={() => { onNavigate(user.isLoggedIn ? "dashboard" : "home"); setMobileMenuOpen(false); }}
                   className="flex items-center gap-3 cursor-pointer group"
                 >
@@ -312,17 +309,17 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
                         <stop offset="100%" stopColor="#A3AABF" />
                       </linearGradient>
                     </defs>
-                    <path 
-                      d="M 18,50 A 30,30 0 0,1 78,28 L 71,35 A 20,20 0 0,0 26,50 Z" 
-                      fill="url(#navGoldGradMenu)" 
+                    <path
+                      d="M 18,50 A 30,30 0 0,1 78,28 L 71,35 A 20,20 0 0,0 26,50 Z"
+                      fill="url(#navGoldGradMenu)"
                     />
-                    <path 
-                      d="M 18,50 C 23,48 45,38 78,28 C 65,37 40,45 18,50" 
-                      fill="url(#navGoldGradMenu)" 
+                    <path
+                      d="M 18,50 C 23,48 45,38 78,28 C 65,37 40,45 18,50"
+                      fill="url(#navGoldGradMenu)"
                     />
-                    <path 
-                      d="M 23,55 A 30,30 0 0,0 82,50 A 30,30 0 0,0 78,28 L 71,35 A 20,20 0 0,1 74,50 A 20,20 0 0,1 28,54 Z" 
-                      fill="url(#navSilverGradMenu)" 
+                    <path
+                      d="M 23,55 A 30,30 0 0,0 82,50 A 30,30 0 0,0 78,28 L 71,35 A 20,20 0 0,1 74,50 A 20,20 0 0,1 28,54 Z"
+                      fill="url(#navSilverGradMenu)"
                     />
                     <circle cx="85" cy="22" r="5.5" fill="#F7931A" />
                   </svg>
@@ -336,7 +333,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
                   </div>
                 </div>
 
-                <button 
+                <button
                   onClick={() => setMobileMenuOpen(false)}
                   className="p-2 bg-orbit-card/50 rounded-xl border border-orbit-border/50 text-orbit-gray-text hover:text-orbit-white cursor-pointer focus:outline-none transition-colors"
                 >
@@ -344,7 +341,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
                 </button>
               </div>
 
-            {/* Dynamic Navigation Menu Items inside list */}
+              {/* Dynamic Navigation Menu Items inside list */}
               <div className="flex flex-col space-y-1 flex-1">
                 {!user.isLoggedIn ? (
                   // Guest Menu Items: Home, Markets, Earn, About, Contact
@@ -359,29 +356,28 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
                               if (el) el.scrollIntoView({ behavior: 'smooth' });
                               window.history.pushState(null, '', `/#${link.id}`);
                             } else {
-                              onNavigate("home#"+link.id);
+                              onNavigate("home#" + link.id);
                             }
                           } else {
-                             onNavigate(link.id);
+                            onNavigate(link.id);
                           }
                           setMobileMenuOpen(false);
                         }}
-                        className={`py-3.5 px-4 rounded-xl text-left text-sm font-medium transition-all flex items-center justify-between cursor-pointer ${
-                          isLinkActive(link.id)
+                        className={`py-3.5 px-4 rounded-xl text-left text-sm font-medium transition-all flex items-center justify-between cursor-pointer ${isLinkActive(link.id)
                             ? "text-orbit-accent bg-orbit-accent/10 border-l-[3px] border-orbit-accent font-bold pl-4 shadow-inner"
                             : "text-orbit-gray-text hover:text-orbit-white hover:bg-orbit-card/40"
-                        }`}
+                          }`}
                       >
                         <span>{link.label}</span>
                       </button>
                     ))}
-                    
+
                     {/* Spacer to push auth buttons down */}
                     <div className="mt-auto pt-6 pb-2" />
-                    
+
                     {/* Divider */}
                     <div className="w-full h-[1px] bg-neutral-900/60 mb-6" />
-                    
+
                     {/* Auth Buttons */}
                     <div className="grid grid-cols-2 gap-4">
                       <button
@@ -411,17 +407,16 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
                 ) : (
                   // Authenticated Menu Items: Dashboard, Trade, Copy Trading, Assets, Deposit / Withdraw, Earn
                   <>
-                    <div className="space-y-1 overflow-y-auto pr-2 pb-6 max-h-[60vh] scrollbar-thin scrollbar-thumb-orbit-border/50 scrollbar-track-transparent">
+                    <div className="space-y-1 pr-2 pb-6">
                       <div className="mb-2 text-[10px] uppercase tracking-[0.3em] text-orbit-gray-text/80">Primary</div>
                       {primaryLinks.map((link) => (
                         <button
                           key={link.id}
                           onClick={() => handleAuthenticatedNav(link.id)}
-                          className={`w-full py-3.5 px-4 rounded-xl text-left text-sm font-medium transition-all flex items-center gap-3.5 cursor-pointer ${
-                            isLinkActive(link.id)
+                          className={`w-full py-3.5 px-4 rounded-xl text-left text-sm font-medium transition-all flex items-center gap-3.5 cursor-pointer ${isLinkActive(link.id)
                               ? "text-orbit-accent bg-orbit-accent/10 border-l-[3px] border-orbit-accent font-bold pl-3.5 shadow-inner"
                               : "text-orbit-gray-text hover:text-orbit-white hover:bg-orbit-card/40"
-                          }`}
+                            }`}
                         >
                           <span className={isLinkActive(link.id) ? "text-orbit-accent" : "text-orbit-gray-text"}>
                             {link.icon}
@@ -435,11 +430,10 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
                         <button
                           key={link.id}
                           onClick={() => handleAuthenticatedNav(link.id)}
-                          className={`w-full py-3.5 px-4 rounded-xl text-left text-sm font-medium transition-all flex items-center gap-3.5 cursor-pointer ${
-                            isLinkActive(link.id)
+                          className={`w-full py-3.5 px-4 rounded-xl text-left text-sm font-medium transition-all flex items-center gap-3.5 cursor-pointer ${isLinkActive(link.id)
                               ? "text-orbit-accent bg-orbit-accent/10 border-l-[3px] border-orbit-accent font-bold pl-3.5 shadow-inner"
                               : "text-orbit-gray-text hover:text-orbit-white hover:bg-orbit-card/40"
-                          }`}
+                            }`}
                         >
                           <span className={isLinkActive(link.id) ? "text-orbit-accent" : "text-orbit-gray-text"}>
                             {link.icon}
@@ -448,7 +442,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
                         </button>
                       ))}
                     </div>
-                    
+
                     {/* Authenticated User Profile & Sign Out - Integrated Flow */}
                     <div className="mt-auto pt-2">
                       <div className="w-full h-[1px] bg-neutral-900/60 mb-4" />
@@ -462,7 +456,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
                               {user.username || user.name || user.email}
                             </span>
                           </div>
-                          
+
                           {user.role === "admin" && (
                             <button
                               onClick={() => { onNavigate("dashboard-admin"); setMobileMenuOpen(false); }}
@@ -472,7 +466,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
                             </button>
                           )}
                         </div>
-                        
+
                         <button
                           type="button"
                           onClick={() => { logout(); onNavigate("home"); setMobileMenuOpen(false); }}
@@ -492,7 +486,4 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
     </>
   );
 };
-
-
-
 

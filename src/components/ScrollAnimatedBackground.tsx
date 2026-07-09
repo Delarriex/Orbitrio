@@ -1,14 +1,40 @@
-import React from "react";
-import { motion, useScroll, useTransform } from "motion/react";
+import React, { useEffect, useState } from "react";
+import { motion, useReducedMotion, useScroll, useTransform } from "motion/react";
 
 export const ScrollAnimatedBackground: React.FC = () => {
+  const prefersReducedMotion = useReducedMotion();
+  const [isCompactDevice, setIsCompactDevice] = useState(false);
   const { scrollY } = useScroll();
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 767px)");
+    const updateDeviceMode = () => setIsCompactDevice(mediaQuery.matches);
+    updateDeviceMode();
+    mediaQuery.addEventListener("change", updateDeviceMode);
+    return () => mediaQuery.removeEventListener("change", updateDeviceMode);
+  }, []);
 
   // Create smooth parallax translation rates to give depth to background assets
   const yFast = useTransform(scrollY, [0, 4000], [0, -400]);
   const yMedium = useTransform(scrollY, [0, 4000], [0, -200]);
   const ySlow = useTransform(scrollY, [0, 4000], [0, -100]);
 
+  if (isCompactDevice || prefersReducedMotion) {
+    return (
+      <div className="absolute inset-0 w-full pointer-events-none select-none z-0 overflow-hidden">
+        <div className="absolute inset-0 bg-[#04060b]" />
+        <div className="absolute -top-24 -left-24 h-80 w-80 rounded-full bg-orbit-accent/[0.07] blur-[70px]" />
+        <div className="absolute top-1/3 -right-24 h-72 w-72 rounded-full bg-blue-500/[0.05] blur-[65px]" />
+        <div
+          className="absolute inset-0 opacity-[0.025]"
+          style={{
+            backgroundImage: "linear-gradient(rgba(255,255,255,0.14) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.14) 1px, transparent 1px)",
+            backgroundSize: "42px 42px"
+          }}
+        />
+      </div>
+    );
+  }
   // Financial streams mock data for data waterfalls
   const dataColumns = [
     ["BTC 94,820", "▲ 4.82%", "USDT TRC20", "TXN_7386", "ETH 3,450", "▲ 2.11%", "SOL 184.2", "SECURE", "orbitrio"],
@@ -303,3 +329,4 @@ export const ScrollAnimatedBackground: React.FC = () => {
     </div>
   );
 };
+

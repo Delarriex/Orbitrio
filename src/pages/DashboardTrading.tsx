@@ -30,7 +30,7 @@ export const DashboardTrading: React.FC<DashboardTradingProps> = ({ initialAsset
 
   useEffect(() => {
     setPriceInput(activeAsset.price.toString());
-  }, [selectedAssetSymbol, activeAsset.price]);
+  }, [selectedAssetSymbol]); // Intentional: Only reset price input when switching assets, not on every market tick
 
   const handleOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

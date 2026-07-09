@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { useOrbit } from "../context/OrbitContext";
 import { TrendingUp, Award, Layers, Sparkles, PieChart, Info, ShieldAlert, Briefcase, Target, Users, Wallet } from "lucide-react";
 
@@ -9,41 +9,64 @@ interface DashboardPortfolioProps {
 export const DashboardPortfolio: React.FC<DashboardPortfolioProps> = ({ onNavigate }) => {
   const { user } = useOrbit();
 
-  const totalHoldingValue = user.portfolioValue;
-  const activeCopyTrades = user.copyTrades.filter(trade => trade.status === "Running");
-  const completedCopyTrades = user.copyTrades.filter(trade => trade.status === "Completed");
+  const stats = useMemo(() => {
+    const totalHoldingValue = user.portfolioValue;
+    const activeCopyTrades = user.copyTrades.filter(trade => trade.status === "Running");
+    const completedCopyTrades = user.copyTrades.filter(trade => trade.status === "Completed");
 
+    // Let's compute individual asset percentages
+    const preProcessedPortfolio = user.portfolio.map(asset => {
+      const totalAssetMarketVal = asset.amount * asset.currentPrice;
+      const totalCostValue = asset.amount * asset.avgBuyPrice;
+      const profitLossVal = +(totalAssetMarketVal - totalCostValue).toFixed(2);
+      const profitLossPercent = totalCostValue > 0 ? +((profitLossVal / totalCostValue) * 100).toFixed(2) : 0;
+      const weightPercent = totalHoldingValue > 0 ? +((totalAssetMarketVal / totalHoldingValue) * 100).toFixed(1) : 0;
 
-  // Let's compute individual asset percentages
-  const preProcessedPortfolio = user.portfolio.map(asset => {
-    const totalAssetMarketVal = asset.amount * asset.currentPrice;
-    const totalCostValue = asset.amount * asset.avgBuyPrice;
-    const profitLossVal = +(totalAssetMarketVal - totalCostValue).toFixed(2);
-    const profitLossPercent = totalCostValue > 0 ? +((profitLossVal / totalCostValue) * 100).toFixed(2) : 0;
-    const weightPercent = totalHoldingValue > 0 ? +((totalAssetMarketVal / totalHoldingValue) * 100).toFixed(1) : 0;
+      return {
+        ...asset,
+        marketValue: totalAssetMarketVal,
+        costBasis: totalCostValue,
+        profitLoss: profitLossVal,
+        profitLossPct: profitLossPercent,
+        weight: weightPercent
+      };
+    });
 
+    // Calculate cumulative stats
+    const aggregateCost = preProcessedPortfolio.reduce((acc, cur) => acc + cur.costBasis, 0);
+    const aggregatePnL = +(totalHoldingValue - aggregateCost).toFixed(2);
+    const aggregatePnLPct = aggregateCost > 0 ? +((aggregatePnL / aggregateCost) * 100).toFixed(2) : 0;
+
+    // Fix Total Equity to include user's actual balance and active investments
+    const runningInvestments = user.activeInvestments.filter(item => item.status === "Running" || item.status === "active");
+    const activePlanCapital = runningInvestments.reduce((acc, current) => acc + current.amount, 0);
+    const activePlanProfits = runningInvestments.reduce((acc, current) => acc + current.accumulatedProfit, 0);
+    const activeCopyCapital = activeCopyTrades.reduce((acc, current) => acc + current.amountInvested, 0);
+    const activeCopyExpectedProfit = activeCopyTrades.reduce((acc, current) => acc + current.expectedProfit, 0);
+    const totalEquity = +(user.balance + totalHoldingValue + activePlanCapital + activePlanProfits + activeCopyCapital + activeCopyExpectedProfit).toFixed(2);
+    
     return {
-      ...asset,
-      marketValue: totalAssetMarketVal,
-      costBasis: totalCostValue,
-      profitLoss: profitLossVal,
-      profitLossPct: profitLossPercent,
-      weight: weightPercent
+      totalHoldingValue,
+      activeCopyTrades,
+      completedCopyTrades,
+      preProcessedPortfolio,
+      aggregateCost,
+      aggregatePnL,
+      aggregatePnLPct,
+      totalEquity
     };
-  });
+  }, [user]);
 
-  // Calculate cumulative stats
-  const aggregateCost = preProcessedPortfolio.reduce((acc, cur) => acc + cur.costBasis, 0);
-  const aggregatePnL = +(totalHoldingValue - aggregateCost).toFixed(2);
-  const aggregatePnLPct = aggregateCost > 0 ? +((aggregatePnL / aggregateCost) * 100).toFixed(2) : 0;
-
-  // Fix Total Equity to include user's actual balance and active investments
-  const runningInvestments = user.activeInvestments.filter(item => item.status === "Running" || item.status === "active");
-  const activePlanCapital = runningInvestments.reduce((acc, current) => acc + current.amount, 0);
-  const activePlanProfits = runningInvestments.reduce((acc, current) => acc + current.accumulatedProfit, 0);
-  const activeCopyCapital = activeCopyTrades.reduce((acc, current) => acc + current.amountInvested, 0);
-  const activeCopyExpectedProfit = activeCopyTrades.reduce((acc, current) => acc + current.expectedProfit, 0);
-  const totalEquity = +(user.balance + totalHoldingValue + activePlanCapital + activePlanProfits + activeCopyCapital + activeCopyExpectedProfit).toFixed(2);
+  const {
+    totalHoldingValue,
+    activeCopyTrades,
+    completedCopyTrades,
+    preProcessedPortfolio,
+    aggregateCost,
+    aggregatePnL,
+    aggregatePnLPct,
+    totalEquity
+  } = stats;
 
   return (
     <div className="space-y-4 pb-4 sm:pb-6 font-sans">

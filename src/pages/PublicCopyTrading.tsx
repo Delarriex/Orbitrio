@@ -165,7 +165,7 @@ export const PublicCopyTrading: React.FC<PublicCopyTradingProps> = ({ onNavigate
                   </div>
 
                   {/* Core ROI stats grid */}
-                  <div className="grid grid-cols-4 gap-2 my-6 text-center">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-2 my-6 text-center">
                     <div>
                       <span className="block text-[9px] text-orbit-gray-text uppercase font-subheading select-none">Target ROI</span>
                       <span className="text-sm font-bold font-mono text-orbit-green">{typeof trader.roi === 'number' ? trader.roi.toLocaleString() : trader.roi}%</span>

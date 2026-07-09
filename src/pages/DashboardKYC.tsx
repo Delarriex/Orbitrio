@@ -1,7 +1,7 @@
 import React, { useState } from "react";
+import toast from "react-hot-toast";
 import { useOrbit } from "../context/OrbitContext";
-import { ref, uploadBytes, getDownloadURL, storage } from "../lib/firebase";
-import { Shield, Upload, CheckCircle2, AlertTriangle, Clock, FileText, XCircle } from "lucide-react";
+import { Shield, CheckCircle2, AlertTriangle, Clock, XCircle, Loader2, Info as InfoIcon } from "lucide-react";
 import { KYC_DOCUMENT_TYPES } from "../services";
 import type { KycSubmission } from "../types";
 
@@ -25,13 +25,7 @@ const formatDate = (value?: string) => {
   return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(parsed));
 };
 
-const uploadKycFile = async (email: string | null, label: string, file: File | null) => {
-  if (!file) return "";
-  const safeEmail = (email || "guest").replace(/[^a-z0-9@._-]/gi, "_");
-  const storageRef = ref(storage, `kyc/${safeEmail}_${Date.now()}_${label}_${file.name}`);
-  await uploadBytes(storageRef, file);
-  return getDownloadURL(storageRef);
-};
+
 
 const StatusIcon: React.FC<{ status: KycSubmission["status"] }> = ({ status }) => {
   if (status === "approved") return <CheckCircle2 size={14} />;
@@ -49,9 +43,6 @@ export const DashboardKYC: React.FC = () => {
   const [address, setAddress] = useState(currentKyc.status === "rejected" ? currentKyc.address || "" : "");
   const [city, setCity] = useState(currentKyc.status === "rejected" ? currentKyc.city || "" : "");
   const [country, setCountry] = useState(currentKyc.status === "rejected" ? currentKyc.country || "" : "");
-  const [frontFile, setFrontFile] = useState<File | null>(null);
-  const [backFile, setBackFile] = useState<File | null>(null);
-  const [proofFile, setProofFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -61,19 +52,8 @@ export const DashboardKYC: React.FC = () => {
     event.preventDefault();
     setSubmitError(null);
 
-    if (!frontFile) {
-      setSubmitError("Upload the front page or primary image of your selected identity document.");
-      return;
-    }
-
     setIsSubmitting(true);
     try {
-      const [frontImage, backImage, proofOfAddressImage] = await Promise.all([
-        uploadKycFile(user.email, "front", frontFile),
-        uploadKycFile(user.email, "back", backFile),
-        uploadKycFile(user.email, "proof_of_address", proofFile)
-      ]);
-
       await submitKyc({
         idType: documentType,
         documentType,
@@ -82,14 +62,16 @@ export const DashboardKYC: React.FC = () => {
         address,
         city,
         country,
-        frontImage,
-        backImage,
-        proofOfAddressImage: proofOfAddressImage || undefined,
+        frontImage: "",
+        backImage: "",
+        proofOfAddressImage: "",
         status: "pending"
       });
+      toast.success("Verification submitted successfully");
     } catch (err) {
       console.error("Error submitting KYC:", err);
       setSubmitError("Failed to submit verification. Please check your connection and try again.");
+      toast.error("Failed to submit verification");
     } finally {
       setIsSubmitting(false);
     }
@@ -155,10 +137,14 @@ export const DashboardKYC: React.FC = () => {
               <input required type="text" placeholder="Country" value={country} onChange={(event) => setCountry(event.target.value)} className="bg-orbit-bg border border-orbit-border rounded-lg p-2.5 text-xs text-orbit-white" />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <UploadTile label="Primary document image" file={frontFile} required onFile={setFrontFile} />
-              <UploadTile label="Back image" file={backFile} onFile={setBackFile} />
-              <UploadTile label="Proof of address" file={proofFile} onFile={setProofFile} />
+            <div className="bg-orbit-accent/10 border border-orbit-accent/30 rounded-xl p-4 flex gap-3 items-start">
+              <InfoIcon className="text-orbit-accent shrink-0 mt-0.5" size={18} />
+              <div className="text-sm">
+                <h4 className="font-bold text-orbit-accent mb-1">Verification Notice</h4>
+                <p className="text-orbit-white/80 leading-relaxed text-xs">
+                  Our Verification Team will review your information after submission. If additional documentation is required, we'll contact you directly via your registered email address.
+                </p>
+              </div>
             </div>
 
             {submitError && <div className="p-3 bg-red-500/10 border border-red-500/50 rounded-lg text-red-500 text-sm">{submitError}</div>}
@@ -180,11 +166,3 @@ const Info: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   </div>
 );
 
-const UploadTile: React.FC<{ label: string; file: File | null; required?: boolean; onFile: (file: File | null) => void }> = ({ label, file, required, onFile }) => (
-  <label className="border-2 border-dashed border-orbit-border rounded-lg p-5 text-center text-orbit-gray-text hover:border-orbit-accent cursor-pointer block min-h-[132px] flex flex-col items-center justify-center">
-    {file ? <FileText className="mx-auto mb-2 text-orbit-accent" /> : <Upload className="mx-auto mb-2" />}
-    <p className="text-xs font-bold text-orbit-white">{file ? file.name : label}</p>
-    <p className="text-[10px] mt-1">{required ? "Required" : "Optional"}</p>
-    <input type="file" accept="image/*,.pdf" required={required} className="hidden" onChange={(event) => onFile(event.target.files?.[0] || null)} />
-  </label>
-);

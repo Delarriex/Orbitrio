@@ -29,6 +29,7 @@ export const AdminKycTab: React.FC = () => {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<"all" | KycStatus>("all");
+  const [reviewingEmail, setReviewingEmail] = useState<string | null>(null);
 
   const rows = useMemo<KycRow[]>(() => adminUsers.map(user => ({
     ...user,
@@ -63,16 +64,30 @@ export const AdminKycTab: React.FC = () => {
     setTimeout(() => setFeedback(null), 3000);
   };
 
-  const approve = (user: KycRow) => {
+  const approve = async (user: KycRow) => {
     const note = adminNotes[user.email] || "Verified by admin.";
-    adminKycReview(user.email, "approved", note);
-    showFeedback(`KYC approved for ${user.email}`);
+    setReviewingEmail(user.email);
+    try {
+      await adminKycReview(user.email, "approved", note);
+      showFeedback(`KYC approved for ${user.email}`);
+    } catch {
+      showFeedback(`Unable to approve KYC for ${user.email}`);
+    } finally {
+      setReviewingEmail(null);
+    }
   };
 
-  const reject = (user: KycRow) => {
+  const reject = async (user: KycRow) => {
     const reason = adminNotes[user.email] || "Documents not sufficient.";
-    adminKycReview(user.email, "rejected", reason);
-    showFeedback(`KYC rejected for ${user.email}`);
+    setReviewingEmail(user.email);
+    try {
+      await adminKycReview(user.email, "rejected", reason);
+      showFeedback(`KYC rejected for ${user.email}`);
+    } catch {
+      showFeedback(`Unable to reject KYC for ${user.email}`);
+    } finally {
+      setReviewingEmail(null);
+    }
   };
 
   return (
@@ -131,6 +146,7 @@ export const AdminKycTab: React.FC = () => {
               {filtered.map(user => {
                 const kyc = user.kyc;
                 const isExpanded = expandedUser === user.email;
+                const isReviewing = reviewingEmail === user.email;
                 return (
                   <React.Fragment key={user.email}>
                     <tr className="hover:bg-orbit-bg/40 transition-colors align-top">
@@ -161,10 +177,10 @@ export const AdminKycTab: React.FC = () => {
                       <td className="px-5 py-4">
                         {kyc?.status === "pending" ? (
                           <div className="flex justify-end gap-2">
-                            <button onClick={() => approve(user)} className="flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-500 text-white font-bold text-[10px] uppercase rounded-lg hover:bg-emerald-600 cursor-pointer">
+                            <button onClick={() => approve(user)} disabled={isReviewing} className="flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-500 text-white font-bold text-[10px] uppercase rounded-lg hover:bg-emerald-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
                               <Check size={12} /> Approve
                             </button>
-                            <button onClick={() => reject(user)} className="flex items-center justify-center gap-1.5 px-3 py-2 bg-red-500 text-white font-bold text-[10px] uppercase rounded-lg hover:bg-red-600 cursor-pointer">
+                            <button onClick={() => reject(user)} disabled={isReviewing} className="flex items-center justify-center gap-1.5 px-3 py-2 bg-red-500 text-white font-bold text-[10px] uppercase rounded-lg hover:bg-red-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
                               <X size={12} /> Reject
                             </button>
                           </div>

@@ -197,7 +197,7 @@ export const PublicPlans: React.FC<PublicPlansProps> = ({ onNavigate }) => {
               <label className="text-[10px] text-orbit-gray-text uppercase font-subheading tracking-wider">
                 Select Desired Plan Tier
               </label>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                 {enabledPlans.map((p) => (
                   <button
                     key={p.id}

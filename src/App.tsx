@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { OrbitProvider, useOrbit } from "./context/OrbitContext";
 import { Navigation } from "./components/Navigation";
 import { MobileNav } from "./components/MobileNav";
@@ -171,7 +171,7 @@ function MainAppContent() {
     };
   }, [user.isLoggedIn, isAdminUser, isAuthenticatedUser]);
 
-  const handleNavigate = (view: string, assetSymbol?: string, subTab?: "deposit" | "withdraw" | "ledger" | "support") => {
+  const handleNavigate = useCallback((view: string, assetSymbol?: string, subTab?: "deposit" | "withdraw" | "ledger" | "support") => {
     if (isAdminUser) {
       if (window.location.pathname !== "/admin") {
         window.history.pushState(null, "", "/admin");
@@ -232,7 +232,7 @@ function MainAppContent() {
     }
 
     setCurrentView(view);
-  };
+  }, [isAdminUser, isAuthenticatedUser, user.isLoggedIn, user.role]);
 
   const renderView = () => {
     if (maintenanceMode) {

@@ -111,7 +111,7 @@ export const PublicMarkets: React.FC<PublicMarketsProps> = ({ onNavigate }) => {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+            <table className="w-full min-w-[700px] text-left border-collapse">
               <thead>
                 <tr className="border-b border-orbit-border text-[10px] uppercase font-subheading tracking-wider text-orbit-gray-text bg-orbit-darkcard/40">
                   <th 

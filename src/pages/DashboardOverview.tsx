@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useOrbit } from "../context/OrbitContext";
 import { 
   DollarSign, 
@@ -70,22 +70,54 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   };
 
   // Compute stats
-  const availableCash = user.balance;
-  const portfolioAssetsValue = user.portfolioValue; // Auto-updates via context market loops
-  const runningInvestments = user.activeInvestments.filter(item => item.status === "Running" || item.status === "active");
-  const runningCopyTrades = user.copyTrades.filter(item => item.status === "Running");
-  const completedCopyTrades = user.copyTrades.filter(item => item.status === "Completed");
-  const activePlanCapital = runningInvestments.reduce((acc, current) => acc + current.amount, 0);
-  const activePlanProfits = runningInvestments.reduce((acc, current) => acc + current.accumulatedProfit, 0);
-  const activeCopyCapital = runningCopyTrades.reduce((acc, current) => acc + current.amountInvested, 0);
-  const activeCopyExpectedProfit = runningCopyTrades.reduce((acc, current) => acc + current.expectedProfit, 0);
-  
-  const aggregateNetWorth = +(availableCash + portfolioAssetsValue + activePlanCapital + activePlanProfits + activeCopyCapital + activeCopyExpectedProfit).toFixed(2);
-  
-  // Calculate P/L matching average purchase prices
-  const totalCostBasis = user.portfolio.reduce((acc, cur) => acc + (cur.amount * cur.avgBuyPrice), 0);
-  const netPnL = totalCostBasis > 0 ? +(portfolioAssetsValue - totalCostBasis).toFixed(2) : 0;
-  const netPnLPercent = totalCostBasis > 0 ? +((netPnL / totalCostBasis) * 100).toFixed(2) : 0;
+  const stats = useMemo(() => {
+    const availableCash = user.balance;
+    const portfolioAssetsValue = user.portfolioValue; // Auto-updates via context market loops
+    const runningInvestments = user.activeInvestments.filter(item => item.status === "Running" || item.status === "active");
+    const runningCopyTrades = user.copyTrades.filter(item => item.status === "Running");
+    const completedCopyTrades = user.copyTrades.filter(item => item.status === "Completed");
+    const activePlanCapital = runningInvestments.reduce((acc, current) => acc + current.amount, 0);
+    const activePlanProfits = runningInvestments.reduce((acc, current) => acc + current.accumulatedProfit, 0);
+    const activeCopyCapital = runningCopyTrades.reduce((acc, current) => acc + current.amountInvested, 0);
+    const activeCopyExpectedProfit = runningCopyTrades.reduce((acc, current) => acc + current.expectedProfit, 0);
+    
+    const aggregateNetWorth = +(availableCash + portfolioAssetsValue + activePlanCapital + activePlanProfits + activeCopyCapital + activeCopyExpectedProfit).toFixed(2);
+    
+    // Calculate P/L matching average purchase prices
+    const totalCostBasis = user.portfolio.reduce((acc, cur) => acc + (cur.amount * cur.avgBuyPrice), 0);
+    const netPnL = totalCostBasis > 0 ? +(portfolioAssetsValue - totalCostBasis).toFixed(2) : 0;
+    const netPnLPercent = totalCostBasis > 0 ? +((netPnL / totalCostBasis) * 100).toFixed(2) : 0;
+
+    return {
+      availableCash,
+      portfolioAssetsValue,
+      runningInvestments,
+      runningCopyTrades,
+      completedCopyTrades,
+      activePlanCapital,
+      activePlanProfits,
+      activeCopyCapital,
+      activeCopyExpectedProfit,
+      aggregateNetWorth,
+      netPnL,
+      netPnLPercent
+    };
+  }, [user]);
+
+  const {
+    availableCash,
+    portfolioAssetsValue,
+    runningInvestments,
+    runningCopyTrades,
+    completedCopyTrades,
+    activePlanCapital,
+    activePlanProfits,
+    activeCopyCapital,
+    activeCopyExpectedProfit,
+    aggregateNetWorth,
+    netPnL,
+    netPnLPercent
+  } = stats;
 
   const containerVariants = {
     hidden: { opacity: 0 },

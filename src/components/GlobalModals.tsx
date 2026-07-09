@@ -181,7 +181,7 @@ export function GlobalModals({
       {depositModalOpen && (() => {
         return (
           <div className="fixed inset-0 bg-[#000000]/80 backdrop-blur-sm overflow-y-auto p-4 z-50 flex items-center justify-center">
-            <div className="bg-orbit-card border border-orbit-border rounded-2xl w-full max-w-md p-6 relative shadow-2xl space-y-5 max-h-[calc(100vh-2rem)] overflow-y-auto my-auto scrollbar-none">
+            <div className="bg-orbit-card border border-orbit-border rounded-2xl w-full max-w-md p-6 relative shadow-2xl space-y-5 max-h-[85dvh] overflow-y-auto my-auto scrollbar-none">
               <button 
                 onClick={() => { setDepositModalOpen(false); setModalFeedback(null); }}
                 className="absolute top-4 right-4 text-orbit-gray-text hover:text-orbit-white cursor-pointer"
@@ -371,7 +371,7 @@ export function GlobalModals({
       {/* QUICK WITHDRAWAL MODAL OUTLAY */}
       {withdrawModalOpen && (
         <div className="fixed inset-0 bg-[#000000]/80 backdrop-blur-sm overflow-y-auto p-4 z-50 flex items-center justify-center">
-          <div className="bg-orbit-card border border-orbit-border rounded-2xl w-full max-w-md p-6 relative shadow-2xl space-y-5 max-h-[calc(100vh-2rem)] overflow-y-auto my-auto">
+          <div className="bg-orbit-card border border-orbit-border rounded-2xl w-full max-w-md p-6 relative shadow-2xl space-y-5 max-h-[85dvh] overflow-y-auto my-auto">
             <button 
               onClick={() => { setWithdrawModalOpen(false); setModalFeedback(null); }}
               className="absolute top-4 right-4 text-orbit-gray-text hover:text-orbit-white cursor-pointer"
