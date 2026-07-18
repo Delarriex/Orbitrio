@@ -361,7 +361,7 @@ export const PublicHome: React.FC<{ onNavigate: (view: string) => void }> = ({ o
       <AboutUs />
       <GetStarted />
       
-      <Footer />
+      <Footer onNavigate={onNavigate} />
     </div>
   );
 };

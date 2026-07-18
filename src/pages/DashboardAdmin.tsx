@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useOrbit } from "../context/OrbitContext";
+import { useCurrentUser } from "../hooks/useCurrentUser";
 import { 
   Users, Layers, ArrowDownLeft, ArrowUpRight, Volume2, ShieldAlert,
   MessageSquare, UserCheck, PenTool, CreditCard, Award, Gift, ReceiptText, Settings, Wallet
@@ -27,36 +28,21 @@ const AdminSettingsTab = lazy(() => import("../components/admin/tabs/AdminSettin
 const AdminWalletFeedbackTab = lazy(() => import("../components/admin/tabs/AdminWalletFeedbackTab").then(m => ({ default: m.AdminWalletFeedbackTab })));
 
 export const DashboardAdmin: React.FC = () => {
-  const { user: currentUser, adminUsers, walletFeedback } = useOrbit();
+  const { walletFeedback, adminTransactions, supportTickets } = useOrbit();
 
-  // Role-based admin authentication
-  const isAdminAuthenticated = currentUser.isLoggedIn && (currentUser.role === "admin" || (currentUser as any).isAdmin === true);
+  // Role-based admin authentication — backed by Clerk + Supabase.
+  const { isLoggedIn: userIsLoggedIn, isAdmin: userIsAdmin } = useCurrentUser();
+  const isAdminAuthenticated = userIsLoggedIn && userIsAdmin;
 
   const [activeTab, setActiveTab] = useState<
     "users" | "investments" | "transactions" | "deposits" | "withdrawals" | "bulletins" | "support" | "security" | "content" | "settings" | "traders" | "airdrops" | "kyc" | "wallets" | "wallet-feedback"
   >("users");
-  // Compute stats for sidebar badges
-  const allDeposits: any[] = [];
-  const allWithdrawals: any[] = [];
-  const allTickets: any[] = [];
 
-  currentUser.transactions.forEach(t => {
-    if (t.type === "deposit") allDeposits.push(t);
-    else if (t.type === "withdrawal") allWithdrawals.push(t);
-  });
-  currentUser.tickets.forEach(tk => allTickets.push(tk));
-
-  adminUsers.forEach(sim => {
-    sim.transactions.forEach(t => {
-      if (t.type === "deposit") allDeposits.push(t);
-      else if (t.type === "withdrawal") allWithdrawals.push(t);
-    });
-    sim.tickets.forEach(tk => allTickets.push(tk));
-  });
-
-  const pendingDeposits = allDeposits.filter(t => t.status === "pending").length;
-  const pendingPayoutCount = allWithdrawals.filter(w => w.status === "pending").length;
-  const openTickets = allTickets.filter(t => t.status === "open").length;
+  // Stats for sidebar badges — adminTransactions/supportTickets already
+  // cover every user when the caller is an admin.
+  const pendingDeposits = adminTransactions.filter(t => t.type === "deposit" && t.status === "pending").length;
+  const pendingPayoutCount = adminTransactions.filter(t => t.type === "withdrawal" && t.status === "pending").length;
+  const openTickets = supportTickets.filter(t => t.status === "open").length;
   const newWalletFeedbackCount = (walletFeedback || []).filter(fb => fb.status === "new").length;
 
   if (!isAdminAuthenticated) {
@@ -139,7 +125,3 @@ export const DashboardAdmin: React.FC = () => {
     </AdminLayout>
   );
 };
-
-
-
-

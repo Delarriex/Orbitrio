@@ -1,11 +1,8 @@
 import { DEFAULT_CURRENCY, FALLBACK_GUEST_EMAIL } from "../constants";
 import { INVESTMENT_STATUSES, TRANSACTION_STATUSES } from "../constants/statuses";
-import { collection, db, deleteDoc, doc, onSnapshot, setDoc, updateDoc } from "../lib/firebase";
 import type { ActiveInvestment, InvestmentPlan, Transaction } from "../types";
 import { enrichTransaction } from "./transactionsService";
 import { roundMoney, timestampId, todayIsoDate } from "./utils";
-
-export const INVESTMENT_PLANS_COLLECTION = "investmentPlans";
 
 export const DEFAULT_INVESTMENT_PLANS: InvestmentPlan[] = [
   {
@@ -176,7 +173,7 @@ export const normalizeActiveInvestment = (
     expectedProfit,
     totalReturn,
     remainingDays: completed ? 0 : getInvestmentRemainingDays(investment, now),
-    accumulatedProfit: completed ? expectedProfit : getInvestmentAccruedProfit({ ...investment, expectedProfit }, now),
+    accumulatedProfit: completed ? (expectedProfit ?? 0) : getInvestmentAccruedProfit({ ...investment, expectedProfit }, now),
     status: completed ? "Completed" : "Running",
     progress: completed ? 100 : progress,
     dailyRoiPercent: investment.dailyRoiPercent ?? (plan?.durationDays ? +(roiPercent / plan.durationDays).toFixed(3) : undefined)
@@ -216,7 +213,7 @@ export const settleMaturedInvestments = (
 
     return {
       ...investment,
-      accumulatedProfit: investment.expectedProfit,
+      accumulatedProfit: investment.expectedProfit ?? 0,
       completedAt: new Date(now).toISOString(),
       payoutTransactionId: payoutTx.id,
       remainingDays: 0,
@@ -232,53 +229,6 @@ export const settleMaturedInvestments = (
     settledCount: payoutTransactions.length
   };
 };
-export const watchInvestmentPlans = (
-  onPlans: (plans: InvestmentPlan[]) => void,
-  onError: (error: unknown) => void
-) => {
-  const plansCol = collection(db, INVESTMENT_PLANS_COLLECTION);
-  return onSnapshot(plansCol, (snapshot) => {
-    if (snapshot.empty) {
-      onPlans([]);
-      return;
-    }
-
-    const loaded: InvestmentPlan[] = [];
-    snapshot.forEach((docSnap: any) => {
-      loaded.push(normalizeInvestmentPlan(docSnap.id, docSnap.data()));
-    });
-    onPlans(sortInvestmentPlans(loaded));
-  }, onError);
-};
-
-export const seedDefaultInvestmentPlans = async () => {
-  await Promise.all(DEFAULT_INVESTMENT_PLANS.map((plan) =>
-    setDoc(doc(db, INVESTMENT_PLANS_COLLECTION, plan.id), plan)
-  ));
-};
-
-export const saveInvestmentPlan = async (plan: InvestmentPlan) => {
-  await setDoc(doc(db, INVESTMENT_PLANS_COLLECTION, plan.id), normalizeInvestmentPlan(plan.id, plan), { merge: true });
-};
-
-export const createInvestmentPlan = async (plan: Omit<InvestmentPlan, "id">) => {
-  const planId = `plan-${Date.now()}`;
-  const freshPlan = normalizeInvestmentPlan(planId, { ...plan, id: planId });
-  await setDoc(doc(db, INVESTMENT_PLANS_COLLECTION, planId), freshPlan);
-  return freshPlan;
-};
-
-export const deleteInvestmentPlan = async (planId: string) => {
-  await deleteDoc(doc(db, INVESTMENT_PLANS_COLLECTION, planId));
-};
-
-export const setInvestmentPlanEnabled = async (planId: string, enabled: boolean) => {
-  await updateDoc(doc(db, INVESTMENT_PLANS_COLLECTION, planId), {
-    enabled,
-    status: enabled ? "active" : "paused"
-  });
-};
-
 export const buildActiveInvestment = (plan: InvestmentPlan, amount: number): ActiveInvestment => {
   const start = new Date();
   const end = new Date(start.getTime() + plan.durationDays * DAY_MS);
@@ -361,4 +311,3 @@ export const buildTopUpTransaction = (
     userEmail: userEmail || FALLBACK_GUEST_EMAIL
   }, { userEmail }, { relatedReferenceId: relatedReferenceId || id });
 };
-

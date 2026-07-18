@@ -66,40 +66,19 @@ const AdminVolumeChart: React.FC<{ chartData: any[] }> = ({ chartData }) => {
 
 export const AdminOverviewTab: React.FC = () => {
   const orbit = useOrbit();
-  const { user, plans, adminUsers } = orbit;
-  
-
-
 
   const currentUser = orbit.user;
-  const adminUsersList = orbit.adminUsers || [];
-  const aggregateUsers = adminUsersList.length + 10;
-  const activeUserCount = adminUsersList.filter(u => u.status === "active").length + 8;
-  const bannedCount = adminUsersList.filter(u => u.status === "banned").length;
-  
-  const allDeposits = [];
-  const allWithdrawals = [];
-  const allTickets = [];
+  const usersList = orbit.usersDirectory || [];
+  const aggregateUsers = usersList.length + 10;
+  const activeUserCount = usersList.filter(u => u.status === "active").length + 8;
+  const bannedCount = usersList.filter(u => u.status === "banned").length;
 
-  currentUser.transactions.forEach(t => {
-    const enriched = { ...t, userEmail: currentUser.email, userName: currentUser.name || "HENRIK" };
-    if (t.type === "deposit") allDeposits.push(enriched);
-    else if (t.type === "withdrawal") allWithdrawals.push(enriched);
-  });
-  currentUser.tickets.forEach(tk => {
-    allTickets.push({ ...tk, userEmail: currentUser.email, userName: currentUser.name || "HENRIK" });
-  });
-
-  adminUsersList.forEach(sim => {
-    sim.transactions.forEach(t => {
-      const enriched = { ...t, userEmail: sim.email, userName: sim.name };
-      if (t.type === "deposit") allDeposits.push(enriched);
-      else if (t.type === "withdrawal") allWithdrawals.push(enriched);
-    });
-    sim.tickets.forEach(tk => {
-      allTickets.push({ ...tk, userEmail: sim.email, userName: sim.name });
-    });
-  });
+  // adminTransactions/supportTickets already cover every user (including the
+  // signed-in admin) when the caller is an admin, so no separate merge of
+  // currentUser.transactions/tickets is needed here.
+  const allDeposits = orbit.adminTransactions.filter(t => t.type === "deposit");
+  const allWithdrawals = orbit.adminTransactions.filter(t => t.type === "withdrawal");
+  const allTickets = orbit.supportTickets;
 
   const sortedDeposits = [...allDeposits].sort((a,b) => b.id.localeCompare(a.id));
   const sortedWithdrawals = [...allWithdrawals].sort((a,b) => b.id.localeCompare(a.id));

@@ -47,30 +47,37 @@ export const DashboardEquityChart: React.FC<DashboardEquityChartProps> = ({ curr
     };
   }, []);
 
-  // Generate realistic looking mock data ending exactly at currentEquity
-  const data = useMemo(() => {
-    const dataPoints = [];
-    let rollingValue = currentEquity * 0.75; // Start at 75% of current equity
-    const now = new Date();
-    
+  // Mock 30-day curve shape, generated ONCE per mount as multipliers of the
+  // current equity. currentEquity changes on every market tick (~4.5s), so
+  // regenerating the random walk from it — the previous code — made the
+  // whole chart visibly reroll with new random history every few seconds.
+  const shapeFactorsRef = useRef<number[] | null>(null);
+  if (!shapeFactorsRef.current) {
+    const factors: number[] = [];
+    let rolling = 0.75; // Start at 75% of current equity
     for (let i = 30; i >= 0; i--) {
-      const date = new Date(now);
-      date.setDate(date.getDate() - i);
-      
       if (i === 0) {
-        rollingValue = currentEquity;
+        rolling = 1;
       } else {
         // Random daily fluctuation between -2% and +3.5%
-        const change = 1 + (Math.random() * 0.055 - 0.02);
-        rollingValue = rollingValue * change;
+        rolling = rolling * (1 + (Math.random() * 0.055 - 0.02));
       }
-
-      dataPoints.push({
-        name: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        Equity: Number(rollingValue.toFixed(2))
-      });
+      factors.push(rolling);
     }
-    return dataPoints;
+    shapeFactorsRef.current = factors;
+  }
+
+  const data = useMemo(() => {
+    const factors = shapeFactorsRef.current!;
+    const now = new Date();
+    return factors.map((factor, idx) => {
+      const date = new Date(now);
+      date.setDate(date.getDate() - (factors.length - 1 - idx));
+      return {
+        name: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        Equity: Number((currentEquity * factor).toFixed(2))
+      };
+    });
   }, [currentEquity]);
 
   const CustomTooltip = ({ active, payload, label }: any) => {

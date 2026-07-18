@@ -9,13 +9,13 @@ interface GlobalModalsProps {
   setDepositModalOpen: (open: boolean) => void;
   withdrawModalOpen: boolean;
   setWithdrawModalOpen: (open: boolean) => void;
-  setCurrentView: (view: string) => void;
+  onNavigate: (view: string) => void;
 }
 
 export function GlobalModals({
   depositModalOpen, setDepositModalOpen,
   withdrawModalOpen, setWithdrawModalOpen,
-  setCurrentView
+  onNavigate
 }: GlobalModalsProps) {
   const { user, deposit, withdraw, enabledDepositWallets, insufficientBalanceOpen, setInsufficientBalanceOpen } = useOrbit();
 
@@ -151,7 +151,7 @@ export function GlobalModals({
 
     if (!user.isLoggedIn) {
       setWithdrawModalOpen(false);
-      setCurrentView("auth");
+      onNavigate("auth");
       return;
     }
 

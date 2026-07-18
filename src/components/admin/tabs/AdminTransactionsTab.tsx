@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { CheckCircle2, Clock, Hash, ReceiptText, Search, XCircle } from "lucide-react";
 import { useOrbit } from "../../../context/OrbitContext";
-import type { SimulatedUser, Transaction } from "../../../types";
+import type { Transaction } from "../../../types";
 
 type LedgerRow = Transaction & {
   userEmail: string;
@@ -47,25 +47,23 @@ const StatusIcon: React.FC<{ status: Transaction["status"] }> = ({ status }) => 
   return <XCircle size={12} />;
 };
 
-const buildRows = (users: SimulatedUser[]): LedgerRow[] => users.flatMap(user =>
-  user.transactions.map(transaction => ({
-    ...transaction,
-    userEmail: transaction.userEmail || user.email,
-    userName: transaction.userName || user.name
-  }))
-);
+const buildRows = (transactions: Transaction[]): LedgerRow[] => transactions.map(transaction => ({
+  ...transaction,
+  userEmail: transaction.userEmail || "",
+  userName: transaction.userName || ""
+}));
 
 export const AdminTransactionsTab: React.FC = () => {
-  const { adminUsers } = useOrbit();
+  const { adminTransactions } = useOrbit();
   const [statusFilter, setStatusFilter] = useState<"all" | Transaction["status"]>("all");
   const [searchQuery, setSearchQuery] = useState("");
 
-  const transactions = useMemo(() => buildRows(adminUsers).sort((a, b) => {
+  const transactions = useMemo(() => buildRows(adminTransactions).sort((a, b) => {
     const dateA = Date.parse(a.timestamp || a.date);
     const dateB = Date.parse(b.timestamp || b.date);
     if (Number.isFinite(dateA) && Number.isFinite(dateB) && dateA !== dateB) return dateB - dateA;
     return b.id.localeCompare(a.id);
-  }), [adminUsers]);
+  }), [adminTransactions]);
 
   const statuses = useMemo(() => Array.from(new Set(transactions.map(item => item.status))), [transactions]);
 

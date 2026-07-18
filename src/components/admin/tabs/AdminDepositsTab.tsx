@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import { ArrowDownLeft, Check, ClipboardList, FileText, Hash, Search, X } from "lucide-react";
 import { useOrbit } from "../../../context/OrbitContext";
 import { getDepositWalletLabel } from "../../../services";
-import type { DepositWallet, SimulatedUser, Transaction } from "../../../types";
+import type { DepositWallet, Transaction } from "../../../types";
 
 type DepositStatus = "pending" | "approved" | "rejected";
 
@@ -81,36 +81,34 @@ const shortValue = (value: string, left = 10, right = 6) =>
   value.length > left + right + 3 ? `${value.slice(0, left)}...${value.slice(-right)}` : value;
 
 const buildDepositRows = (
-  users: SimulatedUser[],
+  transactions: Transaction[],
   depositWallets: DepositWallet[],
   adminWallets: Record<string, string>
 ): DepositRow[] =>
-  users.flatMap(user =>
-    user.transactions
-      .filter(transaction => transaction.type === "deposit")
-      .map(transaction => {
-        const meta = resolveDepositMeta(transaction, depositWallets, adminWallets);
-        return {
-          ...transaction,
-          userName: user.name,
-          userEmail: user.email,
-          coin: meta.coin,
-          network: meta.network,
-          wallet: meta.wallet,
-          displayStatus: normalizeStatus(transaction.status)
-        };
-      })
-  );
+  transactions
+    .filter(transaction => transaction.type === "deposit")
+    .map(transaction => {
+      const meta = resolveDepositMeta(transaction, depositWallets, adminWallets);
+      return {
+        ...transaction,
+        userName: transaction.userName || "",
+        userEmail: transaction.userEmail || "",
+        coin: meta.coin,
+        network: meta.network,
+        wallet: meta.wallet,
+        displayStatus: normalizeStatus(transaction.status)
+      };
+    });
 
 export const AdminDepositsTab: React.FC = () => {
-  const { adminUsers, adminWallets, depositWallets, adminApproveDeposit, adminRejectDeposit } = useOrbit();
+  const { adminTransactions, adminWallets, depositWallets, adminApproveDeposit, adminRejectDeposit } = useOrbit();
   const [adminNotes, setAdminNotes] = useState<Record<string, string>>({});
   const [feedback, setFeedback] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<"all" | DepositStatus>("all");
   const [searchQuery, setSearchQuery] = useState("");
 
   const deposits = useMemo(() => {
-    const rows = buildDepositRows(adminUsers, depositWallets, adminWallets);
+    const rows = buildDepositRows(adminTransactions, depositWallets, adminWallets);
     return rows.sort((a, b) => {
       if (a.displayStatus === "pending" && b.displayStatus !== "pending") return -1;
       if (b.displayStatus === "pending" && a.displayStatus !== "pending") return 1;
@@ -119,7 +117,7 @@ export const AdminDepositsTab: React.FC = () => {
       if (!Number.isNaN(dateA) && !Number.isNaN(dateB) && dateA !== dateB) return dateB - dateA;
       return b.id.localeCompare(a.id);
     });
-  }, [adminUsers, adminWallets, depositWallets]);
+  }, [adminTransactions, adminWallets, depositWallets]);
 
   const filteredDeposits = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();

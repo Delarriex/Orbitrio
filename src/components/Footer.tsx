@@ -2,7 +2,21 @@ import React from "react";
 import { motion } from "motion/react";
 import { useOrbit } from "../context/OrbitContext";
 
-export const Footer = () => {
+interface FooterProps {
+  onNavigate: (view: string) => void;
+}
+
+const FOOTER_LINKS: { label: string; view: string }[] = [
+  { label: "About Us", view: "home#about-us" },
+  { label: "Markets", view: "markets" },
+  // Guests get bounced to /auth by the route guard; signed-in users land on KYC.
+  { label: "Security", view: "dashboard-kyc" },
+  { label: "Contact", view: "home#contact" },
+  { label: "Terms of Service", view: "terms" },
+  { label: "Privacy Policy", view: "privacy" }
+];
+
+export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
   const { appSettings } = useOrbit();
 
   return (
@@ -44,8 +58,15 @@ export const Footer = () => {
           </p>
         </div>
         <div className="grid grid-cols-2 gap-4">
-          {["About Us", "Markets", "Security", "Contact", "Terms of Service", "Privacy Policy"].map(link => (
-            <a key={link} href={`#${link.toLowerCase().replace(" ", "-")}`} className="text-neutral-400 hover:text-amber-500 transition-colors">{link}</a>
+          {FOOTER_LINKS.map(link => (
+            <button
+              key={link.label}
+              type="button"
+              onClick={() => onNavigate(link.view)}
+              className="text-neutral-400 hover:text-amber-500 transition-colors text-left cursor-pointer"
+            >
+              {link.label}
+            </button>
           ))}
         </div>
         <div>

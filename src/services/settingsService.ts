@@ -14,7 +14,23 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   tawkPropertyId: "6a395d28c9a6011d42f66d6c",
   tawkWidgetId: "1jro17q8a"
 };
-
+export const DEFAULT_SITE_CONTENT: SiteContent = {
+  hero_title: "Build wealth with intelligent investing",
+  hero_subtitle: "Access institutional-grade strategies and automated portfolio growth designed for modern investors.",
+  hero_button: "Get Started",
+  dashboard_title: "Your trading dashboard",
+  dashboard_description: "Monitor positions, manage investments, and grow your assets with real-time insights.",
+  investment_title: "Investment plans",
+  investment_description: "Choose the right plan for your goals and start earning reliable returns today.",
+  footer_text: "© 2026 Orbitrio. All rights reserved.",
+  announcement_text: "Stay informed with the latest platform updates and market alerts.",
+  faq_question_1: "How do I start investing?",
+  faq_answer_1: "Sign up, verify your account, and choose a plan to begin funding your portfolio.",
+  faq_question_2: "Can I withdraw anytime?",
+  faq_answer_2: "Withdrawals are processed according to plan terms, with support available for urgent requests.",
+  faq_question_3: "Is my capital secure?",
+  faq_answer_3: "We use industry-standard security practices and monitoring to protect your funds and personal data."
+};
 export const mergeSiteContent = (current: SiteContent, updates: Partial<SiteContent>): SiteContent => ({
   ...current,
   ...updates

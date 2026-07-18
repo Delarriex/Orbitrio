@@ -3,11 +3,21 @@ import { useOrbit } from "../context/OrbitContext";
 import { Layers, Target, Coins, ShieldAlert, Timer, TrendingUp, Activity, Sparkles, Crown, Gem, Award } from "lucide-react";
 
 export const DashboardPlans: React.FC = () => {
-  const { plans, user, investInPlan, setInsufficientBalanceOpen } = useOrbit();
+  const { plans, user, investInPlan, claimPlanPayout, setInsufficientBalanceOpen } = useOrbit();
   const enabledPlans = useMemo(() => plans.filter((plan) => plan.enabled && plan.status === "active").sort((a, b) => a.displayOrder - b.displayOrder || a.minDeposit - b.minDeposit), [plans]);
   const [selectedPlanId, setSelectedPlanId] = useState("plan-gold");
   const [investAmountText, setInvestAmountText] = useState("");
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [claimingId, setClaimingId] = useState<string | null>(null);
+
+  const handleClaimPayout = async (investmentId: string) => {
+    setClaimingId(investmentId);
+    try {
+      await claimPlanPayout(investmentId);
+    } finally {
+      setClaimingId(null);
+    }
+  };
 
   const getPlanIcon = (planId: string) => {
     switch (planId) {
@@ -306,6 +316,9 @@ export const DashboardPlans: React.FC = () => {
               <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1 font-sans">
                 {user.activeInvestments.map((inv) => {
                   const isMaturedComplete = inv.status === "Completed" || inv.status === "completed";
+                  const isPaid = isMaturedComplete && Boolean(inv.payoutTransactionId);
+                  const isClaimable = isMaturedComplete && !inv.payoutTransactionId;
+                  const isClaiming = claimingId === inv.id;
                   const expectedProfit = inv.expectedProfit ?? inv.accumulatedProfit;
                   const totalReturn = inv.totalReturn ?? inv.amount + expectedProfit;
                   const remainingDays = inv.remainingDays ?? 0;
@@ -330,9 +343,19 @@ export const DashboardPlans: React.FC = () => {
 
                       <div className="flex justify-between text-[9px] text-orbit-gray-text font-data">
                         <span>Funded: ${inv.amount.toLocaleString()}</span>
-                        <span className="font-subheading">{isMaturedComplete ? "Completed" : `${remainingDays}d left`}</span>
+                        <span className="font-subheading">{isPaid ? "Completed" : isClaimable ? "Matured" : `${remainingDays}d left`}</span>
                       </div>
-                      {isMaturedComplete && (
+                      {isClaimable && (
+                        <button
+                          type="button"
+                          onClick={() => handleClaimPayout(inv.id)}
+                          disabled={isClaiming}
+                          className="w-full bg-orbit-green/15 border border-orbit-green/40 text-orbit-green hover:bg-orbit-green/25 disabled:opacity-60 disabled:cursor-not-allowed font-bold font-subheading py-1.5 rounded text-center uppercase text-[10px] mt-1 transition-colors"
+                        >
+                          {isClaiming ? "Claiming…" : `Claim Payout $${totalReturn.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+                        </button>
+                      )}
+                      {isPaid && (
                         <div className="w-full bg-orbit-green/10 border border-orbit-green/30 text-orbit-green font-bold font-subheading py-1.5 rounded text-center uppercase text-[10px] mt-1">
                           Paid ${totalReturn.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                         </div>

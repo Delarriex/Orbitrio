@@ -3,13 +3,19 @@ import { motion, useReducedMotion, useScroll, useTransform } from "motion/react"
 
 export const ScrollAnimatedBackground: React.FC = () => {
   const prefersReducedMotion = useReducedMotion();
-  const [isCompactDevice, setIsCompactDevice] = useState(false);
+  // Initialized synchronously: starting at `false` and correcting in an
+  // effect made React delete the entire desktop tree right after mount on
+  // compact devices — a huge deletion commit that crashed with
+  // "removeChild: node is not a child" whenever a third-party script
+  // (Tawk, extensions) had touched those nodes in between.
+  const [isCompactDevice, setIsCompactDevice] = useState(
+    () => window.matchMedia("(max-width: 767px)").matches
+  );
   const { scrollY } = useScroll();
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(max-width: 767px)");
     const updateDeviceMode = () => setIsCompactDevice(mediaQuery.matches);
-    updateDeviceMode();
     mediaQuery.addEventListener("change", updateDeviceMode);
     return () => mediaQuery.removeEventListener("change", updateDeviceMode);
   }, []);

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
+import { useUser } from "@clerk/clerk-react";
 import { useOrbit } from "../context/OrbitContext";
-import { ref, uploadBytes, getDownloadURL, storage } from "../lib/firebase";
+import { useSupabaseClient, uploadDepositProof } from "../lib/supabase";
 import { getDepositWalletLabel } from "../services";
 import { 
   PlusSquare, 
@@ -29,6 +30,8 @@ interface DashboardWalletProps {
 
 export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab = "deposit" }) => {
   const { user, deposit, withdraw, createTicket, replyToTicket, enabledDepositWallets, addNotification } = useOrbit();
+  const { user: clerkUser } = useUser();
+  const supabase = useSupabaseClient();
   const [activeSubTab, setActiveSubTab] = useState<"deposit" | "withdraw" | "ledger" | "support">(initialOpenTab);
   const [showBalance, setShowBalance] = useState(true);
 
@@ -74,12 +77,10 @@ export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab
 
     let finalProofURL = depositProofName || "payment_proof_receipt.jpg";
 
-    if (fileInputRef.current?.files?.[0]) {
+    if (fileInputRef.current?.files?.[0] && clerkUser?.id) {
       try {
         const file = fileInputRef.current.files[0];
-        const storageRef = ref(storage, `deposits/${user.email}_${Date.now()}_${file.name}`);
-        await uploadBytes(storageRef, file);
-        finalProofURL = await getDownloadURL(storageRef);
+        finalProofURL = await uploadDepositProof(supabase, clerkUser.id, file);
       } catch (err) {
         console.error("Error uploading deposit proof:", err);
       }

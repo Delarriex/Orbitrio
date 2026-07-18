@@ -18,6 +18,9 @@ export type TransactionalEmailEvent =
   | "COPY_TRADE_STARTED"
   | "COPY_TRADE_COMPLETED"
   | "COPY_TRADE_ACTIVE"
+  | "COPY_TRADE_CANCELLED"
+  | "SUPPORT_TICKET_CREATED"
+  | "SUPPORT_TICKET_REPLY"
   | "KYC_SUBMITTED"
   | "KYC_APPROVED"
   | "KYC_REJECTED"
@@ -47,28 +50,6 @@ export const sendTransactionalEmail = async (to: string, eventType: Transactiona
     return data;
   } catch (error) {
     console.error(`Email sending failed for ${eventType}:`, error);
-    return { success: false, error };
-  }
-};
-
-export const sendPasswordResetRequestEmail = async (email: string, metadata: any = {}) => {
-  if (localDev) {
-    return { success: true, message: "Local dev password reset mail stubbed." };
-  }
-
-  try {
-    const response = await fetch("/api/reset-password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, metadata })
-    });
-    const data = await response.json();
-    if (!data.success) {
-      console.error("Password reset email failed:", data.error);
-    }
-    return data;
-  } catch (error) {
-    console.error("Password reset email failed:", error);
     return { success: false, error };
   }
 };

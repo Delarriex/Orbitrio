@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { useOrbit } from "../context/OrbitContext";
 import { TrendingUp, Award, Layers, Sparkles, PieChart, Info, ShieldAlert, Briefcase, Target, Users, Wallet } from "lucide-react";
 
@@ -7,12 +7,25 @@ interface DashboardPortfolioProps {
 }
 
 export const DashboardPortfolio: React.FC<DashboardPortfolioProps> = ({ onNavigate }) => {
-  const { user } = useOrbit();
+  const { user, claimCopyTradePayout } = useOrbit();
+  const [claimingId, setClaimingId] = useState<string | null>(null);
+
+  const handleClaimCopyPayout = async (copyTradeId: string) => {
+    setClaimingId(copyTradeId);
+    try {
+      await claimCopyTradePayout(copyTradeId);
+    } finally {
+      setClaimingId(null);
+    }
+  };
 
   const stats = useMemo(() => {
     const totalHoldingValue = user.portfolioValue;
-    const activeCopyTrades = user.copyTrades.filter(trade => trade.status === "Running");
-    const completedCopyTrades = user.copyTrades.filter(trade => trade.status === "Completed");
+    // Running OR matured-but-unclaimed both stay in the "active" list so the
+    // Claim Payout action is visible on the position card. Only trades whose
+    // payout has actually been claimed (payoutCompleted) move to history.
+    const activeCopyTrades = user.copyTrades.filter(trade => trade.status === "Running" || (trade.status === "Completed" && !trade.payoutCompleted));
+    const completedCopyTrades = user.copyTrades.filter(trade => trade.status === "Completed" && trade.payoutCompleted);
 
     // Let's compute individual asset percentages
     const preProcessedPortfolio = user.portfolio.map(asset => {
@@ -235,15 +248,18 @@ export const DashboardPortfolio: React.FC<DashboardPortfolioProps> = ({ onNaviga
           </p>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            {activeCopyTrades.map(trade => (
+            {activeCopyTrades.map(trade => {
+              const isClaimable = trade.status === "Completed" && !trade.payoutCompleted;
+              const isClaiming = claimingId === trade.id;
+              return (
               <div key={trade.id} className="p-4 rounded-xl border border-orbit-border bg-orbit-bg/40 space-y-3 text-xs">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <strong className="text-orbit-white font-subheading block">{trade.traderName}</strong>
-                    <span className="text-[10px] text-orbit-gray-text font-data">{trade.remainingDays}d remaining</span>
+                    <span className="text-[10px] text-orbit-gray-text font-data">{isClaimable ? "Matured" : `${trade.remainingDays}d remaining`}</span>
                   </div>
-                  <span className="px-2 py-1 rounded bg-orbit-accent/10 text-orbit-accent border border-orbit-accent/30 font-bold font-subheading text-[10px]">
-                    {trade.status}
+                  <span className={`px-2 py-1 rounded font-bold font-subheading text-[10px] border ${isClaimable ? "bg-orbit-green/10 text-orbit-green border-orbit-green/30" : "bg-orbit-accent/10 text-orbit-accent border-orbit-accent/30"}`}>
+                    {isClaimable ? "Matured" : trade.status}
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-[11px] font-data">
@@ -256,8 +272,19 @@ export const DashboardPortfolio: React.FC<DashboardPortfolioProps> = ({ onNaviga
                   <div className="bg-orbit-accent h-full" style={{ width: `${trade.progress}%` }} />
                 </div>
                 <p className="text-[10px] text-orbit-gray-text font-data">Ends: {new Date(trade.endTimestamp).toLocaleString()}</p>
+                {isClaimable && (
+                  <button
+                    type="button"
+                    onClick={() => handleClaimCopyPayout(trade.id)}
+                    disabled={isClaiming}
+                    className="w-full bg-orbit-green/15 border border-orbit-green/40 text-orbit-green hover:bg-orbit-green/25 disabled:opacity-60 disabled:cursor-not-allowed font-bold font-subheading py-1.5 rounded text-center uppercase text-[10px] transition-colors"
+                  >
+                    {isClaiming ? "Claiming…" : `Claim Payout $${trade.totalReturn.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+                  </button>
+                )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

@@ -61,7 +61,13 @@ export const buildDepositTransaction = (
   proofFile?: string
 ): { transaction: Transaction; isManual: boolean } => {
   const isManual = !!txHash || !!proofFile || currency !== "USD";
-  const status = isManual ? TRANSACTION_STATUSES.PENDING : TRANSACTION_STATUSES.COMPLETED;
+  // SECURITY (bug #23): every deposit is created PENDING and must be credited
+  // by an admin (approve_deposit_transaction) after verifying the real payment.
+  // Previously a plain USD deposit with no proof was auto-completed via
+  // complete_own_deposit_transaction — which, for real money, let a user
+  // self-credit an arbitrary balance with no verification. No deposit
+  // auto-completes anymore.
+  const status = TRANSACTION_STATUSES.PENDING;
   const id = timestampId("tx-dep");
   const timestamp = isoTimestamp();
 

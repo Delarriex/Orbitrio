@@ -34,9 +34,29 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   onOpenDeposit, 
   onOpenWithdraw 
 }) => {
-  const { user, plans, topUpInvestment, addNotification, siteContent, setInsufficientBalanceOpen } = useOrbit();
+  const { user, plans, topUpInvestment, claimPlanPayout, claimCopyTradePayout, addNotification, siteContent, setInsufficientBalanceOpen } = useOrbit();
   const [copiedUid, setCopiedUid] = useState(false);
+  const [claimingCopyId, setClaimingCopyId] = useState<string | null>(null);
+  const [claimingInvId, setClaimingInvId] = useState<string | null>(null);
   const [topUpTarget, setTopUpTarget] = useState<string | null>(null);
+
+  const handleClaimCopyPayout = async (copyTradeId: string) => {
+    setClaimingCopyId(copyTradeId);
+    try {
+      await claimCopyTradePayout(copyTradeId);
+    } finally {
+      setClaimingCopyId(null);
+    }
+  };
+
+  const handleClaimInvPayout = async (investmentId: string) => {
+    setClaimingInvId(investmentId);
+    try {
+      await claimPlanPayout(investmentId);
+    } finally {
+      setClaimingInvId(null);
+    }
+  };
   const [topUpAmount, setTopUpAmount] = useState<string>("");
 
   const getUID = (email: string | null) => {
@@ -74,8 +94,13 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     const availableCash = user.balance;
     const portfolioAssetsValue = user.portfolioValue; // Auto-updates via context market loops
     const runningInvestments = user.activeInvestments.filter(item => item.status === "Running" || item.status === "active");
-    const runningCopyTrades = user.copyTrades.filter(item => item.status === "Running");
-    const completedCopyTrades = user.copyTrades.filter(item => item.status === "Completed");
+    // Matured-but-unclaimed copy trades (live-derived status "Completed" but
+    // payout not yet claimed) count as still-active for net-worth purposes —
+    // their capital+profit hasn't hit the balance yet. Only actually-paid
+    // trades (payoutCompleted) move to the completed/history bucket. Without
+    // this, a matured trade's value would vanish from equity until claimed.
+    const runningCopyTrades = user.copyTrades.filter(item => item.status === "Running" || (item.status === "Completed" && !item.payoutCompleted));
+    const completedCopyTrades = user.copyTrades.filter(item => item.status === "Completed" && item.payoutCompleted);
     const activePlanCapital = runningInvestments.reduce((acc, current) => acc + current.amount, 0);
     const activePlanProfits = runningInvestments.reduce((acc, current) => acc + current.accumulatedProfit, 0);
     const activeCopyCapital = runningCopyTrades.reduce((acc, current) => acc + current.amountInvested, 0);
@@ -348,6 +373,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             <div className="space-y-4">
               {user.activeInvestments.map((inv) => {
                 const isCompleted = inv.status === "Completed" || inv.status === "completed";
+                const isPaid = isCompleted && Boolean(inv.payoutTransactionId);
+                const isClaimable = isCompleted && !inv.payoutTransactionId;
+                const isClaimingInv = claimingInvId === inv.id;
                 const expectedProfit = inv.expectedProfit ?? inv.accumulatedProfit;
                 const totalReturn = inv.totalReturn ?? inv.amount + expectedProfit;
                 const remainingDays = inv.remainingDays ?? 0;
@@ -375,8 +403,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                     <div className="flex items-center justify-between text-[10px] mt-2">
                       <span className="text-orbit-gray-text">Allocated: ${inv.amount.toLocaleString()}</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-orbit-gray-text">{isCompleted ? "Completed" : `${remainingDays}d left`}</span>
-                        {!isCompleted && (<button 
+                        <span className="text-orbit-gray-text">{isPaid ? "Completed" : isClaimable ? "Matured" : `${remainingDays}d left`}</span>
+                        {!isCompleted && (<button
                           onClick={() => setTopUpTarget(topUpTarget === inv.id ? null : inv.id)}
                           className="text-[9px] text-orbit-accent border border-orbit-accent/30 bg-orbit-accent/10 px-2 py-0.5 rounded flex items-center gap-1 hover:bg-orbit-accent/20 transition-colors"
                         >
@@ -410,7 +438,17 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                         style={{ width: `${inv.progress}%` }}
                       />
                     </div>
-                    {isCompleted && (
+                    {isClaimable && (
+                      <button
+                        type="button"
+                        onClick={() => handleClaimInvPayout(inv.id)}
+                        disabled={isClaimingInv}
+                        className="w-full py-2 bg-orbit-green/15 border border-orbit-green/40 text-orbit-green hover:bg-orbit-green/25 disabled:opacity-60 disabled:cursor-not-allowed font-bold font-subheading text-[11px] rounded text-center uppercase transition-colors"
+                      >
+                        {isClaimingInv ? "Claiming…" : `Claim Payout $${totalReturn.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+                      </button>
+                    )}
+                    {isPaid && (
                       <div className="w-full py-2 bg-orbit-green/10 border border-orbit-green/30 text-orbit-green font-bold font-subheading text-[11px] rounded text-center uppercase">
                         Paid ${totalReturn.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </div>
@@ -486,14 +524,17 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           <p className="text-xs text-center text-orbit-gray-text py-6 font-sans">No running copy trades.</p>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {runningCopyTrades.map(trade => (
+            {runningCopyTrades.map(trade => {
+              const isClaimable = trade.status === "Completed" && !trade.payoutCompleted;
+              const isClaiming = claimingCopyId === trade.id;
+              return (
               <div key={trade.id} className="p-4 border border-orbit-border bg-orbit-darkcard/50 rounded-xl space-y-3 text-xs">
                 <div className="flex justify-between items-start gap-3">
                   <div>
                     <span className="font-bold text-orbit-white font-subheading">{trade.traderName}</span>
                     <span className="block text-[9px] text-orbit-gray-text font-data">Ends: {new Date(trade.endTimestamp).toLocaleString()}</span>
                   </div>
-                  <span className="px-2 py-1 rounded bg-orbit-accent/10 border border-orbit-accent/30 text-orbit-accent text-[10px] font-bold font-subheading">{trade.status}</span>
+                  <span className={`px-2 py-1 rounded text-[10px] font-bold font-subheading border ${isClaimable ? "bg-orbit-green/10 border-orbit-green/30 text-orbit-green" : "bg-orbit-accent/10 border-orbit-accent/30 text-orbit-accent"}`}>{isClaimable ? "Matured" : trade.status}</span>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] font-data">
@@ -504,14 +545,25 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                 </div>
 
                 <div className="flex items-center justify-between text-[10px] text-orbit-gray-text">
-                  <span>{trade.remainingDays}d remaining</span>
+                  <span>{isClaimable ? "Matured" : `${trade.remainingDays}d remaining`}</span>
                   <span>{trade.progress}%</span>
                 </div>
                 <div className="w-full bg-orbit-bg rounded-full h-1.5">
                   <div className="bg-orbit-accent h-1.5 rounded-full" style={{ width: `${trade.progress}%` }} />
                 </div>
+                {isClaimable && (
+                  <button
+                    type="button"
+                    onClick={() => handleClaimCopyPayout(trade.id)}
+                    disabled={isClaiming}
+                    className="w-full bg-orbit-green/15 border border-orbit-green/40 text-orbit-green hover:bg-orbit-green/25 disabled:opacity-60 disabled:cursor-not-allowed font-bold font-subheading py-1.5 rounded text-center uppercase text-[10px] transition-colors"
+                  >
+                    {isClaiming ? "Claiming…" : `Claim Payout $${trade.totalReturn.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+                  </button>
+                )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

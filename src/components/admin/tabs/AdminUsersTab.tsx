@@ -22,7 +22,10 @@ import {
 } from "lucide-react";
 import { useOrbit } from "../../../context/OrbitContext";
 import { useBodyScrollLock } from "../../../hooks/useBodyScrollLock";
-import type { SimulatedUser, Transaction } from "../../../types";
+import type { KycSubmission, Transaction } from "../../../types";
+import type { CoreUserProfile } from "../../../hooks/data/useUsersDirectory";
+import type { AdminActiveInvestment } from "../../../hooks/data/useActiveInvestments";
+import type { AdminCopyTrade } from "../../../hooks/data/useCopyTrades";
 
 type Feedback = { type: "success" | "error"; message: string };
 type KycViewStatus = "pending" | "approved" | "rejected" | "unverified";
@@ -48,7 +51,9 @@ const getInitials = (name: string) =>
 const shortValue = (value: string, left = 12, right = 5) =>
   value.length > left + right + 3 ? `${value.slice(0, left)}...${value.slice(-right)}` : value;
 
-const statusStyles: Record<SimulatedUser["status"], string> = {
+type AccountStatus = "active" | "suspended" | "banned";
+
+const statusStyles: Record<AccountStatus, string> = {
   active: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30",
   suspended: "text-yellow-400 bg-yellow-500/10 border-yellow-500/30",
   banned: "text-red-400 bg-red-500/10 border-red-500/30"
@@ -61,9 +66,9 @@ const kycStyles: Record<KycViewStatus, string> = {
   unverified: "text-zinc-400 bg-zinc-500/10 border-zinc-500/30"
 };
 
-const recentTransactions = (user: SimulatedUser, type: Transaction["type"]) =>
-  user.transactions
-    .filter(transaction => transaction.type === type)
+const recentTransactionsFor = (transactions: Transaction[], userId: string, type: Transaction["type"]) =>
+  transactions
+    .filter(transaction => transaction.userId === userId && transaction.type === type)
     .sort((a, b) => {
       const dateA = Date.parse(a.date);
       const dateB = Date.parse(b.date);
@@ -72,22 +77,18 @@ const recentTransactions = (user: SimulatedUser, type: Transaction["type"]) =>
     })
     .slice(0, 5);
 
-const activeCopyTrades = (user: SimulatedUser) =>
-  user.transactions
-    .filter(transaction =>
-      transaction.type === "investment" &&
-      transaction.status === "completed" &&
-      (transaction.id.startsWith("tx-copy") || transaction.notes?.toLowerCase().includes("mirror allocation"))
-    )
-    .slice(0, 5);
-
 export const AdminUsersTab: React.FC = () => {
   const {
-    adminUsers,
+    usersDirectory,
     adminUpdateUserBalance,
     adminChangeUserStatus,
     adminResetUserPassword,
-    adminKycReview
+    adminKycReview,
+    isLoadingUsersDirectory,
+    allKycSubmissions,
+    adminActiveInvestments,
+    adminCopyTrades,
+    adminTransactions
   } = useOrbit();
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -98,23 +99,23 @@ export const AdminUsersTab: React.FC = () => {
   const [adminNotes, setAdminNotes] = useState<Record<string, string>>({});
   const [busyAction, setBusyAction] = useState<string | null>(null);
 
-  const isLoading = !Array.isArray(adminUsers);
+  const isLoading = isLoadingUsersDirectory;
 
   const userResult = useMemo(() => {
     try {
-      const rows = [...adminUsers].sort((a, b) => {
+      const rows = [...usersDirectory].sort((a, b) => {
         const dateA = Date.parse(a.registrationDate || "");
         const dateB = Date.parse(b.registrationDate || "");
         if (!Number.isNaN(dateA) && !Number.isNaN(dateB) && dateA !== dateB) return dateB - dateA;
-        return a.name.localeCompare(b.name);
+        return (a.name || "").localeCompare(b.name || "");
       });
 
       return { rows, error: null as string | null };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to prepare user records.";
-      return { rows: [] as SimulatedUser[], error: message };
+      return { rows: [] as CoreUserProfile[], error: message };
     }
-  }, [adminUsers]);
+  }, [usersDirectory]);
 
   const users = userResult.rows;
   const selectedUser = users.find(user => user.email === selectedEmail) || null;
@@ -136,17 +137,17 @@ export const AdminUsersTab: React.FC = () => {
         user.phone || "",
         user.country || "",
         user.status,
-        user.kyc?.status || "unverified"
+        allKycSubmissions[user.email]?.status || "unverified"
       ].join(" ").toLowerCase().includes(query)
     );
-  }, [searchQuery, users]);
+  }, [searchQuery, users, allKycSubmissions]);
 
   const stats = useMemo(() => ({
     total: users.length,
     active: users.filter(user => user.status === "active").length,
     suspended: users.filter(user => user.status === "suspended" || user.status === "banned").length,
-    pendingKyc: users.filter(user => user.kyc?.status === "pending").length
-  }), [users]);
+    pendingKyc: users.filter(user => allKycSubmissions[user.email]?.status === "pending").length
+  }), [users, allKycSubmissions]);
 
   const showFeedback = (type: Feedback["type"], message: string) => {
     setFeedback({ type, message });
@@ -166,7 +167,7 @@ export const AdminUsersTab: React.FC = () => {
     }
   };
 
-  const handleBalanceSave = (user: SimulatedUser) => {
+  const handleBalanceSave = (user: CoreUserProfile) => {
     const nextBalance = parseFloat(balanceDrafts[user.email] ?? user.balance.toString());
     if (Number.isNaN(nextBalance) || nextBalance < 0) {
       showFeedback("error", "Enter a valid non-negative balance.");
@@ -188,7 +189,7 @@ export const AdminUsersTab: React.FC = () => {
     );
   };
 
-  const handleKycReview = (user: SimulatedUser, status: "approved" | "rejected") => {
+  const handleKycReview = (user: CoreUserProfile, status: "approved" | "rejected") => {
     const reason = kycReasons[user.email] || "Documents not sufficient.";
     runAction(
       `kyc-${status}-${user.email}`,
@@ -197,7 +198,7 @@ export const AdminUsersTab: React.FC = () => {
     );
   };
 
-  const openDrawer = (user: SimulatedUser) => {
+  const openDrawer = (user: CoreUserProfile) => {
     setSelectedEmail(user.email);
     setBalanceDrafts(prev => ({ ...prev, [user.email]: prev[user.email] ?? user.balance.toString() }));
   };
@@ -271,12 +272,12 @@ export const AdminUsersTab: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-orbit-border/70">
                   {filteredUsers.map(user => {
-                    const kycStatus = user.kyc?.status || "unverified";
+                    const kycStatus: KycViewStatus = allKycSubmissions[user.email]?.status || "unverified";
                     return (
                       <tr key={user.email} className="hover:bg-orbit-bg/40 transition-colors">
                         <td className="px-5 py-4">
                           <div className="w-9 h-9 rounded-full bg-gradient-to-br from-orbit-accent to-[#FF7F00] flex items-center justify-center text-orbit-bg text-xs font-black">
-                            {getInitials(user.name)}
+                            {getInitials(user.name || "")}
                           </div>
                         </td>
                         <td className="px-4 py-4">
@@ -291,11 +292,11 @@ export const AdminUsersTab: React.FC = () => {
                           </span>
                         </td>
                         <td className="px-4 py-4">
-                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full border text-[10px] font-bold ${statusStyles[user.status]}`}>
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full border text-[10px] font-bold ${statusStyles[user.status as AccountStatus]}`}>
                             {user.status.toUpperCase()}
                           </span>
                         </td>
-                        <td className="px-4 py-4 text-xs text-orbit-gray-text">{formatDate(user.registrationDate)}</td>
+                        <td className="px-4 py-4 text-xs text-orbit-gray-text">{formatDate(user.registrationDate || undefined)}</td>
                         <td className="px-5 py-4">
                           <div className="flex justify-end">
                             <button onClick={() => openDrawer(user)} className="flex items-center justify-center gap-1.5 px-3 py-2 bg-orbit-accent text-orbit-bg font-bold text-[10px] uppercase rounded-lg hover:bg-[#DFAD12] transition-colors cursor-pointer">
@@ -320,6 +321,11 @@ export const AdminUsersTab: React.FC = () => {
       {selectedUser && (
         <UserDrawer
           user={selectedUser}
+          kyc={allKycSubmissions[selectedUser.email]}
+          investments={adminActiveInvestments.filter(investment => investment.userId === selectedUser.id)}
+          copyTrades={adminCopyTrades.filter(copyTrade => copyTrade.userId === selectedUser.id)}
+          deposits={recentTransactionsFor(adminTransactions, selectedUser.id, "deposit")}
+          withdrawals={recentTransactionsFor(adminTransactions, selectedUser.id, "withdrawal")}
           balanceDraft={balanceDrafts[selectedUser.email] ?? selectedUser.balance.toString()}
           kycReason={kycReasons[selectedUser.email] || ""}
           adminNote={adminNotes[selectedUser.email] || ""}
@@ -341,7 +347,12 @@ export const AdminUsersTab: React.FC = () => {
 };
 
 const UserDrawer: React.FC<{
-  user: SimulatedUser;
+  user: CoreUserProfile;
+  kyc?: KycSubmission;
+  investments: AdminActiveInvestment[];
+  copyTrades: AdminCopyTrade[];
+  deposits: Transaction[];
+  withdrawals: Transaction[];
   balanceDraft: string;
   kycReason: string;
   adminNote: string;
@@ -358,6 +369,11 @@ const UserDrawer: React.FC<{
   onRejectKyc: () => void;
 }> = ({
   user,
+  kyc,
+  investments,
+  copyTrades,
+  deposits,
+  withdrawals,
   balanceDraft,
   kycReason,
   adminNote,
@@ -373,10 +389,7 @@ const UserDrawer: React.FC<{
   onApproveKyc,
   onRejectKyc
 }) => {
-  const deposits = recentTransactions(user, "deposit");
-  const withdrawals = recentTransactions(user, "withdrawal");
-  const copyTrades = activeCopyTrades(user);
-  const kycStatus = user.kyc?.status || "unverified";
+  const kycStatus: KycViewStatus = kyc?.status || "unverified";
   const balanceBusy = busyAction === `balance-${user.email}`;
 
   return (
@@ -385,7 +398,7 @@ const UserDrawer: React.FC<{
         <div className="sticky top-0 z-10 bg-orbit-bg/95 backdrop-blur border-b border-orbit-border px-5 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orbit-accent to-[#FF7F00] flex items-center justify-center text-orbit-bg text-sm font-black shrink-0">
-              {getInitials(user.name)}
+              {getInitials(user.name || "")}
             </div>
             <div className="min-w-0">
               <h3 className="text-base font-bold text-orbit-white truncate">{user.name}</h3>
@@ -400,12 +413,12 @@ const UserDrawer: React.FC<{
         <div className="p-5 space-y-5">
           <Section title="User Profile" icon={<Users size={15} className="text-orbit-accent" />}>
             <div className="grid grid-cols-2 gap-3">
-              <InfoItem label="Name" value={user.name} />
+              <InfoItem label="Name" value={user.name || "Not set"} />
               <InfoItem label="Username" value={user.username || "Not set"} />
               <InfoItem label="Phone" value={user.phone || "Not captured"} />
               <InfoItem label="Country" value={user.country || "Not captured"} />
               <InfoItem label="Currency" value={user.currency || "USD"} />
-              <InfoItem label="Registered" value={formatDate(user.registrationDate)} />
+              <InfoItem label="Registered" value={formatDate(user.registrationDate || undefined)} />
             </div>
           </Section>
 
@@ -432,16 +445,16 @@ const UserDrawer: React.FC<{
           <Section title="KYC Information" icon={<Shield size={15} className="text-orbit-accent" />}>
             <div className="flex flex-wrap items-center gap-2 mb-3">
               <span className={`inline-flex items-center px-2.5 py-1 rounded-full border text-[10px] font-bold ${kycStyles[kycStatus]}`}>{kycStatus.toUpperCase()}</span>
-              {user.kyc?.rejectionReason && <span className="text-[11px] text-red-400">Previous rejection: {user.kyc.rejectionReason}</span>}
+              {kyc?.rejectionReason && <span className="text-[11px] text-red-400">Previous rejection: {kyc.rejectionReason}</span>}
             </div>
-            {user.kyc ? (
+            {kyc ? (
               <div className="grid grid-cols-2 gap-3">
-                <InfoItem label="ID Type" value={user.kyc.idType || "Not captured"} />
-                <InfoItem label="ID Number" value={user.kyc.idNumber || "Not captured"} />
-                <InfoItem label="Date of Birth" value={user.kyc.dob || "Not captured"} />
-                <InfoItem label="Country" value={user.kyc.country || "Not captured"} />
-                <InfoItem label="City" value={user.kyc.city || "Not captured"} />
-                <InfoItem label="Address" value={user.kyc.address || "Not captured"} />
+                <InfoItem label="ID Type" value={kyc.idType || "Not captured"} />
+                <InfoItem label="ID Number" value={kyc.idNumber || "Not captured"} />
+                <InfoItem label="Date of Birth" value={kyc.dob || "Not captured"} />
+                <InfoItem label="Country" value={kyc.country || "Not captured"} />
+                <InfoItem label="City" value={kyc.city || "Not captured"} />
+                <InfoItem label="Address" value={kyc.address || "Not captured"} />
               </div>
             ) : (
               <p className="text-xs text-orbit-gray-text">This user has not submitted identity documents.</p>
@@ -465,7 +478,7 @@ const UserDrawer: React.FC<{
           <Section title="Active Investments" icon={<TrendingUp size={15} className="text-orbit-accent" />}>
             <RecordList
               empty="No active investments."
-              rows={user.activeInvestments.filter(investment => investment.status === "Running" || investment.status === "active").map(investment => ({
+              rows={investments.filter(investment => investment.status === "Running" || investment.status === "active").map(investment => ({
                 id: investment.id,
                 title: investment.name,
                 meta: `${formatDate(investment.startDate)} - ${formatDate(investment.endDate)}`,
@@ -478,12 +491,12 @@ const UserDrawer: React.FC<{
           <Section title="Active Copy Trades" icon={<UserCheck size={15} className="text-orbit-accent" />}>
             <RecordList
               empty="No active copy trade allocations found."
-              rows={copyTrades.map(transaction => ({
-                id: transaction.id,
-                title: transaction.notes?.replace("Mirror allocation activated for master trader ", "") || "Copy trade",
-                meta: formatDate(transaction.date),
-                value: formatMoney(transaction.amount),
-                status: transaction.status
+              rows={copyTrades.map(copyTrade => ({
+                id: copyTrade.id,
+                title: copyTrade.traderName || "Copy trade",
+                meta: `${formatDate(copyTrade.startTimestamp)} - ${formatDate(copyTrade.endTimestamp)}`,
+                value: formatMoney(copyTrade.amountInvested),
+                status: copyTrade.status
               }))}
             />
           </Section>

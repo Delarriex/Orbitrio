@@ -239,6 +239,43 @@ const resolveEvent = (eventType: string, metadata: any) => {
           ...commonDetails
         ]
       };
+    case "COPY_TRADE_CANCELLED":
+      return {
+        subject: `Copy trade cancelled - ${metadata.companyName}`,
+        heading: "Copy trade cancelled",
+        intro: "Your copy trade has been cancelled and any reserved allocation has been returned to your wallet balance.",
+        accent: "#f59e0b",
+        details: [
+          { label: "Trader", value: metadata.traderName },
+          { label: "Returned", value: formatMoney(metadata.refundAmount ?? amount) },
+          ...commonDetails
+        ]
+      };
+    case "SUPPORT_TICKET_CREATED":
+      return {
+        subject: `Support ticket received - ${metadata.companyName}`,
+        heading: "We've received your ticket",
+        intro: "Thanks for reaching out. Your support ticket has been created and our team will review it shortly. You'll be notified when we reply.",
+        accent: "#38bdf8",
+        details: [
+          { label: "Subject", value: metadata.subject },
+          { label: "Category", value: metadata.category },
+          ...commonDetails
+        ]
+      };
+    case "SUPPORT_TICKET_REPLY":
+      return {
+        subject: `New reply on your support ticket - ${metadata.companyName}`,
+        heading: "There's a new reply on your ticket",
+        intro: metadata.replyPreview
+          ? `A new reply has been posted to your support ticket: "${metadata.replyPreview}"`
+          : "A new reply has been posted to your support ticket. Open your dashboard to view the full conversation.",
+        accent: "#3b82f6",
+        details: [
+          { label: "Subject", value: metadata.subject },
+          ...commonDetails
+        ]
+      };
     case "KYC_SUBMITTED":
       return {
         subject: `KYC submitted - ${metadata.companyName}`,
@@ -408,15 +445,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
+      console.error("Email send aborted: RESEND_API_KEY is not configured.");
       return res.status(500).json({ success: false, error: "RESEND_API_KEY is not configured in environment variables." });
     }
 
+    // No silent fallback to onboarding@resend.dev — that address only delivers
+    // to the Resend account owner, so real-user sends would fail while the old
+    // code reported success. A missing sender is a hard config error.
+    const sender = process.env.RESEND_FROM_EMAIL;
+    if (!sender) {
+      console.error("Email send aborted: RESEND_FROM_EMAIL is not configured. Refusing to fall back to onboarding@resend.dev (cannot deliver to real recipients).");
+      return res.status(500).json({ success: false, error: "RESEND_FROM_EMAIL is not configured. Set it to a verified sender address." });
+    }
+
     const resend = new Resend(apiKey);
-    const sender = process.env.RESEND_FROM_EMAIL || `${metadata.senderName || metadata.companyName || "Orbitrio Trades"} <onboarding@resend.dev>`;
     const replyTo = metadata.replyToEmail || metadata.supportEmail || undefined;
     const { subject, html } = buildEmail(eventType, metadata);
 
-    const emailResponse = await resend.emails.send({
+    // resend.emails.send resolves with { data, error } and does NOT throw on
+    // API-level rejections (unverified domain/sender, rate limits, etc.).
+    // Surface that error instead of blindly returning success.
+    const { data: emailData, error: emailError } = await resend.emails.send({
       from: sender,
       to: [to],
       subject,
@@ -424,10 +473,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ...(replyTo ? { replyTo } : {})
     });
 
+    if (emailError) {
+      console.error(`Resend rejected ${eventType} email to ${to}:`, emailError);
+      return res.status(502).json({ success: false, error: (emailError as any).message || String(emailError) });
+    }
+
     return res.status(200).json({
       success: true,
       message: `Transactional email for ${eventType} dispatched successfully.`,
-      data: emailResponse,
+      data: emailData,
     });
   } catch (error: any) {
     console.error("Resend transactional email delivery failed:", error);

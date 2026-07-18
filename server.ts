@@ -2,11 +2,32 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
+import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 import sendEmailHandler from "./api/send-email";
-import resetPasswordHandler from "./api/reset-password";
 
 dotenv.config();
+
+// Server-side Supabase admin client (service_role — bypasses RLS). Used ONLY to
+// write the trusted `market_prices` table from the /api/markets route (bug #22).
+// The service_role key must NEVER be exposed to the client. If it's not
+// configured, price-syncing is skipped (buy/sell then reject as "no price").
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseAdmin = (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY)
+  ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
+  : null;
+
+async function syncMarketPrices(assets: Array<{ symbol: string; price: number }>) {
+  if (!supabaseAdmin) return;
+  const now = new Date().toISOString();
+  const rows = assets
+    .filter(a => a && typeof a.price === "number" && a.price > 0)
+    .map(a => ({ symbol: a.symbol, price: a.price, updated_at: now }));
+  if (!rows.length) return;
+  const { error } = await supabaseAdmin.from("market_prices").upsert(rows, { onConflict: "symbol" });
+  if (error) console.error("Failed to sync market_prices:", error.message);
+}
 
 const PORT = parseInt(process.env.PORT || "5173", 10);
 const HMR_PORT = parseInt(process.env.VITE_HMR_PORT || process.env.HMR_PORT || "24680", 10);
@@ -32,14 +53,18 @@ function getGeminiClient(): GoogleGenAI {
 }
 
 async function startServer() {
+  // Loud config check: transactional email cannot deliver to real users
+  // without a verified sender. Warn clearly at startup rather than silently
+  // failing per-send (the handler also hard-fails the request, see api/send-email.ts).
+  if (!process.env.RESEND_FROM_EMAIL) {
+    console.warn("[config] RESEND_FROM_EMAIL is not set — transactional email will be rejected until a verified sender address is configured.");
+  }
+
   const app = express();
   app.use(express.json());
 
   // API Route: Send Transactional Email using Resend
   app.post("/api/send-email", sendEmailHandler as any);
-
-  // API Route: Reset Password
-  app.post("/api/reset-password", resetPasswordHandler as any);
 
   // API Route: Live Market Data Feed
   app.get("/api/markets", async (req, res) => {
@@ -134,6 +159,10 @@ async function startServer() {
           console.error("CoinGecko fallback failed, using default mock values.", cgErr);
         }
       }
+
+      // Persist the trusted prices for the buy/sell RPCs (bug #22). Fire-and-
+      // forget — never block or fail the markets response on a price-sync error.
+      void syncMarketPrices([...liveCrypto, ...fallbackData.stocks]);
 
       return res.json({
         crypto: liveCrypto,

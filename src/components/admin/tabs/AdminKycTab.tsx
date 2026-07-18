@@ -2,9 +2,10 @@ import React, { useMemo, useState } from "react";
 import { useOrbit } from "../../../context/OrbitContext";
 import { motion } from "motion/react";
 import { UserCheck, Check, X, Search, Eye, FileText, ExternalLink } from "lucide-react";
-import type { KycSubmission, KycStatus, SimulatedUser } from "../../../types";
+import type { KycSubmission, KycStatus } from "../../../types";
+import type { CoreUserProfile } from "../../../hooks/data/useUsersDirectory";
 
-type KycRow = SimulatedUser & { kycStatus: KycStatus };
+type KycRow = CoreUserProfile & { kyc?: KycSubmission; kycStatus: KycStatus };
 
 const statusColors: Record<KycStatus, string> = {
   pending: "text-yellow-400 bg-yellow-500/10 border-yellow-500/30",
@@ -23,7 +24,7 @@ const formatDate = (value?: string) => {
 const getDocumentCount = (kyc?: KycSubmission) => [kyc?.frontImage, kyc?.backImage, kyc?.proofOfAddressImage].filter(Boolean).length;
 
 export const AdminKycTab: React.FC = () => {
-  const { adminUsers, adminKycReview } = useOrbit();
+  const { usersDirectory, allKycSubmissions, adminKycReview } = useOrbit();
   const [searchQuery, setSearchQuery] = useState("");
   const [adminNotes, setAdminNotes] = useState<Record<string, string>>({});
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -31,10 +32,10 @@ export const AdminKycTab: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<"all" | KycStatus>("all");
   const [reviewingEmail, setReviewingEmail] = useState<string | null>(null);
 
-  const rows = useMemo<KycRow[]>(() => adminUsers.map(user => ({
-    ...user,
-    kycStatus: user.kyc?.status || "unverified"
-  })), [adminUsers]);
+  const rows = useMemo<KycRow[]>(() => usersDirectory.map(user => {
+    const kyc = allKycSubmissions[user.email];
+    return { ...user, kyc, kycStatus: kyc?.status || "unverified" };
+  }), [usersDirectory, allKycSubmissions]);
 
   const filtered = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();

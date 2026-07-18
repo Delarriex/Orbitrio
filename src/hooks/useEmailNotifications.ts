@@ -6,8 +6,7 @@ import {
   sendProfitEmail,
   sendCopyTradeEmail,
   sendTopUpEmail,
-  sendTransactionalEmail,
-  sendPasswordResetRequestEmail
+  sendTransactionalEmail
 } from "../lib/emailClient";
 
 export const useEmailNotifications = () => {
@@ -19,7 +18,6 @@ export const useEmailNotifications = () => {
     sendProfitEmail,
     sendCopyTradeEmail,
     sendTopUpEmail,
-    sendTransactionalEmail,
-    sendPasswordResetRequestEmail
+    sendTransactionalEmail
   };
 };

@@ -1,15 +1,3 @@
-import {
-  collection,
-  db,
-  deleteDoc,
-  doc,
-  onSnapshot,
-  query,
-  setDoc,
-  updateDoc,
-  where
-} from "../lib/firebase";
-
 export type NotificationType = "success" | "info" | "warning" | "error";
 
 export interface NotificationAction {
@@ -44,8 +32,6 @@ export interface BuildNotificationOptions {
   eventKey?: string;
   action?: NotificationAction;
 }
-
-const notificationCollection = "notifications";
 
 const sanitizeIdPart = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
 
@@ -132,35 +118,4 @@ export const formatRelativeTimestamp = (timestamp: string) => {
   }
 
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(new Date(timestamp));
-};
-
-export const watchNotifications = (
-  recipientEmail: string,
-  onNotifications: (notifications: NotificationItem[]) => void,
-  onError: (error: unknown) => void
-) => {
-  const notificationsQuery = query(collection(db, notificationCollection), where("recipientEmail", "==", recipientEmail));
-  return onSnapshot(notificationsQuery, (snapshot: any) => {
-    const loaded: NotificationItem[] = [];
-    snapshot.forEach((docSnap: any) => {
-      loaded.push(normalizeNotification({ id: docSnap.id, ...docSnap.data() }, docSnap.id));
-    });
-    onNotifications(sortNotifications(loaded));
-  }, onError);
-};
-
-export const saveNotification = async (notification: NotificationItem) => {
-  await setDoc(doc(db, notificationCollection, notification.id), notification, { merge: true });
-};
-
-export const markNotificationReadById = async (notificationId: string) => {
-  await updateDoc(doc(db, notificationCollection, notificationId), { read: true });
-};
-
-export const markNotificationsReadById = async (notificationIds: string[]) => {
-  await Promise.all(notificationIds.map((notificationId) => markNotificationReadById(notificationId)));
-};
-
-export const deleteNotificationById = async (notificationId: string) => {
-  await deleteDoc(doc(db, notificationCollection, notificationId));
 };

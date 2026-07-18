@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { AlertCircle, ArrowUpRight, Check, ClipboardList, Hash, Loader2, Search, X } from "lucide-react";
 import { useOrbit } from "../../../context/OrbitContext";
-import type { SimulatedUser, Transaction } from "../../../types";
+import type { Transaction } from "../../../types";
 
 type WithdrawalStatus = "pending" | "approved" | "rejected";
 
@@ -57,36 +57,34 @@ const getDestinationWallet = (transaction: Transaction) => {
   return transaction.address || "Not captured";
 };
 
-const buildWithdrawalRows = (users: SimulatedUser[]): WithdrawalRow[] =>
-  users.flatMap(user =>
-    user.transactions
-      .filter(transaction => transaction.type === "withdrawal")
-      .map(transaction => {
-        const asset = parseAsset(transaction.asset);
-        return {
-          ...transaction,
-          userName: user.name,
-          userEmail: user.email,
-          coin: asset.coin,
-          network: asset.network,
-          destinationWallet: getDestinationWallet(transaction),
-          displayStatus: normalizeStatus(transaction.status)
-        };
-      })
-  );
+const buildWithdrawalRows = (transactions: Transaction[]): WithdrawalRow[] =>
+  transactions
+    .filter(transaction => transaction.type === "withdrawal")
+    .map(transaction => {
+      const asset = parseAsset(transaction.asset);
+      return {
+        ...transaction,
+        userName: transaction.userName || "",
+        userEmail: transaction.userEmail || "",
+        coin: asset.coin,
+        network: asset.network,
+        destinationWallet: getDestinationWallet(transaction),
+        displayStatus: normalizeStatus(transaction.status)
+      };
+    });
 
 export const AdminWithdrawalsTab: React.FC = () => {
-  const { adminUsers, adminApproveWithdrawal, adminRejectWithdrawal } = useOrbit();
+  const { adminTransactions, adminApproveWithdrawal, adminRejectWithdrawal } = useOrbit();
   const [adminNotes, setAdminNotes] = useState<Record<string, string>>({});
   const [feedback, setFeedback] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<"all" | WithdrawalStatus>("all");
   const [searchQuery, setSearchQuery] = useState("");
 
-  const isLoading = !Array.isArray(adminUsers);
+  const isLoading = !Array.isArray(adminTransactions);
 
   const withdrawalResult = useMemo(() => {
     try {
-      const rows = buildWithdrawalRows(adminUsers).sort((a, b) => {
+      const rows = buildWithdrawalRows(adminTransactions).sort((a, b) => {
         if (a.displayStatus === "pending" && b.displayStatus !== "pending") return -1;
         if (b.displayStatus === "pending" && a.displayStatus !== "pending") return 1;
         const dateA = Date.parse(a.date);
@@ -100,7 +98,7 @@ export const AdminWithdrawalsTab: React.FC = () => {
       const message = error instanceof Error ? error.message : "Unable to prepare withdrawal records.";
       return { rows: [] as WithdrawalRow[], error: message };
     }
-  }, [adminUsers]);
+  }, [adminTransactions]);
 
   const withdrawals = withdrawalResult.rows;
 

@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from "react";
 import { useOrbit } from "../../../context/OrbitContext";
-import { getDownloadURL, ref, storage, uploadBytes } from "../../../lib/firebase";
+import { useSupabaseClient, uploadDepositWalletQrCode } from "../../../lib/supabase";
 import { getDepositWalletLabel, sortDepositWallets } from "../../../services";
 import type { DepositWallet } from "../../../types";
 import { motion } from "motion/react";
@@ -44,6 +44,7 @@ const walletToForm = (wallet: DepositWallet): WalletForm => ({
 
 export const AdminWalletsTab: React.FC = () => {
   const { depositWallets, adminSaveDepositWallet, adminDeleteDepositWallet } = useOrbit();
+  const supabase = useSupabaseClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState<WalletForm>(() => createEmptyForm());
   const [qrFile, setQrFile] = useState<File | null>(null);
@@ -84,9 +85,7 @@ export const AdminWalletsTab: React.FC = () => {
       let qrCodeUrl = form.qrCodeUrl.trim();
 
       if (qrFile) {
-        const storageRef = ref(storage, `deposit-wallets/${walletId}_${Date.now()}_${qrFile.name}`);
-        await uploadBytes(storageRef, qrFile);
-        qrCodeUrl = await getDownloadURL(storageRef);
+        qrCodeUrl = await uploadDepositWalletQrCode(supabase, walletId, qrFile);
       }
 
       await adminSaveDepositWallet({

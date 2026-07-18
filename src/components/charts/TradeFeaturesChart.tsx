@@ -59,7 +59,26 @@ export const TradeFeaturesChart: React.FC<TradeFeaturesChartProps> = ({ onNaviga
   const [chartType, setChartType] = useState<"area" | "line">("area");
   const [showVolume, setShowVolume] = useState(true);
   const [hasChartSize, setHasChartSize] = useState(false);
+  const [isOnScreen, setIsOnScreen] = useState(false);
   const chartContainerRef = useRef<HTMLDivElement>(null);
+  const sectionRef = useRef<HTMLDivElement>(null);
+
+  // Pause the simulated tick while the section is scrolled out of view —
+  // otherwise the landing page re-renders this whole section every 2s
+  // even when the chart isn't visible.
+  useEffect(() => {
+    const node = sectionRef.current;
+    if (!node || typeof IntersectionObserver === "undefined") {
+      setIsOnScreen(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => setIsOnScreen(entry.isIntersecting),
+      { rootMargin: "100px" }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const node = chartContainerRef.current;
@@ -99,9 +118,11 @@ export const TradeFeaturesChart: React.FC<TradeFeaturesChartProps> = ({ onNaviga
     setPriceChangePercent(1.66);
   }, [selectedCoin, timeframe]);
 
-  // Simulate live price ticks
+  // Simulate live price ticks (only while visible)
   useEffect(() => {
+    if (!isOnScreen) return;
     const timer = setInterval(() => {
+      if (document.hidden) return;
       const volatility = selectedCoin.basePrice * 0.0002;
       const change = (Math.random() - 0.46) * volatility;
       setRealtimePrice(prev => {
@@ -122,14 +143,14 @@ export const TradeFeaturesChart: React.FC<TradeFeaturesChartProps> = ({ onNaviga
       });
     }, 2000);
     return () => clearInterval(timer);
-  }, [selectedCoin]);
+  }, [selectedCoin, isOnScreen]);
 
   const minPrice = Math.min(...chartData.map(d => d.price));
   const maxPrice = Math.max(...chartData.map(d => d.price));
   const yDomain = [minPrice * 0.99, maxPrice * 1.01];
 
   return (
-    <div className="w-full bg-[#0B0E11] border-y border-[#2B3139]/50 py-16 lg:py-24 relative z-20">
+    <div ref={sectionRef} className="w-full bg-[#0B0E11] border-y border-[#2B3139]/50 py-16 lg:py-24 relative z-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
         {/* Header Section */}

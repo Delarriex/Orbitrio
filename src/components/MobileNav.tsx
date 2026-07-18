@@ -1,6 +1,7 @@
 import React from "react";
 import { Home, Bell, Gift, Repeat, TrendingUp } from "lucide-react";
 import { useOrbit } from "../context/OrbitContext";
+import { useCurrentUser } from "../hooks/useCurrentUser";
 
 interface MobileNavProps {
   currentView: string;
@@ -8,8 +9,9 @@ interface MobileNavProps {
 }
 
 export const MobileNav: React.FC<MobileNavProps> = ({ currentView, onNavigate }) => {
-  const { user, unreadNotificationsCount } = useOrbit();
-  if (!user.isLoggedIn || user.role === "admin") return null;
+  const { unreadNotificationsCount } = useOrbit();
+  const { isLoggedIn, isAdmin } = useCurrentUser();
+  if (!isLoggedIn || isAdmin) return null;
   const tabs = [
     { id: "home", label: "Home", icon: Home },
     { id: "dashboard-notifications", label: "Alerts", icon: Bell, badge: unreadNotificationsCount },
@@ -20,7 +22,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({ currentView, onNavigate })
 
   const handleTabClick = (tabId: string) => {
     if (tabId === "home") {
-      onNavigate(user.isLoggedIn ? "dashboard" : "home");
+      onNavigate(isLoggedIn ? "dashboard" : "home");
     } else {
       onNavigate(tabId);
     }
@@ -55,4 +57,3 @@ export const MobileNav: React.FC<MobileNavProps> = ({ currentView, onNavigate })
     </div>
   );
 };
-

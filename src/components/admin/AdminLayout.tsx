@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Compass, Menu, ShieldAlert, X } from "lucide-react";
-import { useOrbit } from "../../context/OrbitContext";
+import { useClerk } from "@clerk/clerk-react";
 import { useBodyScrollLock } from "../../hooks/useBodyScrollLock";
 
 type AdminNavItem = {
@@ -19,12 +19,12 @@ interface AdminLayoutProps {
 }
 
 export const AdminLayout: React.FC<AdminLayoutProps> = ({ activeTab, navItems, onTabChange, children }) => {
-  const { logout } = useOrbit();
+  const { signOut } = useClerk();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   useBodyScrollLock(isMobileMenuOpen);
 
   const handleLockAdminTerminal = async () => {
-    await logout();
+    await signOut();
     window.location.assign("/");
   };
 

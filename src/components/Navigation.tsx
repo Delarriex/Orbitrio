@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { useOrbit } from "../context/OrbitContext";
+import { useCurrentUser } from "../hooks/useCurrentUser";
+import { useClerk } from "@clerk/clerk-react";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { Menu, X, User, LogOut, LayoutDashboard, Coins, Briefcase, Wallet2, TrendingUp, LogIn, UserPlus, History, Gift, Shield, CheckCircle2, ChevronDown, MoreHorizontal, MessageSquare, Settings, Bell } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -10,12 +12,19 @@ interface NavigationProps {
 }
 
 export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate }) => {
-  const { user, logout, unreadNotificationsCount } = useOrbit();
+  const { user, unreadNotificationsCount } = useOrbit();
+  const { isLoggedIn, isAdmin } = useCurrentUser();
+  const { signOut } = useClerk();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   useBodyScrollLock(mobileMenuOpen);
 
-  if (user.isLoggedIn && user.role === "admin") return null;
+  if (isLoggedIn && isAdmin) return null;
+
+  const handleSignOut = async () => {
+    await signOut();
+    onNavigate("home");
+  };
 
   const guestLinks = [
     { id: "home", label: "Home" },
@@ -75,7 +84,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
 
           {/* Logo Brand Title (Upper Hemisphere Orange-Gold, Bottom Metallic White) */}
           <div
-            onClick={() => onNavigate(user.isLoggedIn ? "dashboard" : "home")}
+            onClick={() => onNavigate(isLoggedIn ? "dashboard" : "home")}
             className="flex items-center gap-3 cursor-pointer group"
           >
             {/* SVG high-fidelity Orbitrio brand replica */}
@@ -129,7 +138,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
 
           {/* Desktop Links (Public + Live states) */}
           <div className="hidden lg:flex items-center gap-6 text-xs text-orbit-gray-text font-medium">
-            {!user.isLoggedIn ? (
+            {!isLoggedIn ? (
               <>
                 <div className="flex gap-1.5 border-r border-orbit-border/50 pr-6">
                   {guestLinks.map((link) => (
@@ -137,13 +146,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
                       key={link.id}
                       onClick={() => {
                         if (link.id === "about-us" || link.id === "contact") {
-                          if (window.location.pathname === '/') {
-                            const el = document.getElementById(link.id);
-                            if (el) el.scrollIntoView({ behavior: 'smooth' });
-                            window.history.pushState(null, '', `/#${link.id}`);
-                          } else {
-                            onNavigate("home#" + link.id);
-                          }
+                          onNavigate("home#" + link.id);
                         } else {
                           onNavigate(link.id);
                         }
@@ -238,7 +241,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
 
                 {/* User details and exit button */}
                 <div className="flex items-center gap-4">
-                  {user.role === "admin" && (
+                  {isAdmin && (
                     <button
                       onClick={() => onNavigate("dashboard-admin")}
                       className="py-1.5 px-3 rounded text-[10px] bg-gradient-to-r from-orbit-accent to-[#FF7F00] text-orbit-bg font-black uppercase tracking-widest cursor-pointer shadow hover:opacity-95"
@@ -257,7 +260,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
                   </div>
 
                   <button
-                    onClick={() => { logout(); onNavigate("home"); }}
+                    onClick={() => { handleSignOut(); }}
                     className="p-1.5 text-orbit-gray-text hover:text-orbit-red transition-all cursor-pointer rounded hover:bg-orbit-red/10 animate-pulse hover:animate-none"
                     title="Sign Out"
                   >
@@ -295,7 +298,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
               <div className="flex items-center justify-between border-b border-orbit-border/50 pb-4 shrink-0">
                 {/* Logo Brand Title */}
                 <div
-                  onClick={() => { onNavigate(user.isLoggedIn ? "dashboard" : "home"); setMobileMenuOpen(false); }}
+                  onClick={() => { onNavigate(isLoggedIn ? "dashboard" : "home"); setMobileMenuOpen(false); }}
                   className="flex items-center gap-3 cursor-pointer group"
                 >
                   <svg className="w-[38px] h-[38px] transform group-hover:rotate-12 transition-transform duration-500 filter drop-shadow-[0_2px_8px_rgba(247,147,26,0.2)]" viewBox="0 0 100 100">
@@ -345,7 +348,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
 
               {/* Dynamic Navigation Menu Items inside list */}
               <div className="flex flex-col space-y-1 flex-1">
-                {!user.isLoggedIn ? (
+                {!isLoggedIn ? (
                   // Guest Menu Items: Home, Markets, Earn, About, Contact
                   <>
                     {guestLinks.map((link) => (
@@ -353,13 +356,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
                         key={link.id}
                         onClick={() => {
                           if (link.id === "about-us" || link.id === "contact") {
-                            if (window.location.pathname === '/' || window.location.pathname === '') {
-                              const el = document.getElementById(link.id);
-                              if (el) el.scrollIntoView({ behavior: 'smooth' });
-                              window.history.pushState(null, '', `/#${link.id}`);
-                            } else {
-                              onNavigate("home#" + link.id);
-                            }
+                            onNavigate("home#" + link.id);
                           } else {
                             onNavigate(link.id);
                           }
@@ -459,7 +456,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
                             </span>
                           </div>
 
-                          {user.role === "admin" && (
+                          {isAdmin && (
                             <button
                               onClick={() => { onNavigate("dashboard-admin"); setMobileMenuOpen(false); }}
                               className="py-1 px-2.5 rounded text-[9px] bg-gradient-to-r from-orbit-accent to-[#FF7F00] text-orbit-bg font-black uppercase tracking-widest cursor-pointer shadow shrink-0"
@@ -471,7 +468,7 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
 
                         <button
                           type="button"
-                          onClick={() => { logout(); onNavigate("home"); setMobileMenuOpen(false); }}
+                          onClick={() => { handleSignOut(); setMobileMenuOpen(false); }}
                           className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl border border-orbit-red/30 bg-orbit-red/5 text-orbit-red text-sm font-bold font-subheading hover:bg-orbit-red/10 transition-all cursor-pointer shadow-sm shadow-orbit-red/5"
                         >
                           <LogOut size={16} /> Sign Out Securely
@@ -488,4 +485,3 @@ export const Navigation: React.FC<NavigationProps> = ({ currentView, onNavigate 
     </>
   );
 };
-
