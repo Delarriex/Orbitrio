@@ -1,6 +1,10 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 
+// Hard ceiling so this function can never run away: worst case is
+// Binance(3.5s) → CoinGecko(3.5s) → price-sync(2.5s) ≈ 9.5s, under this cap.
+export const config = { maxDuration: 10 };
+
 // Live market data feed + trusted-price sync. On Vercel this runs as a
 // serverless function (the Express /api/markets in server.ts is used only for
 // local/self-hosted dev — the two are kept in sync). It fetches live crypto
@@ -14,6 +18,13 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabaseAdmin = (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY)
   ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
   : null;
+
+// Bounded fetch: never let a slow/hanging upstream tie up the serverless
+// function (which on Hobby only has a ~10s ceiling and, if repeatedly maxed
+// by the client polling every 25s, can burn the function quota).
+async function fetchWithTimeout(url: string, ms: number): Promise<Response> {
+  return fetch(url, { signal: AbortSignal.timeout(ms) });
+}
 
 async function syncMarketPrices(assets: Array<{ symbol: string; price: number }>) {
   if (!supabaseAdmin) return;
@@ -69,7 +80,7 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
       const symbolsArray = Object.keys(symbolsMap);
       const binanceUrl = `https://api.binance.com/api/v3/ticker/24hr?symbols=${encodeURIComponent(JSON.stringify(symbolsArray))}`;
 
-      const binanceRes = await fetch(binanceUrl);
+      const binanceRes = await fetchWithTimeout(binanceUrl, 3500);
       if (binanceRes.ok) {
         const binanceData = await binanceRes.json();
         liveCrypto = binanceData.map((item: any) => ({
@@ -92,7 +103,7 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
       console.error("Failed to fetch live crypto from Binance, trying CoinGecko fallback...", err);
       try {
         const cgIds = ["bitcoin", "ethereum", "solana", "ripple", "cardano", "binancecoin", "polkadot", "dogecoin", "shiba-inu", "litecoin"].join(",");
-        const cgRes = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${cgIds}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true`);
+        const cgRes = await fetchWithTimeout(`https://api.coingecko.com/api/v3/simple/price?ids=${cgIds}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true`, 3500);
         if (cgRes.ok) {
           const cgData = await cgRes.json();
           liveCrypto = liveCrypto.map(asset => {
@@ -117,8 +128,12 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
 
     // Persist trusted prices for the buy/sell RPCs (bug #22). Awaited here (not
     // fire-and-forget) because a Vercel function may freeze after the response,
-    // which would drop an in-flight background write.
-    await syncMarketPrices([...liveCrypto, ...fallbackData.stocks]);
+    // which would drop an in-flight background write — but bounded so a slow
+    // Supabase can't hang the function.
+    await Promise.race([
+      syncMarketPrices([...liveCrypto, ...fallbackData.stocks]),
+      new Promise(resolve => setTimeout(resolve, 2500)),
+    ]);
 
     return res.status(200).json({
       crypto: liveCrypto,
