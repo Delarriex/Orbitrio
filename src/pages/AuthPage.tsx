@@ -2,12 +2,176 @@ import React, { useState } from "react";
 import { useSignUp, useSignIn } from "@clerk/clerk-react";
 import { useOrbit } from "../context/OrbitContext";
 import { useSupabaseClient, createUserProfile, createFreshAuthedClient } from "../lib/supabase";
-import { Mail, Lock, User, CheckCircle2, Phone, ChevronDown } from "lucide-react";
+import {
+  Mail, Lock, User, CheckCircle2, Phone, ChevronDown,
+  Eye, EyeOff, Check, X, ArrowRight, ArrowLeft,
+  ShieldCheck, Zap, Clock,
+} from "lucide-react";
 
 interface AuthPageProps {
   onNavigate: (view: string) => void;
   initialTab?: "login" | "register";
 }
+
+type FieldState = "idle" | "ok" | "err";
+
+/* ---------- Presentational field primitives (module scope = stable identity,
+   so inputs never remount / lose focus on re-render) ---------- */
+
+const stateBorder = (state: FieldState) =>
+  state === "ok"
+    ? "border-orbit-green/55"
+    : state === "err"
+      ? "border-orbit-red/60"
+      : "border-orbit-border/85 focus-within:border-orbit-accent focus-within:ring-2 focus-within:ring-orbit-accent/15";
+
+interface TextInputProps {
+  icon?: React.ComponentType<{ size?: number }>;
+  label: string;
+  required?: boolean;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  placeholder?: string;
+  type?: string;
+  inputMode?: "text" | "numeric" | "email" | "tel";
+  state?: FieldState;
+  hint?: string | null;
+  password?: boolean;
+  rightLabel?: React.ReactNode;
+}
+
+const TextInput: React.FC<TextInputProps> = ({
+  icon: Icon, label, required, value, onChange, placeholder,
+  type = "text", inputMode, state = "idle", hint, password = false, rightLabel,
+}) => {
+  const [show, setShow] = useState(false);
+  const actualType = password ? (show ? "text" : "password") : type;
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <label className="text-[11px] uppercase font-subheading tracking-wider text-orbit-gray-text">
+          {label}{required && <span className="text-orbit-accent ml-0.5">*</span>}
+        </label>
+        {rightLabel}
+      </div>
+      <div className={`relative flex items-center rounded-xl bg-orbit-bg border transition-all duration-150 ${stateBorder(state)}`}>
+        {Icon && (
+          <span className="absolute left-3.5 text-zinc-500 pointer-events-none">
+            <Icon size={15} />
+          </span>
+        )}
+        <input
+          type={actualType}
+          inputMode={inputMode}
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          className={`w-full bg-transparent rounded-xl py-3 text-orbit-white outline-none placeholder:text-zinc-600 font-sans ${Icon ? "pl-10" : "pl-4"} pr-10`}
+        />
+        {password ? (
+          <button
+            type="button"
+            tabIndex={-1}
+            onClick={() => setShow((s) => !s)}
+            className="absolute right-3 text-zinc-500 hover:text-orbit-accent cursor-pointer bg-transparent border-none outline-none"
+            aria-label={show ? "Hide password" : "Show password"}
+          >
+            {show ? <EyeOff size={15} /> : <Eye size={15} />}
+          </button>
+        ) : state === "ok" ? (
+          <span className="absolute right-3 text-orbit-green pointer-events-none"><Check size={16} /></span>
+        ) : state === "err" ? (
+          <span className="absolute right-3 text-orbit-red pointer-events-none"><X size={16} /></span>
+        ) : null}
+      </div>
+      {hint && (
+        <p className={`text-[11px] leading-tight ${state === "err" ? "text-orbit-red" : "text-orbit-green"}`}>
+          {hint}
+        </p>
+      )}
+    </div>
+  );
+};
+
+interface SelectInputProps {
+  label: string;
+  required?: boolean;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  state?: FieldState;
+  children: React.ReactNode;
+}
+
+const SelectInput: React.FC<SelectInputProps> = ({ label, required, value, onChange, state = "idle", children }) => (
+  <div className="space-y-1.5">
+    <label className="text-[11px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
+      {label}{required && <span className="text-orbit-accent ml-0.5">*</span>}
+    </label>
+    <div className={`relative flex items-center rounded-xl bg-orbit-bg border transition-all duration-150 ${stateBorder(state)}`}>
+      <select
+        value={value}
+        onChange={onChange}
+        className="w-full bg-transparent rounded-xl px-4 py-3 text-orbit-white cursor-pointer outline-none appearance-none font-sans [&>option]:bg-orbit-card [&>option]:text-orbit-white"
+      >
+        {children}
+      </select>
+      <span className="absolute right-3 text-zinc-500 pointer-events-none">
+        <ChevronDown size={14} />
+      </span>
+    </div>
+  </div>
+);
+
+/* ---------- Password strength (pure client-side, no deps) ---------- */
+
+const passwordStrength = (pw: string): { score: number; label: string } => {
+  if (!pw) return { score: 0, label: "" };
+  let s = 0;
+  if (pw.length >= 8) s++;
+  if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) s++;
+  if (/\d/.test(pw)) s++;
+  if (/[^A-Za-z0-9]/.test(pw)) s++;
+  return { score: s, label: ["", "Weak", "Fair", "Good", "Strong"][s] };
+};
+
+const pwBarColor = (i: number, score: number) => {
+  if (i > score) return "bg-orbit-border";
+  return ["", "bg-orbit-red", "bg-amber-500", "bg-yellow-400", "bg-orbit-green"][score];
+};
+const pwTextColor = (score: number) =>
+  ["text-orbit-gray-text", "text-orbit-red", "text-amber-500", "text-yellow-400", "text-orbit-green"][score];
+
+/* Google mark — brand-tinted so it reads as a secondary path, not a rival CTA */
+const GoogleMark = () => (
+  <svg className="w-4 h-4" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+    <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+    <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.87-2.6-2.3-4.53-3.85-5.63z" />
+    <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+  </svg>
+);
+
+const GoogleButton: React.FC<{ onClick: () => void }> = ({ onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="w-full py-3.5 px-4 rounded-xl border border-orbit-border/90 hover:border-orbit-accent/50 bg-white/[0.02] hover:bg-orbit-accent/[0.04] text-orbit-white font-semibold font-subheading text-sm transition-all flex items-center justify-center gap-2.5 cursor-pointer"
+  >
+    <span className="text-orbit-accent"><GoogleMark /></span>
+    Continue with Google
+  </button>
+);
+
+const Divider = () => (
+  <div className="relative my-5">
+    <div className="absolute inset-0 flex items-center">
+      <div className="w-full border-t border-orbit-border/40" />
+    </div>
+    <div className="relative flex justify-center text-[10px] uppercase font-bold tracking-[0.14em]">
+      <span className="bg-[#0e1116] px-3 text-orbit-gray-text">Or</span>
+    </div>
+  </div>
+);
 
 export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "register" }) => {
   const { appSettings, sendWelcomeNotification } = useOrbit();
@@ -16,6 +180,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
   const { isLoaded: signInLoaded, signIn, setActive: setActiveFromSignIn } = useSignIn();
 
   const [activeTab, setActiveTab] = useState<"login" | "register">(initialTab);
+
+  // Register wizard step (1 = account, 2 = profile, 3 = preferences)
+  const [regStep, setRegStep] = useState<1 | 2 | 3>(1);
 
   // Login State
   const [loginEmail, setLoginEmail] = useState("");
@@ -51,6 +218,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleGoogleSignIn = async () => {
     if (!signInLoaded) return;
@@ -222,6 +390,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
         return;
       }
 
+      setIsSubmitting(true);
       try {
         const result = await signUp.create({
           emailAddress: email.trim(),
@@ -262,6 +431,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
         }
       } catch (err: any) {
         setErrorMsg(err?.errors?.[0]?.message || "Registration failed. Please attempt with a different email.");
+      } finally {
+        setIsSubmitting(false);
       }
 
     } else {
@@ -306,87 +477,201 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
 
   const currenciesList = ["USD", "EUR", "GBP", "BTC", "USDT"];
 
+  /* ---- Per-step validation for the register wizard. Mirrors the rules in
+     handleSubmit (which still runs as the final safety net on step 3). ---- */
+  const validateStep = (step: 1 | 2): string | null => {
+    if (step === 1) {
+      if (!username.trim()) return "Username is required.";
+      if (!email.trim() || !email.includes("@")) return "Please enter a valid email address.";
+      if (!password) return "Password is required.";
+      if (password.length < 8) return "Password must be at least 8 characters.";
+      if (password !== confirmPassword) return "Passwords do not match.";
+    }
+    if (step === 2) {
+      if (!firstName.trim()) return "First name is required.";
+      if (!lastName.trim()) return "Last name is required.";
+      if (sex === "Select Gender" || !sex) return "Please select your gender (Sex).";
+      if (!phone.trim()) return "Phone number is required.";
+    }
+    return null;
+  };
+
+  const attemptNext = () => {
+    const err = validateStep(regStep as 1 | 2);
+    if (err) { setErrorMsg(err); return; }
+    setErrorMsg(null);
+    setRegStep((s) => (s < 3 ? ((s + 1) as 1 | 2 | 3) : s));
+  };
+
+  const goBackStep = () => {
+    setErrorMsg(null);
+    setRegStep((s) => (s > 1 ? ((s - 1) as 1 | 2 | 3) : s));
+  };
+
+  // Enter on steps 1/2 advances the wizard instead of submitting the form early.
+  const handleFormKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
+    if (
+      e.key === "Enter" &&
+      activeTab === "register" &&
+      !pendingVerification &&
+      !showForgotPassword &&
+      regStep < 3 &&
+      (e.target as HTMLElement).tagName !== "TEXTAREA"
+    ) {
+      e.preventDefault();
+      attemptNext();
+    }
+  };
+
+  const switchTab = (tab: "login" | "register") => {
+    setActiveTab(tab);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    if (tab === "register") setRegStep(1);
+  };
+
+  // Live field states for inline validation feedback
+  const uState: FieldState = username.trim() ? "ok" : "idle";
+  const eState: FieldState = email.trim() && email.includes("@") ? "ok" : email.length > 0 ? "err" : "idle";
+  const cState: FieldState = confirmPassword ? (confirmPassword === password ? "ok" : "err") : "idle";
+  const fnState: FieldState = firstName.trim() ? "ok" : "idle";
+  const lnState: FieldState = lastName.trim() ? "ok" : "idle";
+  const phState: FieldState = phone.trim() ? "ok" : "idle";
+  const pw = passwordStrength(password);
+
+  const headerTitle = pendingVerification
+    ? "Verify your email"
+    : showForgotPassword
+      ? "Reset password"
+      : activeTab === "register" ? "Create your account" : "Welcome back";
+
+  const headerSub = pendingVerification
+    ? `We sent a 6-digit code to ${email}. Enter it below to activate your account.`
+    : showForgotPassword
+      ? "We'll email you a secure code to reset your password."
+      : activeTab === "register"
+        ? ["Step 1 of 3 — start with your login credentials.",
+           "Step 2 of 3 — tell us a little about yourself.",
+           "Step 3 of 3 — set your trading preferences."][regStep - 1]
+        : "Access real-time indicators, tier yields, and copy-performance logs.";
+
+  const trustRows = [
+    { icon: ShieldCheck, t1: "Bank-grade encryption", t2: "Multi-layer, end-to-end protection on every session." },
+    { icon: Zap, t1: "Seamless execution", t2: "Low-latency order routing and live market sync." },
+    { icon: Clock, t1: "Onboard in under 2 minutes", t2: "Three quick steps — no paperwork, no waiting." },
+  ];
+
   return (
-    <div className="mx-auto my-8 w-full max-w-2xl px-4 sm:px-6 lg:px-8 font-sans">
-      <div className="relative overflow-hidden rounded-[30px] border border-orbit-border/70 bg-gradient-to-br from-[#12161D] via-[#0D1014] to-[#090B10] p-5 shadow-[0_30px_120px_rgba(0,0,0,0.45)] sm:p-8">
-        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-orbit-accent via-amber-500 to-[#FF7F00]" />
-        <div className="mb-6 flex flex-wrap items-center justify-center gap-2 text-[10px] font-semibold uppercase tracking-[0.28em] text-orbit-gray-text">
-          <span className="rounded-full border border-orbit-border/70 bg-black/30 px-3 py-1">Secure</span>
-          <span className="rounded-full border border-orbit-border/70 bg-black/30 px-3 py-1">Responsive</span>
-          <span className="rounded-full border border-orbit-border/70 bg-black/30 px-3 py-1">Fast onboarding</span>
-        </div>
+    <div className="mx-auto my-8 w-full max-w-5xl px-4 sm:px-6 lg:px-8 font-sans">
+      <div className="grid overflow-hidden rounded-[28px] border border-orbit-border/70 bg-gradient-to-br from-[#12161D] via-[#0D1014] to-[#090B10] shadow-[0_40px_120px_rgba(0,0,0,0.55)] md:grid-cols-[0.92fr_1.08fr]">
 
-        {/* Pills switcher - hidden while mid-verification or mid-reset */}
-        {!pendingVerification && !showForgotPassword && (
-          <div className="flex justify-center gap-3 mb-10">
-            <button
-              type="button"
-              onClick={() => { setActiveTab("register"); setErrorMsg(null); }}
-              className={`px-5 py-2 text-xs font-bold font-subheading rounded-full transition-all cursor-pointer ${
-                activeTab === "register"
-                  ? "bg-orbit-accent text-orbit-bg shadow-md shadow-orbit-accent/10"
-                  : "text-orbit-gray-text hover:text-orbit-white bg-orbit-card/30 border border-orbit-border/25"
-              }`}
-            >
-              Register Account
-            </button>
-            <button
-              type="button"
-              onClick={() => { setActiveTab("login"); setErrorMsg(null); }}
-              className={`px-5 py-2 text-xs font-bold font-subheading rounded-full transition-all cursor-pointer ${
-                activeTab === "login"
-                  ? "bg-orbit-accent text-orbit-bg shadow-md shadow-orbit-accent/10"
-                  : "text-orbit-gray-text hover:text-orbit-white bg-orbit-card/30 border border-orbit-border/25"
-              }`}
-            >
-              Sign In
-            </button>
+        {/* ---------------- LEFT BRAND RAIL ---------------- */}
+        <aside className="relative order-2 flex flex-col overflow-hidden border-t border-orbit-border/50 p-8 md:order-1 md:border-r md:border-t-0 md:p-10">
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                "radial-gradient(120% 80% at 0% 0%, rgba(255,177,26,0.12), transparent 55%), radial-gradient(60% 40% at 85% 95%, rgba(255,127,0,0.10), transparent 60%)",
+            }}
+          />
+          <div className="relative z-10 font-brand text-[22px] font-bold tracking-tight">
+            <span className="text-orbit-white">orbit</span><span className="text-orbit-accent">rio</span>
           </div>
-        )}
 
-        <div className="bg-transparent p-0 border-none shadow-none">
-
-          {/* Header Title */}
-          <div className="text-center space-y-2 mb-8">
-            <h2 className="text-2xl font-extrabold font-heading tracking-tight text-orbit-white">
-              {pendingVerification
-                ? "Verify Your Email"
-                : showForgotPassword
-                  ? "Reset Password"
-                  : activeTab === "register" ? "Create Account" : "Sign In to Your Workspace"}
-            </h2>
-            <p className="text-xs text-orbit-gray-text max-w-sm mx-auto leading-relaxed">
-              {pendingVerification
-                ? `We sent a 6-digit code to ${email}. Enter it below to activate your account.`
-                : showForgotPassword
-                  ? "We'll email you a code to securely reset your password."
-                  : activeTab === "register"
-                    ? "Join millions of traders worldwide. Access advanced trading tools and seamless trade execution."
-                    : "Access real-time indicators, current tier yields, and copy performance logs."
-              }
+          <div className="relative z-10 mt-auto pt-10">
+            <div className="text-[11px] font-bold uppercase tracking-[0.22em] text-orbit-accent">
+              Institutional-grade trading
+            </div>
+            <h1 className="mt-3 mb-3 max-w-[13ch] font-brand text-[30px] font-bold leading-[1.1] tracking-tight text-balance text-orbit-white sm:text-[34px]">
+              Trade with{" "}
+              <span className="bg-gradient-to-r from-orbit-accent to-[#FF7F00] bg-clip-text text-transparent">precision</span>,
+              onboard in minutes.
+            </h1>
+            <p className="mb-8 max-w-[34ch] text-sm leading-relaxed text-orbit-gray-text">
+              Real-time indicators, tiered yields, and copy-performance logs — in one workspace built for serious traders.
             </p>
+
+            <div className="flex flex-col gap-4">
+              {trustRows.map(({ icon: Icon, t1, t2 }) => (
+                <div key={t1} className="flex items-start gap-3">
+                  <span className="flex h-8 w-8 flex-none items-center justify-center rounded-[9px] border border-orbit-accent/30 bg-orbit-accent/10 text-orbit-accent">
+                    <Icon size={15} />
+                  </span>
+                  <div>
+                    <div className="text-[13px] font-semibold leading-tight text-orbit-white">{t1}</div>
+                    <div className="text-xs leading-snug text-orbit-gray-text">{t2}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
+
+          <div className="relative z-10 mt-8 flex items-center gap-2 text-[11px] text-orbit-gray-text">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-orbit-green animate-ping" />
+            Security node active · End-to-end encryption
+          </div>
+        </aside>
+
+        {/* ---------------- RIGHT FORM PANEL ---------------- */}
+        <section className="order-1 flex flex-col p-7 md:order-2 md:p-10">
+
+          {/* Tab switcher — hidden mid-verify / mid-reset / mid-success */}
+          {!pendingVerification && !showForgotPassword && !isSuccess && (
+            <div className="mb-7 inline-flex gap-1 self-start rounded-full border border-orbit-border/70 bg-white/[0.03] p-1">
+              <button
+                type="button"
+                onClick={() => switchTab("register")}
+                className={`rounded-full px-5 py-2 text-xs font-bold font-subheading transition-all cursor-pointer ${
+                  activeTab === "register" ? "bg-orbit-accent text-orbit-bg" : "text-orbit-gray-text hover:text-orbit-white"
+                }`}
+              >
+                Create account
+              </button>
+              <button
+                type="button"
+                onClick={() => switchTab("login")}
+                className={`rounded-full px-5 py-2 text-xs font-bold font-subheading transition-all cursor-pointer ${
+                  activeTab === "login" ? "bg-orbit-accent text-orbit-bg" : "text-orbit-gray-text hover:text-orbit-white"
+                }`}
+              >
+                Sign in
+              </button>
+            </div>
+          )}
+
+          {/* Header */}
+          {!isSuccess && (
+            <div className="mb-7">
+              {pendingVerification && (
+                <span className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-orbit-accent/30 bg-orbit-accent/10 text-orbit-accent">
+                  <Mail size={26} />
+                </span>
+              )}
+              <h2 className="font-brand text-[25px] font-bold tracking-tight text-orbit-white">{headerTitle}</h2>
+              <p className="mt-1.5 max-w-[46ch] text-[13px] leading-relaxed text-orbit-gray-text">{headerSub}</p>
+            </div>
+          )}
 
           {isSuccess ? (
-            <div className="text-center py-16 space-y-4 animate-medium flex flex-col items-center justify-center">
-              <span className="inline-flex w-12 h-12 items-center justify-center rounded-full mx-auto border bg-orbit-accent/10 border-orbit-accent/30 text-orbit-accent">
-                <CheckCircle2 size={24} className="animate-bounce" />
+            <div className="flex flex-1 flex-col items-center justify-center gap-4 py-16 text-center">
+              <span className="inline-flex h-14 w-14 items-center justify-center rounded-full border border-orbit-accent/30 bg-orbit-accent/10 text-orbit-accent">
+                <CheckCircle2 size={26} className="animate-bounce" />
               </span>
-              <p className="text-sm font-subheading font-bold text-orbit-accent">
-                {activeTab === "register" ? "Creating account..." : "Signing in..."}
+              <p className="font-subheading text-sm font-bold text-orbit-accent">
+                {activeTab === "register" ? "Creating your account…" : "Signing you in…"}
               </p>
             </div>
           ) : pendingVerification ? (
             /* Email verification step */
-            <form onSubmit={handleVerifyEmail} className="space-y-5">
+            <form onSubmit={handleVerifyEmail} className="flex flex-col gap-5">
               {errorMsg && (
-                <div className="p-3.5 text-xs rounded-xl font-sans border bg-red-500/10 border-red-500/20 text-red-400">
+                <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3.5 font-sans text-xs text-red-400">
                   {errorMsg}
                 </div>
               )}
               <div className="space-y-1.5">
-                <label className="text-[10px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
-                  Verification Code
+                <label className="block text-[11px] uppercase font-subheading tracking-wider text-orbit-gray-text">
+                  Verification code
                 </label>
                 <input
                   type="text"
@@ -394,574 +679,304 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
                   value={verificationCode}
                   onChange={(e) => setVerificationCode(e.target.value)}
                   placeholder="Enter 6-digit code"
-                  className="w-full bg-orbit-bg border border-orbit-border/85 focus:border-orbit-accent rounded-xl px-4 py-3 text-sm tracking-[0.3em] text-center text-orbit-white cursor-text outline-none font-sans"
+                  className="w-full rounded-xl border border-orbit-border/85 bg-orbit-bg px-4 py-3.5 text-center font-sans tracking-[0.4em] text-orbit-white outline-none transition-all focus:border-orbit-accent focus:ring-2 focus:ring-orbit-accent/15 tabular-nums"
                   required
                 />
               </div>
-              <button
-                type="submit"
-                disabled={isVerifying}
-                className="orb-button w-full py-4 disabled:opacity-50"
-              >
+              <button type="submit" disabled={isVerifying} className="orb-button w-full py-4 disabled:opacity-50 disabled:cursor-not-allowed">
                 {isVerifying ? (
-                  <>
-                    <span className="w-3.5 h-3.5 border-2 border-orbit-bg/30 border-t-orbit-bg rounded-full animate-spin inline-block mr-1" />
-                    Verifying...
-                  </>
-                ) : "Verify & Activate Account"}
+                  <><span className="mr-1 inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-orbit-bg/30 border-t-orbit-bg" />Verifying…</>
+                ) : (<>Verify &amp; activate account <ArrowRight size={16} /></>)}
               </button>
-              <div className="text-center pt-2">
+              <div className="pt-1 text-center">
                 <button
                   type="button"
                   onClick={() => { setPendingVerification(false); setErrorMsg(null); }}
-                  className="text-xs font-semibold text-orbit-accent hover:underline cursor-pointer bg-transparent border-none outline-none"
+                  className="cursor-pointer border-none bg-transparent text-xs font-semibold text-orbit-accent outline-none hover:underline"
                 >
-                  Back
+                  ← Back
                 </button>
               </div>
             </form>
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} onKeyDown={handleFormKeyDown} className="flex flex-col gap-5">
 
               {errorMsg && (
-                <div className="p-3.5 text-xs rounded-xl font-sans border bg-red-500/10 border-red-500/20 text-red-400">
+                <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3.5 font-sans text-xs text-red-400">
                   {errorMsg}
                 </div>
               )}
-
               {successMsg && (
-                <div className="p-3.5 text-xs rounded-xl font-sans border bg-emerald-500/10 border-emerald-500/20 text-emerald-400">
+                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3.5 font-sans text-xs text-emerald-400">
                   {successMsg}
                 </div>
               )}
 
               {activeTab === "register" ? (
-                <div className="space-y-5">
+                <div className="flex flex-col gap-5">
 
-                  {/* User Name */}
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
-                      Set Username <span className="text-orbit-accent ml-0.5">*</span>
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500">
-                        <User size={15} />
-                      </span>
-                      <input
-                        type="text"
-                        value={username}
-                        onChange={(e) => setUsername(e.target.value)}
-                        placeholder="Enter Unique Username"
-                        className="w-full bg-orbit-bg border border-orbit-border/85 focus:border-orbit-accent rounded-xl pl-10 pr-4 py-3 text-xs text-orbit-white cursor-text outline-none transition-all placeholder:text-zinc-600 font-sans"
-                        required
-                      />
-                    </div>
+                  {/* Progress stepper */}
+                  <div className="flex items-center">
+                    {[
+                      { n: 1, label: "Account" },
+                      { n: 2, label: "Profile" },
+                      { n: 3, label: "Preferences" },
+                    ].map(({ n, label }, i) => {
+                      const active = regStep === n;
+                      const done = regStep > n;
+                      return (
+                        <React.Fragment key={n}>
+                          <div className="flex items-center gap-2">
+                            <span className={`flex h-6 w-6 flex-none items-center justify-center rounded-full border text-[11px] font-bold tabular-nums transition-all ${
+                              active ? "border-orbit-accent bg-orbit-accent text-orbit-bg"
+                                : done ? "border-orbit-accent bg-orbit-accent/15 text-orbit-accent"
+                                : "border-orbit-border bg-white/[0.04] text-orbit-gray-text"
+                            }`}>
+                              {done ? <Check size={13} /> : n}
+                            </span>
+                            <span className={`hidden text-[11px] font-semibold sm:block ${active ? "text-orbit-white" : "text-orbit-gray-text"}`}>
+                              {label}
+                            </span>
+                          </div>
+                          {i < 2 && <div className={`mx-2.5 h-0.5 flex-1 rounded-full transition-all ${regStep > n ? "bg-orbit-accent" : "bg-orbit-border"}`} />}
+                        </React.Fragment>
+                      );
+                    })}
                   </div>
 
-                  {/* Name Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
-                        First Name <span className="text-orbit-accent ml-0.5">*</span>
-                      </label>
-                      <div className="relative">
-                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500">
-                          <User size={15} />
-                        </span>
-                        <input
-                          type="text"
-                          value={firstName}
-                          onChange={(e) => setFirstName(e.target.value)}
-                          placeholder="Enter First Name"
-                          className="w-full bg-orbit-bg border border-orbit-border/85 focus:border-orbit-accent rounded-xl pl-10 pr-4 py-3 text-xs text-orbit-white cursor-text outline-none transition-all placeholder:text-zinc-600 font-sans"
-                          required
-                        />
+                  {/* STEP 1 — Account basics */}
+                  {regStep === 1 && (
+                    <div className="flex flex-col gap-4">
+                      <TextInput icon={User} label="Username" required value={username}
+                        onChange={(e) => setUsername(e.target.value)} placeholder="Choose a unique username" state={uState} />
+                      <TextInput icon={Mail} label="Email address" required type="email" inputMode="email" value={email}
+                        onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" state={eState}
+                        hint={eState === "err" ? "Enter a valid email address." : null} />
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div>
+                          <TextInput icon={Lock} label="Password" required password value={password}
+                            onChange={(e) => setPassword(e.target.value)} placeholder="Create a password" />
+                          {password && (
+                            <div className="mt-2">
+                              <div className="flex gap-1.5">
+                                {[1, 2, 3, 4].map((i) => (
+                                  <span key={i} className={`h-1 flex-1 rounded-full transition-colors ${pwBarColor(i, pw.score)}`} />
+                                ))}
+                              </div>
+                              <div className="mt-1.5 flex justify-between text-[11px] text-orbit-gray-text">
+                                <span>Password strength</span>
+                                <span className={`font-semibold ${pwTextColor(pw.score)}`}>{pw.label}</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        <TextInput icon={Lock} label="Confirm" required password value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Re-enter password" state={cState}
+                          hint={cState === "err" ? "Passwords don't match yet." : null} />
+                      </div>
+                      <div className="mt-1">
+                        <button type="button" onClick={attemptNext} className="orb-button w-full py-4">
+                          Continue <ArrowRight size={16} />
+                        </button>
                       </div>
                     </div>
+                  )}
 
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
-                        Last Name <span className="text-orbit-accent ml-0.5">*</span>
-                      </label>
-                      <div className="relative">
-                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500">
-                          <User size={15} />
-                        </span>
-                        <input
-                          type="text"
-                          value={lastName}
-                          onChange={(e) => setLastName(e.target.value)}
-                          placeholder="Enter Last Name"
-                          className="w-full bg-orbit-bg border border-orbit-border/85 focus:border-orbit-accent rounded-xl pl-10 pr-4 py-3 text-xs text-orbit-white cursor-text outline-none transition-all placeholder:text-zinc-600 font-sans"
-                          required
-                        />
+                  {/* STEP 2 — Profile details */}
+                  {regStep === 2 && (
+                    <div className="flex flex-col gap-4">
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <TextInput icon={User} label="First name" required value={firstName}
+                          onChange={(e) => setFirstName(e.target.value)} placeholder="First name" state={fnState} />
+                        <TextInput icon={User} label="Last name" required value={lastName}
+                          onChange={(e) => setLastName(e.target.value)} placeholder="Last name" state={lnState} />
                       </div>
-                    </div>
-                  </div>
-
-                  {/* Sex & Phone Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
-                        Sex <span className="text-orbit-accent ml-0.5">*</span>
-                      </label>
-                      <div className="relative">
-                        <select
-                          value={sex}
-                          onChange={(e) => setSex(e.target.value)}
-                          className="w-full bg-orbit-bg border border-orbit-border/85 focus:border-orbit-accent rounded-xl px-4 py-3 text-xs text-orbit-white cursor-pointer outline-none appearance-none font-sans"
-                          required
-                        >
-                          <option disabled value="Select Gender">Select Gender</option>
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <SelectInput label="Sex" required value={sex} onChange={(e) => setSex(e.target.value)}
+                          state={sex !== "Select Gender" ? "ok" : "idle"}>
+                          <option disabled value="Select Gender">Select gender</option>
                           <option value="Male">Male</option>
                           <option value="Female">Female</option>
                           <option value="Other">Other</option>
-                        </select>
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none">
-                          <ChevronDown size={14} />
-                        </span>
+                        </SelectInput>
+                        <TextInput icon={Phone} label="Phone number" required type="tel" inputMode="tel" value={phone}
+                          onChange={(e) => setPhone(e.target.value)} placeholder="Phone number" state={phState} />
+                      </div>
+                      <div className="mt-1 flex gap-3">
+                        <button type="button" onClick={goBackStep} className="orb-button-secondary py-4">
+                          <ArrowLeft size={16} /> Back
+                        </button>
+                        <button type="button" onClick={attemptNext} className="orb-button flex-1 py-4">
+                          Continue <ArrowRight size={16} />
+                        </button>
                       </div>
                     </div>
+                  )}
 
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
-                        Phone Number <span className="text-orbit-accent ml-0.5">*</span>
-                      </label>
-                      <div className="relative">
-                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500">
-                          <Phone size={15} />
-                        </span>
-                        <input
-                          type="tel"
-                          value={phone}
-                          onChange={(e) => setPhone(e.target.value)}
-                          placeholder="Enter Phone number"
-                          className="w-full bg-orbit-bg border border-orbit-border/85 focus:border-orbit-accent rounded-xl pl-10 pr-4 py-3 text-xs text-orbit-white cursor-text outline-none transition-all placeholder:text-zinc-600 font-sans"
-                          required
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Email */}
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
-                      Your Email <span className="text-orbit-accent ml-0.5">*</span>
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500">
-                        <Mail size={15} />
-                      </span>
-                      <input
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="name@example.com"
-                        className="w-full bg-orbit-bg border border-orbit-border/85 focus:border-orbit-accent rounded-xl pl-10 pr-4 py-3 text-xs text-orbit-white cursor-text outline-none transition-all placeholder:text-zinc-600 font-sans"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  {/* Account / Investment Type */}
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
-                      Select Account Type <span className="text-orbit-accent ml-0.5">*</span>
-                    </label>
-                    <div className="relative">
-                      <select
-                        value={accountType}
-                        onChange={(e) => setAccountType(e.target.value)}
-                        className="w-full bg-orbit-bg border border-orbit-border/85 focus:border-orbit-accent rounded-xl px-4 py-3 text-xs text-orbit-white cursor-pointer outline-none appearance-none font-sans"
-                        required
-                      >
-                        <option disabled value="Select Account Type">Select Account Type</option>
+                  {/* STEP 3 — Preferences */}
+                  {regStep === 3 && (
+                    <div className="flex flex-col gap-4">
+                      <SelectInput label="Account type" required value={accountType} onChange={(e) => setAccountType(e.target.value)}
+                        state={accountType !== "Select Account Type" ? "ok" : "idle"}>
+                        <option disabled value="Select Account Type">Select account tier</option>
                         <option value="Bronze">Bronze Tier (Standard)</option>
                         <option value="Silver">Silver Tier (Advanced)</option>
                         <option value="Gold">Gold Tier (Premium)</option>
                         <option value="Platinum">Platinum Tier (Elite)</option>
                         <option value="Diamond">Diamond Tier (Pro)</option>
-                      </select>
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none">
-                        <ChevronDown size={14} />
-                      </span>
-                    </div>
-                  </div>
+                      </SelectInput>
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <SelectInput label="Country" required value={country} onChange={(e) => setCountry(e.target.value)}
+                          state={country !== "Choose Country" ? "ok" : "idle"}>
+                          <option disabled value="Choose Country">Choose country</option>
+                          {countriesList.map((c, i) => <option key={i} value={c}>{c}</option>)}
+                        </SelectInput>
+                        <SelectInput label="Currency" required value={currency} onChange={(e) => setCurrency(e.target.value)}
+                          state={currency !== "Select Currency" ? "ok" : "idle"}>
+                          <option disabled value="Select Currency">Select currency</option>
+                          {currenciesList.map((curr, idx) => <option key={idx} value={curr}>{curr}</option>)}
+                        </SelectInput>
+                      </div>
 
-                  {/* Password Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
-                        Password <span className="text-orbit-accent ml-0.5">*</span>
-                      </label>
-                      <div className="relative">
-                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500">
-                          <Lock size={15} />
-                        </span>
+                      <label htmlFor="chk-terms" className="mt-1 flex cursor-pointer select-none items-start gap-2.5 text-xs leading-tight text-orbit-gray-text">
                         <input
-                          type="password"
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          placeholder="Enter Password"
-                          className="w-full bg-orbit-bg border border-orbit-border/85 focus:border-orbit-accent rounded-xl pl-10 pr-4 py-3 text-xs text-orbit-white cursor-text outline-none transition-all placeholder:text-zinc-600 font-sans"
-                          required
+                          type="checkbox"
+                          id="chk-terms"
+                          checked={checkedTerms}
+                          onChange={(e) => setCheckedTerms(e.target.checked)}
+                          className="mt-0.5 h-4 w-4 accent-orbit-accent"
                         />
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
-                        Confirm Password <span className="text-orbit-accent ml-0.5">*</span>
-                      </label>
-                      <div className="relative">
-                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500">
-                          <Lock size={15} />
+                        <span>
+                          I accept the{" "}
+                          <button type="button" onClick={() => onNavigate("terms")} className="text-orbit-accent hover:underline">Terms of Service</button>
+                          {" "}and{" "}
+                          <button type="button" onClick={() => onNavigate("privacy")} className="text-orbit-accent hover:underline">Privacy Policy</button>.
                         </span>
-                        <input
-                          type="password"
-                          value={confirmPassword}
-                          onChange={(e) => setConfirmPassword(e.target.value)}
-                          placeholder="Confirm Password"
-                          className="w-full bg-orbit-bg border border-orbit-border/85 focus:border-orbit-accent rounded-xl pl-10 pr-4 py-3 text-xs text-orbit-white cursor-text outline-none transition-all placeholder:text-zinc-600 font-sans"
-                          required
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Country & Currency Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
-                        Country <span className="text-orbit-accent ml-0.5">*</span>
                       </label>
-                      <div className="relative">
-                        <select
-                          value={country}
-                          onChange={(e) => setCountry(e.target.value)}
-                          className="w-full bg-orbit-bg border border-orbit-border/85 focus:border-orbit-accent rounded-xl px-3 py-3 text-xs text-orbit-white cursor-pointer outline-none appearance-none font-sans"
-                          required
-                        >
-                          <option disabled value="Choose Country">Choose Country</option>
-                          {countriesList.map((c, i) => (
-                            <option key={i} value={c}>{c}</option>
-                          ))}
-                        </select>
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none">
-                          <ChevronDown size={14} />
-                        </span>
+
+                      {/* Clerk bot-protection (CAPTCHA) mount point — required on custom
+                          sign-up flows, exactly one per page or it silently fails. */}
+                      <div id="clerk-captcha" />
+
+                      <div className="mt-1 flex gap-3">
+                        <button type="button" onClick={goBackStep} className="orb-button-secondary py-4">
+                          <ArrowLeft size={16} /> Back
+                        </button>
+                        <button type="submit" disabled={isSubmitting} className="orb-button flex-1 py-4 disabled:opacity-50 disabled:cursor-not-allowed">
+                          {isSubmitting ? (
+                            <><span className="mr-1 inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-orbit-bg/30 border-t-orbit-bg" />Creating…</>
+                          ) : (<>Create account <ArrowRight size={16} /></>)}
+                        </button>
                       </div>
+                      <p className="text-center text-[11px] leading-tight text-orbit-gray-text">
+                        A 6-digit code will confirm your email next.
+                      </p>
                     </div>
+                  )}
 
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
-                        Select Currency <span className="text-orbit-accent ml-0.5">*</span>
-                      </label>
-                      <div className="relative">
-                        <select
-                          value={currency}
-                          onChange={(e) => setCurrency(e.target.value)}
-                          className="w-full bg-orbit-bg border border-orbit-border/85 focus:border-orbit-accent rounded-xl px-3 py-3 text-xs text-orbit-white cursor-pointer outline-none appearance-none font-sans"
-                          required
-                        >
-                          <option disabled value="Select Currency">Select Currency</option>
-                          {currenciesList.map((curr, idx) => (
-                            <option key={idx} value={curr}>{curr}</option>
-                          ))}
-                        </select>
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none">
-                          <ChevronDown size={14} />
-                        </span>
+                  {/* Social + swap — shown on step 1 only to keep later steps focused */}
+                  {regStep === 1 && (
+                    <>
+                      <Divider />
+                      <GoogleButton onClick={handleGoogleSignIn} />
+                      <div className="pt-1 text-center text-xs text-orbit-gray-text">
+                        Already have an account?{" "}
+                        <button type="button" onClick={() => switchTab("login")} className="font-semibold text-orbit-accent hover:underline">
+                          Sign in
+                        </button>
                       </div>
-                    </div>
-                  </div>
-
-                  {/* Terms checkbox */}
-                  <div className="flex items-start gap-2.5 pt-2 text-xs text-orbit-gray-text font-sans">
-                    <input
-                      type="checkbox"
-                      id="chk-terms"
-                      checked={checkedTerms}
-                      onChange={(e) => setCheckedTerms(e.target.checked)}
-                      className="mt-0.5 accent-orbit-accent h-4 w-4 border border-orbit-border rounded cursor-pointer"
-                    />
-                    <label htmlFor="chk-terms" className="leading-tight cursor-pointer select-none">
-                      I Accept the Terms And Privacy Policy
-                    </label>
-                  </div>
-
-                  {/* Required container for Clerk's bot-protection (CAPTCHA) widget
-                      on custom sign-up flows — without this it silently fails. */}
-                  <div id="clerk-captcha" />
-
-                  <button
-                    type="submit"
-                    className="orb-button mt-4 w-full py-4"
-                  >
-                    Register Account
-                  </button>
-
-                  {/* Required by Clerk's bot-protection widget for custom sign-up flows */}
-                  <div id="clerk-captcha"></div>
-
-                  <p className="text-[10px] text-center text-orbit-gray-text leading-tight mt-2">
-                    By creating an account, you agree to <span className="lowercase text-orbit-white font-medium">orbit<span className="text-orbit-accent">rio</span></span>'s <button type="button" onClick={() => onNavigate("terms")} className="text-orbit-accent hover:underline">Terms of Service</button> and <button type="button" onClick={() => onNavigate("privacy")} className="text-orbit-accent hover:underline">Privacy Policy</button>.
-                  </p>
-
-                  <div className="relative my-4">
-                    <div className="absolute inset-0 flex items-center">
-                      <div className="w-full border-t border-orbit-border/15"></div>
-                    </div>
-                    <div className="relative flex justify-center text-[10px] uppercase font-bold">
-                      <span className="bg-[#0e0f11] px-3 text-orbit-gray-text">Or</span>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleGoogleSignIn}
-                    className="w-full py-3.5 px-4 rounded-xl border border-orbit-accent/30 hover:border-orbit-accent/80 bg-[#121318] hover:bg-orbit-accent/5 text-orbit-white hover:text-orbit-accent font-bold font-subheading text-xs transition-all flex items-center justify-center gap-2.5 cursor-pointer shadow-sm"
-                  >
-                    <svg className="w-4 h-4 cursor-pointer" viewBox="0 0 24 24">
-                      <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                      <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                      <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.87-2.6-2.3-4.53-3.85-5.63z" />
-                      <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                    </svg>
-                    Continue with Google
-                  </button>
-
-                  <div className="text-center text-xs text-orbit-gray-text pt-2">
-                    Already have an account?{" "}
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab("login")}
-                      className="text-orbit-accent font-semibold hover:underline"
-                    >
-                      Login
-                    </button>
-                  </div>
-
+                    </>
+                  )}
                 </div>
               ) : showForgotPassword ? (
                 /* Forgot Password recovery view */
-                <div className="space-y-5">
+                <div className="flex flex-col gap-5">
                   {forgotStep === "request" ? (
                     <>
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase font-subheading tracking-wider block text-orbit-gray-text">
-                          Email Address
-                        </label>
-                        <div className="relative">
-                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500">
-                            <Mail size={15} />
-                          </span>
-                          <input
-                            type="email"
-                            value={forgotEmail}
-                            onChange={(e) => setForgotEmail(e.target.value)}
-                            placeholder="john@example.com"
-                            className="w-full bg-orbit-bg border border-orbit-border/85 focus:border-orbit-accent rounded-xl pl-10 pr-4 py-3 text-xs text-orbit-white cursor-text font-sans outline-none"
-                            required
-                          />
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        disabled={forgotLoading}
-                        onClick={handleForgotPasswordRequest}
-                        className="orb-button mt-2 w-full py-4 disabled:opacity-50"
-                      >
+                      <TextInput icon={Mail} label="Email address" type="email" inputMode="email" value={forgotEmail}
+                        onChange={(e) => setForgotEmail(e.target.value)} placeholder="you@example.com" />
+                      <button type="button" disabled={forgotLoading} onClick={handleForgotPasswordRequest}
+                        className="orb-button w-full py-4 disabled:opacity-50 disabled:cursor-not-allowed">
                         {forgotLoading ? (
-                          <>
-                            <span className="w-3.5 h-3.5 border-2 border-orbit-bg/30 border-t-orbit-bg rounded-full animate-spin inline-block mr-1" />
-                            Processing...
-                          </>
-                        ) : "Send Reset Code"}
+                          <><span className="mr-1 inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-orbit-bg/30 border-t-orbit-bg" />Processing…</>
+                        ) : (<>Send reset code <ArrowRight size={16} /></>)}
                       </button>
                     </>
                   ) : (
                     <>
                       <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase font-subheading tracking-wider block text-orbit-gray-text">
-                          Reset Code
-                        </label>
+                        <label className="block text-[11px] uppercase font-subheading tracking-wider text-orbit-gray-text">Reset code</label>
                         <input
                           type="text"
                           inputMode="numeric"
                           value={resetCode}
                           onChange={(e) => setResetCode(e.target.value)}
                           placeholder="Enter 6-digit code"
-                          className="w-full bg-orbit-bg border border-orbit-border/85 focus:border-orbit-accent rounded-xl px-4 py-3 text-sm tracking-[0.3em] text-center text-orbit-white cursor-text font-sans outline-none"
+                          className="w-full rounded-xl border border-orbit-border/85 bg-orbit-bg px-4 py-3.5 text-center font-sans tracking-[0.4em] text-orbit-white outline-none transition-all focus:border-orbit-accent focus:ring-2 focus:ring-orbit-accent/15 tabular-nums"
                           required
                         />
                       </div>
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase font-subheading tracking-wider block text-orbit-gray-text">
-                          New Password
-                        </label>
-                        <div className="relative">
-                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500">
-                            <Lock size={15} />
-                          </span>
-                          <input
-                            type="password"
-                            value={newPassword}
-                            onChange={(e) => setNewPassword(e.target.value)}
-                            placeholder="Enter new password"
-                            className="w-full bg-orbit-bg border border-orbit-border/85 focus:border-orbit-accent rounded-xl pl-10 pr-4 py-3 text-xs text-orbit-white cursor-text font-sans outline-none"
-                            required
-                          />
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        disabled={forgotLoading}
-                        onClick={handleForgotPasswordReset}
-                        className="orb-button mt-2 w-full py-4 disabled:opacity-50"
-                      >
+                      <TextInput icon={Lock} label="New password" password value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)} placeholder="Enter new password" />
+                      <button type="button" disabled={forgotLoading} onClick={handleForgotPasswordReset}
+                        className="orb-button w-full py-4 disabled:opacity-50 disabled:cursor-not-allowed">
                         {forgotLoading ? (
-                          <>
-                            <span className="w-3.5 h-3.5 border-2 border-orbit-bg/30 border-t-orbit-bg rounded-full animate-spin inline-block mr-1" />
-                            Resetting...
-                          </>
-                        ) : "Reset Password & Sign In"}
+                          <><span className="mr-1 inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-orbit-bg/30 border-t-orbit-bg" />Resetting…</>
+                        ) : (<>Reset password &amp; sign in <ArrowRight size={16} /></>)}
                       </button>
                     </>
                   )}
-
-                  <div className="text-center pt-2">
+                  <div className="pt-1 text-center">
                     <button
                       type="button"
-                      onClick={() => {
-                        setShowForgotPassword(false);
-                        setForgotStep("request");
-                        setErrorMsg(null);
-                        setSuccessMsg(null);
-                      }}
-                      className="text-xs font-semibold text-orbit-accent hover:underline cursor-pointer bg-transparent border-none outline-none"
+                      onClick={() => { setShowForgotPassword(false); setForgotStep("request"); setErrorMsg(null); setSuccessMsg(null); }}
+                      className="cursor-pointer border-none bg-transparent text-xs font-semibold text-orbit-accent outline-none hover:underline"
                     >
-                      Return to sign in
+                      ← Return to sign in
                     </button>
                   </div>
                 </div>
               ) : (
                 /* Login view */
-                <div className="space-y-5">
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
-                      Email Address
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500">
-                        <Mail size={15} />
-                      </span>
-                      <input
-                        type="email"
-                        value={loginEmail}
-                        onChange={(e) => setLoginEmail(e.target.value)}
-                        placeholder="john@example.com"
-                        className="w-full bg-orbit-bg border border-orbit-border/85 focus:border-orbit-accent rounded-xl pl-10 pr-4 py-3 text-xs text-orbit-white cursor-text font-sans outline-none"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between items-center">
-                      <label className="text-[10px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
-                        Password
-                      </label>
+                <div className="flex flex-col gap-5">
+                  <TextInput icon={Mail} label="Email address" type="email" inputMode="email" value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)} placeholder="you@example.com" />
+                  <TextInput icon={Lock} label="Password" password value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)} placeholder="Enter your password"
+                    rightLabel={
                       <button
                         type="button"
-                        onClick={() => {
-                          setShowForgotPassword(true);
-                          setErrorMsg(null);
-                          setSuccessMsg(null);
-                        }}
-                        className="text-[10px] font-semibold text-orbit-accent hover:underline cursor-pointer bg-transparent border-none outline-none"
+                        onClick={() => { setShowForgotPassword(true); setErrorMsg(null); setSuccessMsg(null); }}
+                        className="cursor-pointer border-none bg-transparent text-[11px] font-semibold text-orbit-accent outline-none hover:underline"
                       >
-                        Forgot Password?
+                        Forgot password?
                       </button>
-                    </div>
-                    <div className="relative">
-                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500">
-                        <Lock size={15} />
-                      </span>
-                      <input
-                        type="password"
-                        value={loginPassword}
-                        onChange={(e) => setLoginPassword(e.target.value)}
-                        placeholder="••••••••••"
-                        className="w-full bg-orbit-bg border border-orbit-border/85 focus:border-orbit-accent rounded-xl pl-10 pr-4 py-3 text-xs text-orbit-white cursor-text font-sans outline-none"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="orb-button mt-6 w-full py-4"
-                  >
-                    Login
+                    }
+                  />
+                  <button type="submit" className="orb-button mt-1 w-full py-4">
+                    Sign in <ArrowRight size={16} />
                   </button>
 
-                  <p className="text-[10px] text-center text-orbit-gray-text leading-tight mt-2">
-                    By signing in, you agree to <span className="lowercase text-orbit-white font-medium">orbit<span className="text-orbit-accent">rio</span></span>'s <button type="button" onClick={() => onNavigate("terms")} className="text-orbit-accent hover:underline bg-transparent border-none outline-none cursor-pointer">Terms of Service</button> and <button type="button" onClick={() => onNavigate("privacy")} className="text-orbit-accent hover:underline bg-transparent border-none outline-none cursor-pointer">Privacy Policy</button>.
-                  </p>
+                  <Divider />
+                  <GoogleButton onClick={handleGoogleSignIn} />
 
-                  <div className="relative my-4">
-                    <div className="absolute inset-0 flex items-center">
-                      <div className="w-full border-t border-orbit-border/15"></div>
-                    </div>
-                    <div className="relative flex justify-center text-[10px] uppercase font-bold">
-                      <span className="bg-[#0e0f11] px-3 text-orbit-gray-text">Or</span>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleGoogleSignIn}
-                    className="w-full py-3.5 px-4 rounded-xl border border-orbit-accent/30 hover:border-orbit-accent/80 bg-[#121318] hover:bg-orbit-accent/5 text-orbit-white hover:text-orbit-accent font-bold font-subheading text-xs transition-all flex items-center justify-center gap-2.5 cursor-pointer shadow-sm"
-                  >
-                    <svg className="w-4 h-4 cursor-pointer" viewBox="0 0 24 24">
-                      <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                      <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                      <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.87-2.6-2.3-4.53-3.85-5.63z" />
-                      <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                    </svg>
-                    Continue with Google
-                  </button>
-
-                  <div className="text-center text-xs text-orbit-gray-text pt-2">
+                  <div className="pt-1 text-center text-xs text-orbit-gray-text">
                     Don't have an account yet?{" "}
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab("register")}
-                      className="text-orbit-accent font-semibold hover:underline"
-                    >
-                      Register Now
+                    <button type="button" onClick={() => switchTab("register")} className="font-semibold text-orbit-accent hover:underline">
+                      Register now
                     </button>
                   </div>
                 </div>
               )}
-
             </form>
           )}
 
-          {/* Secure signpost */}
-          <div className="pt-8 border-t border-orbit-border/15 mt-8 text-center space-y-2 text-[10px] text-zinc-500">
-            <div className="flex items-center justify-center gap-2">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-orbit-green animate-ping" />
-              Security node active. End-to-end multi-layer data encryption active.
-            </div>
-            <div className="text-zinc-400">
-              Need assistance? <a href={`mailto:${appSettings.supportEmail}`} className="text-orbit-accent hover:underline">Contact Support</a>
-            </div>
+          {/* Support signpost */}
+          <div className="mt-auto pt-8 text-center text-[11px] text-orbit-gray-text">
+            Need assistance? <a href={`mailto:${appSettings.supportEmail}`} className="text-orbit-accent hover:underline">Contact support</a>
           </div>
 
-        </div>
+        </section>
       </div>
     </div>
   );
