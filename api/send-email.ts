@@ -148,7 +148,7 @@ const resolveEvent = (eventType: string, metadata: any) => {
       return {
         subject: `Withdrawal submitted - ${metadata.companyName}`,
         heading: "Withdrawal request received",
-        intro: "Your withdrawal request has been queued for admin review and security checks.",
+        intro: "Your withdrawal request has been queued for review and security checks.",
         accent: "#38bdf8",
         details: [
           { label: "Amount", value: formatMoney(amount) },
@@ -280,7 +280,7 @@ const resolveEvent = (eventType: string, metadata: any) => {
       return {
         subject: `KYC submitted - ${metadata.companyName}`,
         heading: "Verification submitted",
-        intro: "Your KYC documents have been submitted for admin review.",
+        intro: "Your KYC documents have been received and are being reviewed.",
         accent: "#38bdf8",
         details: [
           { label: "Document Type", value: metadata.documentType || metadata.idType },
