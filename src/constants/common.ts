@@ -1,4 +1,9 @@
-export const ADMIN_EMAILS = ["henrikaram1@gmail.com", "testuser@gmail.com"] as const;
+// Admin access is DB-role-driven: register, then set the user's role to 'admin'
+// in Supabase (the client gate is useCurrentUser → users.role, and the server
+// gate is the is_admin() RLS function). This hardcoded list is intentionally
+// empty — no admin is granted by email. isAdminEmail() therefore always returns
+// false, so every check falls back to role === 'admin'.
+export const ADMIN_EMAILS: readonly string[] = [];
 
 export const STORAGE_KEYS = {
   USER: "orbitrio_user",

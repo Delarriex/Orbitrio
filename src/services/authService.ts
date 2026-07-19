@@ -16,7 +16,7 @@ export interface RegisterAdditionalData {
 
 export const isAdminEmail = (email?: string | null) => {
   const normalized = email?.toLowerCase();
-  return !!normalized && ADMIN_EMAILS.includes(normalized as (typeof ADMIN_EMAILS)[number]);
+  return !!normalized && ADMIN_EMAILS.includes(normalized);
 };
 
 export const createLoggedOutUser = (): UserState => ({
