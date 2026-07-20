@@ -57,15 +57,21 @@ const getDestinationWallet = (transaction: Transaction) => {
   return transaction.address || "Not captured";
 };
 
-const buildWithdrawalRows = (transactions: Transaction[]): WithdrawalRow[] =>
+const buildWithdrawalRows = (
+  transactions: Transaction[],
+  directory: Map<string, { email: string; name: string | null }>,
+): WithdrawalRow[] =>
   transactions
     .filter(transaction => transaction.type === "withdrawal")
     .map(transaction => {
       const asset = parseAsset(transaction.asset);
+      // Older rows can have blank denormalized user_email/user_name — fall back
+      // to the users directory by user_id so the requester is always shown.
+      const profile = transaction.userId ? directory.get(transaction.userId) : undefined;
       return {
         ...transaction,
-        userName: transaction.userName || "",
-        userEmail: transaction.userEmail || "",
+        userName: transaction.userName || profile?.name || "",
+        userEmail: transaction.userEmail || profile?.email || "",
         coin: asset.coin,
         network: asset.network,
         destinationWallet: getDestinationWallet(transaction),
@@ -74,7 +80,11 @@ const buildWithdrawalRows = (transactions: Transaction[]): WithdrawalRow[] =>
     });
 
 export const AdminWithdrawalsTab: React.FC = () => {
-  const { adminTransactions, adminApproveWithdrawal, adminRejectWithdrawal } = useOrbit();
+  const { adminTransactions, adminApproveWithdrawal, adminRejectWithdrawal, usersDirectory } = useOrbit();
+  const directoryById = useMemo(
+    () => new Map((usersDirectory ?? []).map(profile => [profile.id, { email: profile.email, name: profile.name }])),
+    [usersDirectory],
+  );
   const [adminNotes, setAdminNotes] = useState<Record<string, string>>({});
   const [feedback, setFeedback] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<"all" | WithdrawalStatus>("all");
@@ -84,7 +94,7 @@ export const AdminWithdrawalsTab: React.FC = () => {
 
   const withdrawalResult = useMemo(() => {
     try {
-      const rows = buildWithdrawalRows(adminTransactions).sort((a, b) => {
+      const rows = buildWithdrawalRows(adminTransactions, directoryById).sort((a, b) => {
         if (a.displayStatus === "pending" && b.displayStatus !== "pending") return -1;
         if (b.displayStatus === "pending" && a.displayStatus !== "pending") return 1;
         const dateA = Date.parse(a.date);
@@ -98,7 +108,7 @@ export const AdminWithdrawalsTab: React.FC = () => {
       const message = error instanceof Error ? error.message : "Unable to prepare withdrawal records.";
       return { rows: [] as WithdrawalRow[], error: message };
     }
-  }, [adminTransactions]);
+  }, [adminTransactions, directoryById]);
 
   const withdrawals = withdrawalResult.rows;
 

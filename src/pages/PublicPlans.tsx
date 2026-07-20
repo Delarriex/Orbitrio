@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useSeo } from "../lib/useSeo";
 import { useOrbit } from "../context/OrbitContext";
 import { Check, Info, ArrowRight, ShieldCheck, DollarSign, HelpCircle, Clock, TrendingUp, Award, Layers, Crown, Sparkles, Gem, Activity, ChevronDown } from "lucide-react";
 
@@ -7,6 +8,11 @@ interface PublicPlansProps {
 }
 
 export const PublicPlans: React.FC<PublicPlansProps> = ({ onNavigate }) => {
+  useSeo({
+    title: "Investment Plans — Tiered Yields & Returns | Orbitrio Trades",
+    description: "Explore Orbitrio Trades investment plans across Bronze to Diamond tiers. Compare yields, durations, and expected returns, then start earning.",
+    path: "/plans",
+  });
   const { plans, user, siteContent } = useOrbit();
   const enabledPlans = useMemo(() => plans.filter((plan) => plan.enabled && plan.status === "active").sort((a, b) => a.displayOrder - b.displayOrder || a.minDeposit - b.minDeposit), [plans]);
 

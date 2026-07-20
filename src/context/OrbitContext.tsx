@@ -273,6 +273,9 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const currentSupabaseUserId = clerkUser?.id ?? null;
   const { sendTransactionalEmail } = useEmailNotifications();
   const sentEmailEventIdsRef = useRef<Set<string>>(new Set(localStorageGet<string[]>("orbitrio_sent_email_events", [])));
+  // Events currently being sent — prevents a concurrent double-send without
+  // permanently reserving the id (which would block retries after a failure).
+  const inFlightEmailEventsRef = useRef<Set<string>>(new Set());
   const pendingBalanceDebitsRef = useRef(0);
   const pendingActionKeysRef = useRef<Set<string>>(new Set());
 
@@ -299,11 +302,9 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     replyToEmail: appSettings.replyToEmail || appSettings.supportEmail
   });
 
-  const reserveEmailEvent = (eventId: string) => {
-    if (sentEmailEventIdsRef.current.has(eventId)) return false;
+  const markEmailEventSent = (eventId: string) => {
     sentEmailEventIdsRef.current.add(eventId);
     localStorageSet("orbitrio_sent_email_events", Array.from(sentEmailEventIdsRef.current));
-    return true;
   };
 
   const dispatchTransactionalEmail = (
@@ -312,8 +313,18 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     eventId: string,
     metadata: Record<string, any> = {}
   ) => {
-    if (!to || !reserveEmailEvent(eventId)) return;
+    // Never silently drop a transactional email (esp. money comms) for a
+    // missing recipient — surface it so it can be diagnosed, not swallowed.
+    if (!to) {
+      console.error(`Transactional email ${eventType} skipped: no recipient email (eventId=${eventId}).`);
+      return;
+    }
+    // Persistent dedup (already delivered) OR an in-flight send for the same
+    // event — don't double-send. The in-flight guard prevents a rapid double
+    // dispatch before the first send resolves.
+    if (sentEmailEventIdsRef.current.has(eventId) || inFlightEmailEventsRef.current.has(eventId)) return;
 
+    inFlightEmailEventsRef.current.add(eventId);
     void sendTransactionalEmail(to, eventType, {
       ...emailSettingsMetadata(),
       ...metadata,
@@ -321,10 +332,17 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       email: to
     }).then(result => {
       if (result?.success === false) {
+        // Do NOT mark as sent — a failed send must remain retryable. (The old
+        // code reserved the id before sending, so any failure permanently
+        // blocked re-sends of that event — e.g. the withdrawal-rejection email.)
         console.error(`Transactional email ${eventType} failed:`, result.error || result.message);
+        return;
       }
+      markEmailEventSent(eventId);
     }).catch(error => {
       console.error(`Transactional email ${eventType} failed:`, error);
+    }).finally(() => {
+      inFlightEmailEventsRef.current.delete(eventId);
     });
   };
 
@@ -1892,17 +1910,30 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  // Resolve a transaction's requesting user. The denormalized user_email /
+  // user_name columns can be blank on older rows — fall back to the users
+  // directory by user_id so notifications, emails and admin tables never end
+  // up with an empty recipient (which would silently drop the email).
+  const resolveTxRecipient = (tx: Transaction): { email: string; name: string } => {
+    const profile = tx.userId ? usersDirectory.find(u => u.id === tx.userId) : undefined;
+    return {
+      email: tx.userEmail || profile?.email || "",
+      name: tx.userName || profile?.name || profile?.email || "there",
+    };
+  };
+
   const adminApproveWithdrawal = async (txId: string, noteText: string = "Processed successfully via gateway ledger.") => {
     const tx = supabaseTransactions.find(t => t.id === txId);
     if (!tx) return;
 
+    const recipient = resolveTxRecipient(tx);
     try {
       await approveWithdrawalTx(txId, noteText);
       handleLog("Withdrawing Dispatched", `Released payout ID: ${txId}. Notes: ${noteText}`, user.email || "admin", "success");
       addNotification(`Settled withdrawal invoice ${txId}. Funds successfully dispatched.`, { title: "Withdrawal approved", type: "success", eventKey: `admin:withdrawal:approved:${txId}` });
-      addNotification(`Your withdrawal ${txId} was approved and dispatched.`, { title: "Withdrawal approved", type: "success", recipientEmail: tx.userEmail, eventKey: `withdrawal:approved:${txId}`, action: { label: "View wallet", view: "dashboard-wallet" } });
-      dispatchTransactionalEmail(tx.userEmail, "WITHDRAWAL_APPROVED", `withdrawal:approved:${txId}`, {
-        name: tx.userName,
+      addNotification(`Your withdrawal ${txId} was approved and dispatched.`, { title: "Withdrawal approved", type: "success", recipientEmail: recipient.email, eventKey: `withdrawal:approved:${txId}`, action: { label: "View wallet", view: "dashboard-wallet" } });
+      dispatchTransactionalEmail(recipient.email, "WITHDRAWAL_APPROVED", `withdrawal:approved:${txId}`, {
+        name: recipient.name,
         amount: tx.amount,
         asset: tx.asset,
         walletAddress: tx.address || tx.notes || "Stored Custody",
@@ -1919,15 +1950,16 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const matched = supabaseTransactions.find(t => t.id === txId);
     if (!matched) return;
 
+    const recipient = resolveTxRecipient(matched);
     try {
       await rejectWithdrawalTx(txId, noteTextByAdmin);
-      if (user.email && matched.userEmail && user.email.toLowerCase() === matched.userEmail.toLowerCase()) {
+      if (user.email && recipient.email && user.email.toLowerCase() === recipient.email.toLowerCase()) {
         await refetchCurrentUserProfile();
       }
       handleLog("Withdrawal Denied", `Security block enforced on withdrawal ID: ${txId}. Credited $${matched.amount} back to user balance. Reason: ${noteTextByAdmin}`, user.email || "admin", "alert");
       addNotification(`Withdrawal ${txId} was rejected. Funds returned to wallet.`, { title: "Withdrawal rejected", type: "warning", eventKey: `admin:withdrawal:rejected:${txId}` });
-      addNotification(`Your withdrawal ${txId} was rejected and funds were returned to your wallet.`, { title: "Withdrawal rejected", type: "error", recipientEmail: matched.userEmail, eventKey: `withdrawal:rejected:${txId}`, action: { label: "View wallet", view: "dashboard-wallet" } });
-      dispatchTransactionalEmail(matched.userEmail, "WITHDRAWAL_REJECTED", `withdrawal:rejected:${txId}`, { name: matched.userName, amount: matched.amount, asset: matched.asset, walletAddress: matched.address || matched.notes, transactionId: txId, reason: noteTextByAdmin, status: "rejected" });
+      addNotification(`Your withdrawal ${txId} was rejected and funds were returned to your wallet.`, { title: "Withdrawal rejected", type: "error", recipientEmail: recipient.email, eventKey: `withdrawal:rejected:${txId}`, action: { label: "View wallet", view: "dashboard-wallet" } });
+      dispatchTransactionalEmail(recipient.email, "WITHDRAWAL_REJECTED", `withdrawal:rejected:${txId}`, { name: recipient.name, amount: matched.amount, asset: matched.asset, walletAddress: matched.address || matched.notes, transactionId: txId, reason: noteTextByAdmin, status: "rejected" });
     } catch (e) {
       console.error("Error rejecting withdrawal:", e);
       toast.error("Failed to reject withdrawal.");

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useSeo } from "../lib/useSeo";
 import { useOrbit } from "../context/OrbitContext";
 import { Search, TrendingUp, TrendingDown, ArrowRight, HelpCircle } from "lucide-react";
 
@@ -7,6 +8,11 @@ interface PublicMarketsProps {
 }
 
 export const PublicMarkets: React.FC<PublicMarketsProps> = ({ onNavigate }) => {
+  useSeo({
+    title: "Live Crypto & Stock Markets — Real-Time Prices | Orbitrio Trades",
+    description: "Track real-time cryptocurrency and stock prices, 24h changes, and volume on Orbitrio Trades. Live market data to inform every trade.",
+    path: "/markets",
+  });
   const { marketCrypto, marketStocks, isLoadingMarkets } = useOrbit();
   const [activeTab, setActiveTab] = useState<"crypto" | "stocks">("crypto");
   const [searchQuery, setSearchQuery] = useState("");

@@ -28,6 +28,7 @@ const DashboardTrading = lazy(() => import("./pages/DashboardTrading").then(m =>
 const DashboardPortfolio = lazy(() => import("./pages/DashboardPortfolio").then(m => ({ default: m.DashboardPortfolio })));
 const DashboardPlans = lazy(() => import("./pages/DashboardPlans").then(m => ({ default: m.DashboardPlans })));
 const DashboardWallet = lazy(() => import("./pages/DashboardWallet").then(m => ({ default: m.DashboardWallet })));
+const DashboardSupport = lazy(() => import("./pages/DashboardSupport").then(m => ({ default: m.DashboardSupport })));
 const DashboardAdmin = lazy(() => import("./pages/DashboardAdmin").then(m => ({ default: m.DashboardAdmin })));
 const DashboardTransactions = lazy(() => import("./pages/DashboardTransactions").then(m => ({ default: m.DashboardTransactions })));
 const DashboardAirdrops = lazy(() => import("./pages/DashboardAirdrops").then(m => ({ default: m.DashboardAirdrops })));
@@ -55,6 +56,7 @@ const VIEW_TO_PATH: Record<string, string> = {
   "dashboard-portfolio": "/dashboard/portfolio",
   "dashboard-plans": "/dashboard/plans",
   "dashboard-wallet": "/dashboard/wallet",
+  "dashboard-support": "/dashboard/support",
   "dashboard-transactions": "/dashboard/transactions",
   "dashboard-airdrops": "/dashboard/airdrops",
   "dashboard-kyc": "/dashboard/kyc",
@@ -85,7 +87,7 @@ const LEGACY_HASH_TO_PATH: Record<string, string> = {
   "#admin": "/admin", "#/admin": "/admin",
 };
 
-const WALLET_TABS = ["deposit", "withdraw", "ledger", "support"] as const;
+const WALLET_TABS = ["deposit", "withdraw", "ledger"] as const;
 type WalletTab = (typeof WALLET_TABS)[number];
 type NavigateFn = (view: string, assetSymbol?: string, subTab?: WalletTab) => void;
 
@@ -118,6 +120,11 @@ function TradingRoute({ onNavigate }: { onNavigate: NavigateFn }) {
 function WalletRoute() {
   const [searchParams] = useSearchParams();
   const tabParam = searchParams.get("tab") || "";
+  // Support moved to its own page (/dashboard/support) — redirect old
+  // ?tab=support deep links (notifications, bookmarks) there.
+  if (tabParam === "support") {
+    return <Navigate to="/dashboard/support" replace />;
+  }
   const tab: WalletTab = (WALLET_TABS as readonly string[]).includes(tabParam)
     ? (tabParam as WalletTab)
     : "deposit";
@@ -183,10 +190,6 @@ function AppShell() {
       return;
     }
 
-    if (view === "dashboard-support") {
-      navigate("/dashboard/wallet?tab=support");
-      return;
-    }
     if (view === "dashboard-settings") {
       navigate("/dashboard/wallet?tab=deposit");
       return;
@@ -293,6 +296,7 @@ function AppShell() {
             <Route path="/dashboard/portfolio" element={userOnly(<DashboardPortfolio onNavigate={handleNavigate} />)} />
             <Route path="/dashboard/plans" element={userOnly(<DashboardPlans />)} />
             <Route path="/dashboard/wallet" element={userOnly(<WalletRoute />)} />
+            <Route path="/dashboard/support" element={userOnly(<DashboardSupport />)} />
             <Route path="/dashboard/transactions" element={userOnly(<DashboardTransactions />)} />
             <Route path="/dashboard/airdrops" element={userOnly(<DashboardAirdrops />)} />
             <Route path="/dashboard/kyc" element={userOnly(<DashboardKYC />)} />

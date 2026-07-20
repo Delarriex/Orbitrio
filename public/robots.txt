@@ -1,0 +1,19 @@
+# Orbitrio Trades
+User-agent: *
+Allow: /$
+Allow: /markets
+Allow: /plans
+Allow: /copy-trading
+Allow: /terms
+Allow: /privacy
+
+# Authenticated app + API are not for indexing
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /auth
+Disallow: /login
+Disallow: /register
+Disallow: /sso-callback
+Disallow: /api/
+
+Sitemap: https://orbitriotrades.com/sitemap.xml

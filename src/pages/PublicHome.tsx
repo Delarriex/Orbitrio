@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useSeo } from "../lib/useSeo";
 import { useOrbit } from "../context/OrbitContext";
 import { 
   ArrowUpRight, 
@@ -79,6 +80,11 @@ const REVIEWS = [
 ];
 
 export const PublicHome: React.FC<{ onNavigate: (view: string) => void }> = ({ onNavigate }) => {
+  useSeo({
+    title: "Orbitrio Trades — Crypto Trading, Copy Trading & Investment Plans",
+    description: "Trade crypto with precision on Orbitrio Trades. Real-time markets, tiered investment plans, and copy trading in one workspace built for serious traders.",
+    path: "/",
+  });
   const { marketCrypto, marketStocks, user } = useOrbit();
   const [activeSpotlightTab, setActiveSpotlightTab] = useState<"crypto" | "stocks">("crypto");
   const [currentReviewIndex, setCurrentReviewIndex] = useState(0);

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useSeo } from "../lib/useSeo";
 import { useOrbit } from "../context/OrbitContext";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { UserCheck, Users, TrendingUp, ShieldAlert, Award, ArrowUpRight, CheckCircle2, Calendar, X, DollarSign, Wallet, ShieldCheck, Info, Loader2 } from "lucide-react";
@@ -8,6 +9,11 @@ interface PublicCopyTradingProps {
 }
 
 export const PublicCopyTrading: React.FC<PublicCopyTradingProps> = ({ onNavigate }) => {
+  useSeo({
+    title: "Copy Trading — Follow Top Traders | Orbitrio Trades",
+    description: "Automatically mirror the strategies of proven traders on Orbitrio Trades. Browse verified performance, allocate funds, and copy trades in real time.",
+    path: "/copy-trading",
+  });
   const { traders, copyTrader, user, setInsufficientBalanceOpen } = useOrbit();
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [allocatingTrader, setAllocatingTrader] = useState<any | null>(null);

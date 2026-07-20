@@ -4,14 +4,11 @@ import { useOrbit } from "../context/OrbitContext";
 import { useSupabaseClient, uploadDepositProof } from "../lib/supabase";
 import { getDepositWalletLabel } from "../services";
 import { 
-  PlusSquare, 
-  MinusSquare, 
-  History, 
-  LifeBuoy, 
-  Copy, 
-  Check, 
-  Send, 
-  MessageSquare,
+  PlusSquare,
+  MinusSquare,
+  History,
+  Copy,
+  Check,
   Sparkles,
   Search,
   CheckCircle2,
@@ -25,14 +22,14 @@ import {
 } from "lucide-react";
 
 interface DashboardWalletProps {
-  initialOpenTab?: "deposit" | "withdraw" | "ledger" | "support";
+  initialOpenTab?: "deposit" | "withdraw" | "ledger";
 }
 
 export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab = "deposit" }) => {
-  const { user, deposit, withdraw, createTicket, replyToTicket, enabledDepositWallets, addNotification } = useOrbit();
+  const { user, deposit, withdraw, enabledDepositWallets, addNotification } = useOrbit();
   const { user: clerkUser } = useUser();
   const supabase = useSupabaseClient();
-  const [activeSubTab, setActiveSubTab] = useState<"deposit" | "withdraw" | "ledger" | "support">(initialOpenTab);
+  const [activeSubTab, setActiveSubTab] = useState<"deposit" | "withdraw" | "ledger">(initialOpenTab);
   const [showBalance, setShowBalance] = useState(true);
 
   // Deposit states
@@ -254,41 +251,6 @@ export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab
     }
   };
 
-  // Support states
-  const [tktSubject, setTktSubject] = useState("");
-  const [tktCategory, setTktCategory] = useState<"deposit" | "withdrawal" | "trading" | "general">("general");
-  const [tktInitialMsg, setTktInitialMsg] = useState("");
-  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(user.tickets[0]?.id || null);
-  const [tktReplyTxt, setTktReplyTxt] = useState("");
-
-  const handleCreateTicketSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!tktSubject.trim() || !tktInitialMsg.trim()) return;
-
-    createTicket(tktSubject, tktCategory, tktInitialMsg);
-    
-    // Clear forms
-    setTktSubject("");
-    setTktInitialMsg("");
-
-    // Set active selection to the newly created ticket on the next tick
-    setTimeout(() => {
-      if (user.tickets.length > 0) {
-        setSelectedTicketId(user.tickets[0].id);
-      }
-    }, 100);
-  };
-
-  const handleReplySubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedTicketId || !tktReplyTxt.trim()) return;
-
-    replyToTicket(selectedTicketId, tktReplyTxt);
-    setTktReplyTxt("");
-  };
-
-  const activeTicketObj = user.tickets.find(t => t.id === selectedTicketId);
-
   return (
     <div className="space-y-4 pb-4 sm:pb-6 font-sans">
       
@@ -347,14 +309,6 @@ export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab
           }`}
         >
           <History size={14} /> History
-        </button>
-        <button
-          onClick={() => setActiveSubTab("support")}
-          className={`flex items-center gap-1.5 px-4 sm:px-6 py-2 rounded-lg text-xs font-bold font-subheading transition-all cursor-pointer ${
-            activeSubTab === "support" ? "bg-orbit-accent text-orbit-bg" : "text-orbit-gray-text hover:text-orbit-white"
-          }`}
-        >
-          <LifeBuoy size={14} /> Help Center
         </button>
       </div>
 
@@ -790,141 +744,6 @@ export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab
           </div>
         )}
 
-        {/* TAB 4: SUPPORT DESK TICKET CHATS */}
-        {activeSubTab === "support" && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
-            
-            {/* Left Column: Create new ticket (col-span-5) */}
-            <form onSubmit={handleCreateTicketSubmit} className="lg:col-span-5 border-r border-orbit-border/40 pr-6 space-y-4">
-              <h3 className="text-xs font-mono uppercase tracking-widest text-orbit-accent border-b border-orbit-border/50 pb-2">
-                New Support Ticket
-              </h3>
-              
-              <div className="space-y-1">
-                <label className="text-[10px] text-orbit-gray-text uppercase font-mono">Subject</label>
-                <input
-                  type="text"
-                  required
-                  value={tktSubject}
-                  onChange={(e) => setTktSubject(e.target.value)}
-                  placeholder="e.g., Deposit delay"
-                  className="w-full bg-orbit-bg border border-orbit-border rounded-lg py-2 px-3 text-xs text-orbit-white focus:border-orbit-accent focus:outline-none"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] text-orbit-gray-text uppercase font-mono">Category</label>
-                <select
-                  value={tktCategory}
-                  onChange={(e) => setTktCategory(e.target.value as any)}
-                  className="w-full bg-orbit-bg border border-orbit-border rounded-lg py-2 px-3 text-xs text-orbit-white focus:border-orbit-accent focus:outline-none"
-                >
-                  <option value="deposit">Deposit</option>
-                  <option value="withdrawal">Withdrawal</option>
-                  <option value="trading">Trading</option>
-                  <option value="general">Account</option>
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] text-orbit-gray-text uppercase font-mono font-semibold">Message</label>
-                <textarea
-                  required
-                  rows={4}
-                  value={tktInitialMsg}
-                  onChange={(e) => setTktInitialMsg(e.target.value)}
-                  placeholder="Detail your request..."
-                  className="w-full bg-orbit-bg border border-orbit-border rounded-lg py-2 px-3 text-xs text-orbit-white focus:border-orbit-accent focus:outline-none"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full py-2.5 bg-orbit-accent text-orbit-bg font-bold text-xs uppercase rounded-lg shadow-md shadow-orbit-accent/15 hover:opacity-95 transition-all text-center cursor-pointer"
-              >
-                Submit
-              </button>
-            </form>
-
-            {/* Right Column: Active Interactive chat logs (col-span-7) */}
-            <div className="lg:col-span-7 flex flex-col justify-between h-[360px]">
-              
-              {/* Ticket selector header */}
-              <div className="flex bg-orbit-bg p-1.5 border border-orbit-border/70 rounded-lg justify-start gap-2 overflow-x-auto scrollbar-none">
-                {user.tickets.length === 0 ? (
-                  <span className="text-[10px] text-orbit-gray-text p-1 font-sans">No active support tickets.</span>
-                ) : (
-                  user.tickets.map((tkt) => (
-                    <button
-                      key={tkt.id}
-                      onClick={() => setSelectedTicketId(tkt.id)}
-                      className={`px-3 py-1.5 rounded text-[10px] font-semibold tracking-normal shrink-0 transition-all ${
-                        selectedTicketId === tkt.id 
-                          ? "bg-orbit-card text-orbit-accent border border-orbit-border" 
-                          : "text-orbit-gray-text hover:text-orbit-white"
-                      }`}
-                    >
-                      {tkt.subject.slice(0, 16)}...
-                    </button>
-                  ))
-                )}
-              </div>
-
-              {/* Chat log messages */}
-              <div className="flex-1 overflow-y-auto my-4 p-3 bg-orbit-darkcard/50 border border-orbit-border/40 rounded-xl space-y-4">
-                {activeTicketObj ? (
-                  activeTicketObj.messages.map((m, idx) => {
-                    const isSupport = m.sender === "support";
-                    return (
-                      <div 
-                        key={idx}
-                        className={`flex flex-col ${isSupport ? "items-start" : "items-end"}`}
-                      >
-                        <div className={`max-w-[85%] rounded-xl p-3 text-xs leading-normal ${
-                          isSupport 
-                            ? "bg-orbit-bg/85 border border-orbit-border text-orbit-white rounded-tl-none" 
-                            : "bg-orbit-accent text-orbit-bg font-medium rounded-tr-none"
-                        }`}>
-                          <p>{m.text}</p>
-                          <span className="block text-[8px] text-right mt-1 opacity-70">
-                            {m.time}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div className="h-full flex flex-col items-center justify-center text-center text-orbit-gray-text space-y-2">
-                    <MessageSquare size={24} className="text-orbit-border animate-bounce" />
-                    <p className="text-xs">Select active ticket tabs above, or submit new ones on the left-wing form.</p>
-                  </div>
-                )}
-              </div>
-
-              {/* Chat Reply form */}
-              {activeTicketObj && (
-                <form onSubmit={handleReplySubmit} className="flex gap-2">
-                  <input
-                    type="text"
-                    required
-                    value={tktReplyTxt}
-                    onChange={(e) => setTktReplyTxt(e.target.value)}
-                    placeholder="Type supplementary explanations..."
-                    className="flex-1 bg-orbit-bg border border-orbit-border focus:border-orbit-accent rounded-xl px-4 py-2 text-xs text-orbit-white focus:outline-none"
-                  />
-                  <button
-                    type="submit"
-                    className="p-2.5 rounded-xl bg-orbit-accent text-orbit-bg font-bold transition-all cursor-pointer"
-                  >
-                    <Send size={14} />
-                  </button>
-                </form>
-              )}
-
-            </div>
-
-          </div>
-        )}
 
       </div>
 
