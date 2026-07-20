@@ -20,6 +20,7 @@ const PublicPlans = lazy(() => import("./pages/PublicPlans").then(m => ({ defaul
 const AuthPage = lazy(() => import("./pages/AuthPage").then(m => ({ default: m.AuthPage })));
 const TermsPage = lazy(() => import("./pages/TermsPage").then(m => ({ default: m.TermsPage })));
 const PrivacyPage = lazy(() => import("./pages/PrivacyPage").then(m => ({ default: m.PrivacyPage })));
+const RiskDisclosurePage = lazy(() => import("./pages/RiskDisclosurePage").then(m => ({ default: m.RiskDisclosurePage })));
 const MaintenancePage = lazy(() => import("./pages/MaintenancePage").then(m => ({ default: m.MaintenancePage })));
 
 // Dashboard (Lazy Loaded)
@@ -51,6 +52,7 @@ const VIEW_TO_PATH: Record<string, string> = {
   register: "/register",
   terms: "/terms",
   privacy: "/privacy",
+  risk: "/risk",
   dashboard: "/dashboard",
   "dashboard-trading": "/dashboard/trading",
   "dashboard-portfolio": "/dashboard/portfolio",
@@ -290,6 +292,7 @@ function AppShell() {
             <Route path="/register" element={guestOnly(<AuthPage onNavigate={handleNavigate} initialTab="register" />)} />
             <Route path="/terms" element={<TermsPage onNavigate={handleNavigate} />} />
             <Route path="/privacy" element={<PrivacyPage onNavigate={handleNavigate} />} />
+            <Route path="/risk" element={<RiskDisclosurePage onNavigate={handleNavigate} />} />
 
             <Route path="/dashboard" element={userOnly(dashboardOverview)} />
             <Route path="/dashboard/trading" element={userOnly(<TradingRoute onNavigate={handleNavigate} />)} />

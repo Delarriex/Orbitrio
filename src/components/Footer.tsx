@@ -13,7 +13,8 @@ const FOOTER_LINKS: { label: string; view: string }[] = [
   { label: "Security", view: "dashboard-kyc" },
   { label: "Contact", view: "home#contact" },
   { label: "Terms of Service", view: "terms" },
-  { label: "Privacy Policy", view: "privacy" }
+  { label: "Privacy Policy", view: "privacy" },
+  { label: "Risk Disclosure", view: "risk" }
 ];
 
 export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
