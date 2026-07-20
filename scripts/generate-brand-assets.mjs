@@ -2,7 +2,7 @@
 // from the Orbitrio Trades brand mark. Run: node scripts/generate-brand-assets.mjs
 // Requires the dev dependency `sharp`.
 import sharp from "sharp";
-import { writeFileSync } from "node:fs";
+import { writeFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
@@ -127,8 +127,21 @@ async function buildIco(sizes) {
 }
 
 const run = async () => {
-  await sharp(Buffer.from(ogSvg)).png().toFile(resolve(publicDir, "og-image.png"));
-  console.log("✓ public/og-image.png (1200x630)");
+  // OG image: composite the supplied brand logo (public/brand-logo.png)
+  // centered on a 1200x630 canvas, padded with the logo's own near-black
+  // corner color (#03030d) for a seamless fill. Falls back to the generated
+  // text card if the source logo isn't present.
+  const brandLogo = resolve(publicDir, "brand-logo.png");
+  if (existsSync(brandLogo)) {
+    await sharp(brandLogo)
+      .resize(1200, 630, { fit: "contain", background: { r: 3, g: 3, b: 13, alpha: 1 } })
+      .png()
+      .toFile(resolve(publicDir, "og-image.png"));
+    console.log("✓ public/og-image.png (1200x630, from brand-logo.png)");
+  } else {
+    await sharp(Buffer.from(ogSvg)).png().toFile(resolve(publicDir, "og-image.png"));
+    console.log("✓ public/og-image.png (1200x630, generated card)");
+  }
 
   const ico = await buildIco([16, 32, 48]);
   writeFileSync(resolve(publicDir, "favicon.ico"), ico);
