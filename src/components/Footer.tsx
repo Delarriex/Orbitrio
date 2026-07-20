@@ -49,8 +49,8 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
               <path d="M 23,55 A 30,30 0 0,0 82,50 A 30,30 0 0,0 78,28 L 71,35 A 20,20 0 0,1 74,50 A 20,20 0 0,1 28,54 Z" fill="url(#footerSilverGrad)" />
               <circle cx="85" cy="22" r="5.5" fill="#F7931A" />
             </svg>
-            <h4 className="font-bold text-white text-brand font-brand text-lg tracking-tight lowercase">
-              orbit<span className="text-[#FFB11A]">rio</span>
+            <h4 className="font-bold text-white text-brand font-brand text-lg tracking-tight">
+              <span className="lowercase">orbit<span className="text-[#FFB11A]">rio</span></span> Trades
             </h4>
           </div>
           <p className="text-neutral-400 mb-4">Trade smarter with confidence.</p>
@@ -77,6 +77,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
             {appSettings.supportEmail}
           </a>
           <p className="text-neutral-500 mt-2">{appSettings.supportPhone}</p>
+          <p className="text-neutral-500 mt-3 not-italic leading-relaxed">{appSettings.companyAddress}</p>
         </div>
       </div>
     </footer>
