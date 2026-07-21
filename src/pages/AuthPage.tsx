@@ -460,7 +460,30 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
           }, 1000);
         } else {
           setIsSuccess(false);
-          setErrorMsg("Additional verification required. Please contact support.");
+          // Clerk accepted the request but the session isn't complete yet.
+          // Surface the real status (and log the full result) instead of a
+          // dead-end "contact support", then route the cases we can handle.
+          console.error("[login] sign-in not complete:", result.status, result);
+
+          if (result.status === "needs_first_factor") {
+            // Password wasn't accepted as a valid first factor. Usually means
+            // the account has no password set (e.g. Google-only sign-up), or
+            // the password verification was removed from the Clerk user.
+            const canUseEmailCode = result.supportedFirstFactors?.some(
+              (f) => f.strategy === "email_code" || f.strategy === "reset_password_email_code",
+            );
+            setErrorMsg(
+              canUseEmailCode
+                ? 'This account can’t sign in with that password. Use “Forgot password?” to set a new one, or sign in with Google.'
+                : "This account uses a different sign-in method. Try signing in with Google.",
+            );
+          } else if (result.status === "needs_new_password") {
+            setErrorMsg('You need to set a new password. Use “Forgot password?” to continue.');
+          } else if (result.status === "needs_second_factor") {
+            setErrorMsg("Two-factor authentication is required for this account, but this screen doesn’t support it yet. Please contact support.");
+          } else {
+            setErrorMsg(`Sign-in couldn’t be completed (status: ${result.status}). Please contact support.`);
+          }
         }
       } catch (err: any) {
         setIsSuccess(false);
