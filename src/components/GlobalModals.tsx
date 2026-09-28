@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import { GiftCardDepositForm } from "./GiftCardDepositForm";
 import { useOrbit } from "../context/OrbitContext";
 import { getDepositWalletLabel } from "../services";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
@@ -18,6 +19,10 @@ export function GlobalModals({
   onNavigate
 }: GlobalModalsProps) {
   const { user, deposit, withdraw, enabledDepositWallets, insufficientBalanceOpen, setInsufficientBalanceOpen } = useOrbit();
+
+  const [paymentMethod, setPaymentMethod] = useState<"crypto" | "gift_card">("crypto");
+  const [depositBusy, setDepositBusy] = useState(false);
+  const depositSubmitting = useRef(false);
 
   // Form states inside Quick Modals
   const [depAmt, setDepAmt] = useState("");
@@ -119,7 +124,7 @@ export function GlobalModals({
   const handleQuickDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
     const amount = parseFloat(depAmt);
-    if (!amount || amount <= 0) return;
+    if (!Number.isFinite(amount) || amount <= 0 || depositSubmitting.current) return;
     if (!selectedDepositWallet) {
       triggerModalFeedback("Error: No enabled deposit wallet is currently available.");
       return;
@@ -129,19 +134,24 @@ export function GlobalModals({
       return;
     }
 
-    await deposit(amount, selectedDepositLabel, depTxHash.trim() || "N/A", depProofName || "payment_proof_receipt.jpg");
+    depositSubmitting.current = true;
+    setDepositBusy(true);
+    const success = await deposit(amount, selectedDepositLabel, depTxHash.trim() || undefined);
+    depositSubmitting.current = false;
+    setDepositBusy(false);
+    if (!success) {
+      triggerModalFeedback("Error: Unable to save the deposit. Please try again.");
+      return;
+    }
     setDepAmt("");
     setDepTxHash("");
     setDepProofName("");
     triggerModalFeedback({
       title: "Deposit Processing",
-      description: `Your deposit of $${amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} USD equivalent of ${selectedDepositLabel} is being processed. The funds will be credited to your account after network confirmation.`,
+      description: `Your deposit of $${amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} USD equivalent of ${selectedDepositLabel} is being processed. The funds will be credited after admin verification.`,
       type: "success"
     });
-    setTimeout(() => {
-      setDepositModalOpen(false);
-      setModalFeedback(null);
-    }, 5000);
+
   };
 
   const handleQuickWithdraw = async (e: React.FormEvent) => {
@@ -187,6 +197,8 @@ export function GlobalModals({
           <div className="fixed inset-0 bg-[#000000]/80 backdrop-blur-sm p-4 z-50 flex items-center justify-center">
             <div className="bg-orbit-card border border-orbit-border rounded-2xl w-full max-w-md p-6 relative shadow-2xl space-y-5 max-h-[85dvh] overflow-y-auto my-auto scrollbar-none">
               <button 
+                disabled={depositBusy}
+                aria-label="Close deposit"
                 onClick={() => { setDepositModalOpen(false); setModalFeedback(null); }}
                 className="absolute top-4 right-4 text-orbit-gray-text hover:text-orbit-white cursor-pointer"
               >
@@ -199,10 +211,18 @@ export function GlobalModals({
                   Fast Deposit
                 </h3>
                 <p className="text-xs text-slate-400 mt-1 leading-relaxed font-sans">
-                  Instantly fund your wallet to begin trading. Select your preferred asset and network.
+                  Choose a payment method. Deposits are credited after admin verification.
                 </p>
               </div>
 
+              <div className="grid grid-cols-2 gap-2" aria-label="Payment method">
+                {([['crypto', 'Cryptocurrency'], ['gift_card', 'Gift cards']] as const).map(([method, label]) => (
+                  <button key={method} type="button" aria-pressed={paymentMethod === method} disabled={depositBusy}
+                    onClick={() => { setPaymentMethod(method); setModalFeedback(null); }}
+                    className={`rounded-xl border px-3 py-2.5 text-xs font-bold ${paymentMethod === method ? "border-orbit-accent bg-orbit-accent/10 text-orbit-accent" : "border-orbit-border text-orbit-gray-text"}`}>{label}</button>
+                ))}
+              </div>
+              {paymentMethod === "gift_card" ? <GiftCardDepositForm onBusyChange={setDepositBusy} /> : (<>
               {modalFeedback && (() => {
                 if (typeof modalFeedback === "object") {
                   return (
@@ -357,16 +377,17 @@ export function GlobalModals({
                 <div className="pt-2">
                   <button
                     type="submit"
-                    disabled={!selectedDepositWallet}
+                    disabled={depositBusy || !selectedDepositWallet}
                     className="w-full py-3.5 bg-orbit-accent hover:opacity-95 disabled:opacity-50 text-orbit-bg font-extrabold font-heading text-xs uppercase rounded-xl transition-all shadow-md shadow-orbit-accent/10 cursor-pointer tracking-wider text-center"
                   >
-                    CONFIRM DEPOSIT
+                    {depositBusy ? "SUBMITTING…" : "CONFIRM DEPOSIT"}
                   </button>
                   <p className="text-xs text-neutral-400 text-center mt-2 font-sans">
                     Please only click the Confirm Deposit button if you have already transferred the funds.
                   </p>
                 </div>
               </form>
+              </>)}
             </div>
           </div>
         );

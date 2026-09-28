@@ -119,6 +119,17 @@ export interface BankDetails {
   accountName: string;
 }
 
+export interface GiftCardDetails {
+  brand: string;
+  faceValue: number;
+  currency: string;
+}
+
+export interface GiftCardSubmission {
+  details: GiftCardDetails;
+  imagePaths: string[];
+}
+
 export interface Transaction {
   id: string;
   userId?: string;
@@ -134,6 +145,9 @@ export interface Transaction {
   address?: string;
   txHash?: string;
   proofFile?: string;
+  paymentMethod?: "crypto" | "gift_card";
+  giftCard?: GiftCardDetails;
+  giftCardImagePaths?: string[];
   notes?: string;
   userEmail?: string;
   destinationTag?: string;

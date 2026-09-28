@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useRef } from "react";
 import { motion } from "motion/react";
-import { ArrowDownLeft, Check, ClipboardList, FileText, Hash, Search, X } from "lucide-react";
+import { ArrowDownLeft, Check, ClipboardList, Hash, Search, X, RefreshCw } from "lucide-react";
 import { useOrbit } from "../../../context/OrbitContext";
 import { getDepositWalletLabel } from "../../../services";
+import { DepositProofViewer } from "../DepositProofViewer";
 import type { DepositWallet, Transaction } from "../../../types";
 
 type DepositStatus = "pending" | "approved" | "rejected";
@@ -48,6 +49,9 @@ const resolveDepositMeta = (
   depositWallets: DepositWallet[],
   adminWallets: Record<string, string>
 ) => {
+  if (transaction.paymentMethod === "gift_card") {
+    return { coin: transaction.giftCard?.brand || "Gift card", network: "Gift card", wallet: "Not applicable" };
+  }
   const asset = transaction.asset || "USD";
   const assetKey = normalizeKey(asset);
   const assetUnderscoreKey = assetKey.replace(/\s+/g, "_");
@@ -101,7 +105,10 @@ const buildDepositRows = (
     });
 
 export const AdminDepositsTab: React.FC = () => {
-  const { adminTransactions, adminWallets, depositWallets, adminApproveDeposit, adminRejectDeposit } = useOrbit();
+  const { adminTransactions, adminWallets, depositWallets, adminApproveDeposit, adminRejectDeposit, refreshAdminDeposits } = useOrbit();
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const reviewing = useRef(false);
   const [adminNotes, setAdminNotes] = useState<Record<string, string>>({});
   const [feedback, setFeedback] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<"all" | DepositStatus>("all");
@@ -156,14 +163,17 @@ export const AdminDepositsTab: React.FC = () => {
     setTimeout(() => setFeedback(null), 3500);
   };
 
-  const handleApprove = (deposit: DepositRow) => {
-    adminApproveDeposit(deposit.id, adminNotes[deposit.id] || undefined);
-    showFeedback(`Approved deposit ${deposit.id}`);
-  };
-
-  const handleReject = (deposit: DepositRow) => {
-    adminRejectDeposit(deposit.id, adminNotes[deposit.id] || undefined);
-    showFeedback(`Rejected deposit ${deposit.id}`);
+  const reviewDeposit = async (deposit: DepositRow, approve: boolean) => {
+    if (reviewing.current) return;
+    reviewing.current = true;
+    setBusyId(deposit.id);
+    try {
+      const success = await (approve ? adminApproveDeposit : adminRejectDeposit)(deposit.id, adminNotes[deposit.id] || undefined);
+      if (success) showFeedback(`${approve ? "Approved" : "Rejected"} deposit ${deposit.id}`);
+    } finally {
+      reviewing.current = false;
+      setBusyId(null);
+    }
   };
 
   return (
@@ -171,9 +181,9 @@ export const AdminDepositsTab: React.FC = () => {
       <div className="bg-orbit-card border border-orbit-border rounded-2xl p-6 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-5">
         <div>
           <h1 className="text-xl font-bold text-orbit-white flex items-center gap-2">
-            <ArrowDownLeft size={20} className="text-emerald-400" /> Crypto Deposit Management
+            <ArrowDownLeft size={20} className="text-emerald-400" /> Deposit Management
           </h1>
-          <p className="text-xs text-orbit-gray-text mt-1">Review incoming crypto deposits, wallet destinations, hashes, and admin decisions.</p>
+          <p className="text-xs text-orbit-gray-text mt-1">Review crypto and gift card deposits, uploaded images, and admin decisions.</p>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
           <StatBadge label="Total" value={stats.total} />
@@ -198,6 +208,12 @@ export const AdminDepositsTab: React.FC = () => {
             <p className="text-[11px] text-orbit-gray-text mt-1">Pending deposits stay at the top for faster treasury review.</p>
           </div>
           <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
+            <button type="button" disabled={refreshing} onClick={async () => {
+              setRefreshing(true);
+              try { await refreshAdminDeposits(); } finally { setRefreshing(false); }
+            }} className="flex items-center justify-center gap-1 rounded-lg border border-orbit-border px-3 py-2 text-xs text-orbit-accent disabled:opacity-50">
+              <RefreshCw size={13} className={refreshing ? "animate-spin" : ""} /> Refresh
+            </button>
             <div className="relative sm:w-72">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-orbit-gray-text" />
               <input
@@ -228,11 +244,11 @@ export const AdminDepositsTab: React.FC = () => {
                 <th className="px-5 py-3 font-bold">Deposit ID</th>
                 <th className="px-4 py-3 font-bold">User</th>
                 <th className="px-4 py-3 font-bold">Email</th>
-                <th className="px-4 py-3 font-bold">Coin</th>
-                <th className="px-4 py-3 font-bold">Network</th>
+                <th className="px-4 py-3 font-bold">Coin / Card brand</th>
+                <th className="px-4 py-3 font-bold">Network / Method</th>
                 <th className="px-4 py-3 font-bold">Wallet</th>
                 <th className="px-4 py-3 font-bold">Amount</th>
-                <th className="px-4 py-3 font-bold">Transaction Hash</th>
+                <th className="px-4 py-3 font-bold">Payment evidence</th>
                 <th className="px-4 py-3 font-bold">Date</th>
                 <th className="px-4 py-3 font-bold">Status</th>
                 <th className="px-5 py-3 font-bold">Admin Notes</th>
@@ -255,16 +271,15 @@ export const AdminDepositsTab: React.FC = () => {
                   <td className="px-4 py-4">
                     <span title={deposit.wallet} className="block max-w-[180px] truncate text-xs text-orbit-white">{deposit.wallet}</span>
                   </td>
-                  <td className="px-4 py-4 text-xs font-bold text-orbit-white">{formatMoney(deposit.amount)}</td>
+                  <td className="px-4 py-4 text-xs font-bold text-orbit-white">
+                    {formatMoney(deposit.amount)}
+                    {deposit.paymentMethod === "gift_card" && deposit.giftCard && <p className="mt-1 text-[10px] font-normal text-orbit-gray-text">Card face value: {deposit.giftCard.faceValue} {deposit.giftCard.currency}</p>}
+                  </td>
                   <td className="px-4 py-4">
-                    <span title={deposit.txHash || "No hash submitted"} className="block max-w-[170px] truncate text-xs text-orbit-accent font-bold">
+                    {deposit.paymentMethod !== "gift_card" && <span title={deposit.txHash || "No hash submitted"} className="block max-w-[170px] truncate text-xs text-orbit-accent font-bold">
                       {deposit.txHash ? shortValue(deposit.txHash, 14, 7) : "No hash"}
-                    </span>
-                    {deposit.proofFile && (
-                      <span className="mt-1 inline-flex items-center gap-1 text-[10px] text-orbit-gray-text">
-                        <FileText size={10} /> Proof attached
-                      </span>
-                    )}
+                    </span>}
+                    <DepositProofViewer transaction={deposit} />
                   </td>
                   <td className="px-4 py-4 text-xs text-orbit-gray-text">{deposit.date}</td>
                   <td className="px-4 py-4">
@@ -287,13 +302,16 @@ export const AdminDepositsTab: React.FC = () => {
                   </td>
                   <td className="px-5 py-4">
                     {deposit.displayStatus === "pending" ? (
-                      <div className="flex justify-end gap-2">
-                        <button onClick={() => handleApprove(deposit)} className="flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-500 text-white font-bold text-[10px] uppercase rounded-lg hover:bg-emerald-600 cursor-pointer">
+                      <div className="space-y-2">
+                        {deposit.paymentMethod === "gift_card" && <p className="max-w-48 text-[10px] text-orbit-gray-text">Verify the card and USD value. Approve credits {formatMoney(deposit.amount)}.</p>}
+                        <div className="flex justify-end gap-2">
+                        <button disabled={busyId !== null} onClick={() => reviewDeposit(deposit, true)} className="flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-500 text-white font-bold text-[10px] uppercase rounded-lg hover:bg-emerald-600 cursor-pointer">
                           <Check size={12} /> Approve
                         </button>
-                        <button onClick={() => handleReject(deposit)} className="flex items-center justify-center gap-1.5 px-3 py-2 bg-red-500 text-white font-bold text-[10px] uppercase rounded-lg hover:bg-red-600 cursor-pointer">
+                        <button disabled={busyId !== null} onClick={() => reviewDeposit(deposit, false)} className="flex items-center justify-center gap-1.5 px-3 py-2 bg-red-500 text-white font-bold text-[10px] uppercase rounded-lg hover:bg-red-600 cursor-pointer">
                           <X size={12} /> Reject
                         </button>
+                        </div>
                       </div>
                     ) : (
                       <p className="text-right text-[10px] font-bold uppercase text-orbit-gray-text">Reviewed</p>

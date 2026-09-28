@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { COUNTRIES } from "../constants/countries";
 import { useSignUp, useSignIn } from "@clerk/clerk-react";
 import { useOrbit } from "../context/OrbitContext";
 import { useSupabaseClient, createUserProfile, createFreshAuthedClient } from "../lib/supabase";
@@ -492,12 +493,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
     }
   };
 
-  const countriesList = [
-    "United States", "United Kingdom", "Canada", "Australia", "Singapore",
-    "Germany", "France", "Switzerland", "United Arab Emirates", "Saudi Arabia",
-    "Qatar", "South Africa", "Nigeria", "Japan", "India", "Brazil", "Mexico"
-  ];
-
   const currenciesList = ["USD", "EUR", "GBP", "BTC", "USDT"];
 
   /* ---- Per-step validation for the register wizard. Mirrors the rules in
@@ -852,7 +847,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
                         <SelectInput label="Country" required value={country} onChange={(e) => setCountry(e.target.value)}
                           state={country !== "Choose Country" ? "ok" : "idle"}>
                           <option disabled value="Choose Country">Choose country</option>
-                          {countriesList.map((c, i) => <option key={i} value={c}>{c}</option>)}
+                          {COUNTRIES.map(({ code, name }) => <option key={code} value={name}>{name}</option>)}
                         </SelectInput>
                         <SelectInput label="Currency" required value={currency} onChange={(e) => setCurrency(e.target.value)}
                           state={currency !== "Select Currency" ? "ok" : "idle"}>

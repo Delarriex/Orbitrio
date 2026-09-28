@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useUser } from "@clerk/clerk-react";
 import { useOrbit } from "../context/OrbitContext";
 import { useSupabaseClient, uploadDepositProof } from "../lib/supabase";
+import { GiftCardDepositForm } from "../components/GiftCardDepositForm";
 import { getDepositWalletLabel } from "../services";
 import { 
   PlusSquare,
@@ -33,6 +34,9 @@ export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab
   const [showBalance, setShowBalance] = useState(true);
 
   // Deposit states
+  const [paymentMethod, setPaymentMethod] = useState<"crypto" | "gift_card">("crypto");
+  const [depositBusy, setDepositBusy] = useState(false);
+  const depositSubmitting = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [depositCurrency, setDepositCurrency] = useState("USDT ERC20");
   const [depositAmountTxt, setDepositAmountTxt] = useState("");
@@ -67,35 +71,36 @@ export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab
     }
 
     const amount = parseFloat(depositAmountTxt);
-    if (!amount || amount < selectedMinimumDeposit) {
+    if (!Number.isFinite(amount) || amount <= 0 || amount < selectedMinimumDeposit) {
       triggerDepositFeedback(`Error: The minimum deposit amount is $${selectedMinimumDeposit.toLocaleString()} equivalent.`);
       return;
     }
 
-    let finalProofURL = depositProofName || "payment_proof_receipt.jpg";
-
-    if (fileInputRef.current?.files?.[0] && clerkUser?.id) {
-      try {
-        const file = fileInputRef.current.files[0];
-        finalProofURL = await uploadDepositProof(supabase, clerkUser.id, file);
-      } catch (err) {
-        console.error("Error uploading deposit proof:", err);
+    if (depositSubmitting.current) return;
+    depositSubmitting.current = true;
+    setDepositBusy(true);
+    try {
+      let proofPath: string | undefined;
+      const file = fileInputRef.current?.files?.[0];
+      if (file) {
+        if (!clerkUser?.id) throw new Error("Please sign in before uploading a receipt.");
+        if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || !file.size || file.size > 5 * 1024 * 1024) {
+          throw new Error("Use a JPG, PNG or WebP image no larger than 5 MB.");
+        }
+        proofPath = await uploadDepositProof(supabase, clerkUser.id, file);
       }
-    }
-
-    const success = deposit(
-      amount, 
-      selectedDepositLabel, 
-      depositTxHash.trim() || "N/A", 
-      finalProofURL
-    );
-    if (success) {
+      const success = await deposit(amount, selectedDepositLabel, depositTxHash.trim() || undefined, proofPath);
+      if (!success) throw new Error("Unable to save the deposit. Please try again.");
       setDepositAmountTxt("");
       setDepositTxHash("");
       setDepositProofName("");
-      triggerDepositFeedback(`Successfully submitted! Mapped $${amount} ${selectedDepositLabel} secure deposit pending verification. ${depositTxHash.trim() ? "Transaction Hash registered." : ""}`);
-    } else {
-      triggerDepositFeedback("Error occurred while processing deposit.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      triggerDepositFeedback(`Submitted $${amount} in ${selectedDepositLabel}. Your deposit is pending admin verification.`);
+    } catch (error) {
+      triggerDepositFeedback(`Error: ${error instanceof Error ? error.message : "Unable to upload or save your deposit. Please try again."}`);
+    } finally {
+      depositSubmitting.current = false;
+      setDepositBusy(false);
     }
   };
 
@@ -287,6 +292,7 @@ export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab
       {/* Navigation Layout Tabs */}
       <div className="flex bg-orbit-card border border-orbit-border/80 rounded-xl p-1.5 w-fit font-sans">
         <button
+          disabled={depositBusy}
           onClick={() => setActiveSubTab("deposit")}
           className={`flex items-center gap-1.5 px-4 sm:px-6 py-2 rounded-lg text-xs font-bold font-subheading transition-all cursor-pointer ${
             activeSubTab === "deposit" ? "bg-orbit-accent text-orbit-bg" : "text-orbit-gray-text hover:text-orbit-white"
@@ -295,6 +301,7 @@ export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab
           <PlusSquare size={14} /> Deposit
         </button>
         <button
+          disabled={depositBusy}
           onClick={() => setActiveSubTab("withdraw")}
           className={`flex items-center gap-1.5 px-4 sm:px-6 py-2 rounded-lg text-xs font-bold font-subheading transition-all cursor-pointer ${
             activeSubTab === "withdraw" ? "bg-orbit-accent text-orbit-bg" : "text-orbit-gray-text hover:text-orbit-white"
@@ -303,6 +310,7 @@ export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab
           <MinusSquare size={14} /> Withdraw
         </button>
         <button
+          disabled={depositBusy}
           onClick={() => setActiveSubTab("ledger")}
           className={`flex items-center gap-1.5 px-4 sm:px-6 py-2 rounded-lg text-xs font-bold font-subheading transition-all cursor-pointer ${
             activeSubTab === "ledger" ? "bg-orbit-accent text-orbit-bg" : "text-orbit-gray-text hover:text-orbit-white"
@@ -319,7 +327,14 @@ export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab
         {activeSubTab === "deposit" && (
           <div className="max-w-xl mx-auto w-full">
             
-            {/* Input form */}
+            <div className="mb-5 grid grid-cols-2 gap-2" aria-label="Payment method">
+              {([['crypto', 'Cryptocurrency'], ['gift_card', 'Gift cards']] as const).map(([method, label]) => (
+                <button key={method} type="button" aria-pressed={paymentMethod === method} disabled={depositBusy}
+                  onClick={() => setPaymentMethod(method)}
+                  className={`rounded-xl border px-4 py-3 text-xs font-bold ${paymentMethod === method ? "border-orbit-accent bg-orbit-accent/10 text-orbit-accent" : "border-orbit-border text-orbit-gray-text"}`}>{label}</button>
+              ))}
+            </div>
+            {paymentMethod === "gift_card" ? <GiftCardDepositForm onBusyChange={setDepositBusy} /> : (
             <form onSubmit={handleDepositSubmit} className="space-y-4">
               <div>
                 <h3 className="text-sm font-bold text-orbit-white">Deposit</h3>
@@ -459,7 +474,7 @@ export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab
                 <input
                   type="file"
                   ref={fileInputRef}
-                  accept="image/*"
+                  accept="image/jpeg,image/png,image/webp"
                   onChange={(e) => {
                     if (e.target.files && e.target.files[0]) {
                       setDepositProofName(e.target.files[0].name);
@@ -487,15 +502,17 @@ export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab
               <div>
                 <button
                   type="submit"
-                  className="w-full py-3.5 rounded-xl bg-gradient-to-r from-orbit-accent to-[#FF7F00] text-orbit-bg font-bold font-subheading text-xs uppercase shadow transition-all transform hover:-translate-y-0.5 cursor-pointer text-center"
+                  disabled={depositBusy || !selectedDepositWallet}
+                  className="disabled:opacity-50 w-full py-3.5 rounded-xl bg-gradient-to-r from-orbit-accent to-[#FF7F00] text-orbit-bg font-bold font-subheading text-xs uppercase shadow transition-all transform hover:-translate-y-0.5 cursor-pointer text-center"
                 >
-                  Confirm Deposit
+                  {depositBusy ? "Submitting…" : "Confirm Deposit"}
                 </button>
                 <p className="text-xs text-neutral-400 text-center mt-2 font-sans">
                   Please only click the Confirm Deposit button if you have already transferred the funds.
                 </p>
               </div>
             </form>
+            )}
 
           </div>
         )}
