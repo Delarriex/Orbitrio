@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { GiftCardDetails } from "../types";
 
 export const GIFT_CARD_BUCKET = "gift-card-proofs";
+export const GIFT_CARD_BRANDS = ["Amazon", "Apple", "Steam", "Google Play", "Razer Gold", "Visa"] as const;
 export const MAX_GIFT_CARD_IMAGES = 4;
 export const MAX_GIFT_CARD_IMAGE_BYTES = 5 * 1024 * 1024;
 export const GIFT_CARD_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];

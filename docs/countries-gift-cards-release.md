@@ -7,7 +7,7 @@ Branch: `feature/countries-gift-card-deposits`.
 
 - Registration offers 249 ISO country/territory entries plus Kosovo, sorted by English display name. Profile values remain names, matching existing saved profiles.
 - Both the wallet page and quick-deposit modal offer gift cards.
-- Users supply the brand, card face value/currency, requested USD deposit amount, and 1–4 JPG/PNG/WebP images (maximum 5 MB each).
+- The reference-style form groups Deposit Details, Gift Card Details and Upload Proof into separate panels. Gift Card Type is a dropdown with Amazon, Apple, Steam, Google Play, Razer Gold and Visa. Users supply card face value/currency, the USD deposit amount, and 1–4 JPG/PNG/WebP images (maximum 5 MB each).
 - Submissions remain pending. Admins see the original card value, requested USD amount and private images, then approve or reject using the existing deposit RPCs. Approval credits the displayed requested USD amount; admins must verify it and reject incorrect requests. There is no automatic conversion, card redemption or promise to accept a particular brand.
 - Images live in a separate private bucket with owner/admin read access and owner-only upload access. The database validates that referenced objects exist and belong to the submitting user. No user overwrite/delete policies are added.
 - Admins can also open existing crypto proofs stored as valid private object paths. Old placeholder filenames cannot be recovered as images.

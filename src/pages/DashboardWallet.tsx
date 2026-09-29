@@ -327,14 +327,15 @@ export const DashboardWallet: React.FC<DashboardWalletProps> = ({ initialOpenTab
         {activeSubTab === "deposit" && (
           <div className="max-w-xl mx-auto w-full">
             
-            <div className="mb-5 grid grid-cols-2 gap-2" aria-label="Payment method">
-              {([['crypto', 'Cryptocurrency'], ['gift_card', 'Gift cards']] as const).map(([method, label]) => (
-                <button key={method} type="button" aria-pressed={paymentMethod === method} disabled={depositBusy}
-                  onClick={() => setPaymentMethod(method)}
-                  className={`rounded-xl border px-4 py-3 text-xs font-bold ${paymentMethod === method ? "border-orbit-accent bg-orbit-accent/10 text-orbit-accent" : "border-orbit-border text-orbit-gray-text"}`}>{label}</button>
-              ))}
-            </div>
-            {paymentMethod === "gift_card" ? <GiftCardDepositForm onBusyChange={setDepositBusy} /> : (
+            {paymentMethod === "crypto" && <label className="mb-5 block space-y-2 text-sm font-semibold text-orbit-white">
+              <span>Payment Method</span>
+              <select aria-label="Payment Method" value={paymentMethod} disabled={depositBusy} onChange={event => setPaymentMethod(event.target.value as "crypto" | "gift_card")}
+                className="w-full rounded-xl border border-orbit-border bg-orbit-bg px-4 py-3.5 text-sm text-orbit-white focus:border-emerald-500 focus:outline-none">
+                <option value="crypto">Cryptocurrency</option>
+                <option value="gift_card">Gift Card</option>
+              </select>
+            </label>}
+            {paymentMethod === "gift_card" ? <GiftCardDepositForm onBusyChange={setDepositBusy} onSelectCrypto={() => setPaymentMethod("crypto")} /> : (
             <form onSubmit={handleDepositSubmit} className="space-y-4">
               <div>
                 <h3 className="text-sm font-bold text-orbit-white">Deposit</h3>
