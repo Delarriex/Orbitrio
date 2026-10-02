@@ -39,7 +39,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ activeTab, navItems, o
           onTabChange(item.id);
           if (closeOnSelect) setIsMobileMenuOpen(false);
         }}
-        className={`w-full flex items-center justify-between text-left py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer min-h-[38px] ${
+        className={`w-full flex items-center justify-between text-left py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer min-h-11 ${
           isActive ? "bg-orbit-accent text-orbit-bg shadow" : "text-orbit-gray-text hover:text-orbit-white hover:bg-orbit-border/30"
         }`}
       >
@@ -65,7 +65,8 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ activeTab, navItems, o
         </div>
         <button
           onClick={() => setIsMobileMenuOpen(true)}
-          className="p-2 bg-orbit-border/50 text-orbit-white rounded-lg hover:bg-orbit-border transition-colors cursor-pointer"
+          aria-label="Open admin navigation"
+          className="flex h-11 w-11 items-center justify-center p-2 bg-orbit-border/50 text-orbit-white rounded-lg hover:bg-orbit-border transition-colors cursor-pointer"
         >
           <Menu size={20} />
         </button>
@@ -95,7 +96,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ activeTab, navItems, o
                     </span>
                   </div>
                 </div>
-                <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 rounded-lg bg-orbit-card border border-orbit-border text-orbit-white hover:border-orbit-accent">
+                <button onClick={() => setIsMobileMenuOpen(false)} aria-label="Close admin navigation" className="flex h-11 w-11 items-center justify-center p-2 rounded-lg bg-orbit-card border border-orbit-border text-orbit-white hover:border-orbit-accent">
                   <X size={16} />
                 </button>
               </div>
@@ -145,7 +146,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ activeTab, navItems, o
           </div>
         </aside>
 
-        <section className="col-span-1 lg:col-span-9 space-y-6 w-full relative">
+        <section className="min-w-0 col-span-1 lg:col-span-9 space-y-6 w-full relative">
           <div className="hidden lg:flex items-center justify-between bg-orbit-card border border-orbit-border rounded-2xl px-5 py-4">
             <div>
               <p className="text-[10px] uppercase tracking-[0.3em] text-orbit-gray-text font-bold">Secure Admin Terminal</p>

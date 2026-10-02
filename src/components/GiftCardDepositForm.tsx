@@ -1,12 +1,13 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useUser } from "@clerk/clerk-react";
 import { Gift, Loader2, CloudUpload, ChevronsUpDown, X } from "lucide-react";
 import { useOrbit } from "../context/OrbitContext";
 import { useSupabaseClient } from "../lib/supabase";
+import { proofErrorMessage } from "../services/depositProofService";
 import { GIFT_CARD_BRANDS, GIFT_CARD_IMAGE_TYPES, MAX_GIFT_CARD_IMAGES, MAX_GIFT_CARD_IMAGE_BYTES, uploadGiftCardImage, validateGiftCard } from "../services/giftCardService";
 
-const fieldClass = "w-full min-w-0 bg-orbit-bg border border-orbit-border focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/15 focus:outline-none rounded-xl px-4 py-3.5 text-sm text-orbit-white transition-colors";
-const labelClass = "block space-y-2 text-sm font-semibold text-orbit-white";
+const fieldClass = "w-full min-w-0 bg-orbit-bg border border-orbit-border focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/15 focus:outline-none rounded-xl px-4 py-3.5 text-base text-orbit-white transition-colors";
+const labelClass = "block min-w-0 space-y-2 text-sm font-semibold text-orbit-white";
 const sectionClass = "rounded-2xl border border-orbit-border bg-orbit-card p-4 sm:p-6 shadow-sm";
 const headingClass = "mb-5 border-b border-orbit-border pb-4 text-base font-bold text-orbit-white";
 
@@ -27,7 +28,7 @@ export function GiftCardDepositForm({ onBusyChange, onSelectCrypto }: {
   const [feedback, setFeedback] = useState<{ error: boolean; message: string } | null>(null);
   const submitting = useRef(false);
   // Reuse completed uploads when a later upload or the database insert fails.
-  const uploaded = useRef(new Map<File, string>());
+  const uploaded = useMemo(() => new Map<File, string>(), [supabase, user?.id]);
 
   useEffect(() => {
     const urls = files.map(file => URL.createObjectURL(file));
@@ -62,10 +63,10 @@ export function GiftCardDepositForm({ onBusyChange, onSelectCrypto }: {
     try {
       const imagePaths: string[] = [];
       for (const file of files) {
-        let path = uploaded.current.get(file);
+        let path = uploaded.get(file);
         if (!path) {
           path = await uploadGiftCardImage(supabase, user.id, file);
-          uploaded.current.set(file, path);
+          uploaded.set(file, path);
         }
         imagePaths.push(path);
       }
@@ -73,9 +74,9 @@ export function GiftCardDepositForm({ onBusyChange, onSelectCrypto }: {
       if (!success) throw new Error("Your request could not be saved. Your details are still here; please try again.");
       setFeedback({ error: false, message: "Gift card submitted. Your deposit is pending admin review; your balance will update only after approval." });
       setBrand(GIFT_CARD_BRANDS[0]); setFaceValue(""); setAmount(""); setFiles([]);
-      uploaded.current.clear();
+      uploaded.clear();
     } catch (error) {
-      setFeedback({ error: true, message: error instanceof Error ? error.message : "Unable to upload or save your gift card. Please try again." });
+      setFeedback({ error: true, message: proofErrorMessage(error, "Unable to upload or save your gift card. Please try again.") });
     } finally {
       submitting.current = false;
       setBusy(false);
@@ -84,9 +85,9 @@ export function GiftCardDepositForm({ onBusyChange, onSelectCrypto }: {
   };
 
   return (
-    <form onSubmit={submit} className="space-y-4">
+    <form onSubmit={submit} className="min-w-0 space-y-4 [overflow-wrap:anywhere]">
       {feedback && <p role={feedback.error ? "alert" : "status"} className={`rounded-xl border p-3 text-xs ${feedback.error ? "border-orbit-red/30 bg-orbit-red/10 text-orbit-red" : "border-orbit-green/30 bg-orbit-green/10 text-orbit-green"}`}>{feedback.message}</p>}
-      <fieldset disabled={busy} className="space-y-5 disabled:opacity-60">
+      <fieldset disabled={busy} className="min-w-0 space-y-5 disabled:opacity-60">
         <section className={sectionClass}>
           <h3 className={headingClass}>Deposit Details</h3>
           <div className="space-y-5">
@@ -119,7 +120,7 @@ export function GiftCardDepositForm({ onBusyChange, onSelectCrypto }: {
               <ChevronsUpDown size={16} aria-hidden="true" className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-orbit-gray-text" />
             </div>
           </label>
-          <div className="mt-5 grid grid-cols-2 gap-3">
+          <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label className={labelClass}><span>Card face value</span><input required type="number" min="0.01" step="0.01" value={faceValue} onChange={event => setFaceValue(event.target.value)} placeholder="100.00" className={fieldClass} /></label>
             <label className={labelClass}><span>Card currency</span><input required maxLength={3} pattern="[A-Za-z]{3}" value={currency} onChange={event => setCurrency(event.target.value.toUpperCase())} placeholder="USD" className={fieldClass} /></label>
           </div>
@@ -133,15 +134,15 @@ export function GiftCardDepositForm({ onBusyChange, onSelectCrypto }: {
             <input aria-label="Upload gift card images" type="file" multiple accept={GIFT_CARD_IMAGE_TYPES.join(",")} onChange={chooseFiles} className="sr-only" disabled={busy || files.length >= MAX_GIFT_CARD_IMAGES} />
           </label>
           <p className="mt-3 text-xs leading-relaxed text-orbit-gray-text">Up to 4 images, 5 MB each. Only you and admins can view your uploads.</p>
-          {files.length > 0 && <div className="mt-4 grid grid-cols-2 gap-3">
-            {files.map((file, index) => <div key={`${file.name}-${index}`} className="relative min-w-0 rounded-xl border border-orbit-border p-2">
+          {files.length > 0 && <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {files.map((file, index) => <div key={`${file.name}-${index}`} className="relative min-w-0 rounded-xl border border-orbit-border px-2 pb-2 pt-12">
               {previews[index] && <img src={previews[index]} alt={`Selected gift card image ${index + 1}`} className="h-28 w-full rounded-lg object-contain" />}
-              <p className="mt-1 truncate text-[10px] text-orbit-gray-text">{file.name}</p>
-              <button type="button" aria-label={`Remove image ${index + 1}`} onClick={() => setFiles(current => current.filter((_, i) => i !== index))} className="absolute right-1 top-1 rounded-full bg-orbit-bg p-1 text-orbit-white"><X size={14} /></button>
+              <p className="mt-2 break-words text-xs text-orbit-gray-text">{file.name}</p>
+              <button type="button" aria-label={`Remove image ${index + 1}`} onClick={() => setFiles(current => current.filter((_, i) => i !== index))} className="absolute right-1 top-1 flex h-11 w-11 items-center justify-center rounded-full bg-orbit-bg p-2 text-orbit-white"><X size={14} /></button>
             </div>)}
           </div>}
-          <button type="submit" className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-4 text-sm font-bold text-white transition-colors hover:bg-emerald-600 disabled:opacity-50" disabled={busy}>
-            {busy && <Loader2 size={16} className="animate-spin" />}{busy ? "Submitting gift card…" : "Submit Deposit"}
+          <button type="submit" className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-orbit-accent px-4 py-4 text-sm font-bold text-orbit-bg transition-colors hover:bg-orbit-accent-hover disabled:opacity-50" disabled={busy}>
+            {busy && <Loader2 size={16} className="animate-spin" />}{busy ? "Submitting gift card…" : "Confirm Deposit"}
           </button>
           <p className="mt-3 text-center text-xs leading-relaxed text-orbit-gray-text">Your card and USD amount will be verified before your deposit is approved.</p>
         </section>

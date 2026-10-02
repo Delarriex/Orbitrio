@@ -43,7 +43,7 @@ test("uploads use a private bucket and generated owner-scoped paths; failures pr
       uploadedPath = path;
       assert.equal(file, image);
       assert.equal(options.upsert, false);
-      return { error: null };
+      return { data: { path }, error: null };
     } };
   } } } as any;
   assert.equal(await uploadGiftCardImage(client, "user_a", image), uploadedPath);
@@ -88,6 +88,11 @@ test("migration, private storage policies, ownership validation and admin-only c
       grant select, insert on storage.objects, public.transactions to authenticated;
       insert into public.transactions values ('old_crypto', 'user_a', 'deposit', 20, 'USDT', 'pending', null);
     `);
+    const proofStorage = await readFile(new URL("../deposit_proofs_storage_setup.sql", import.meta.url), "utf8");
+    await db.exec(proofStorage);
+    const policiesBefore = (await db.query("select policyname, qual, with_check from pg_policies where schemaname='storage' order by policyname")).rows;
+    await db.exec(proofStorage);
+    assert.deepEqual((await db.query("select policyname, qual, with_check from pg_policies where schemaname='storage' order by policyname")).rows, policiesBefore);
     const migration = await readFile(new URL("../gift_card_deposits.sql", import.meta.url), "utf8");
     await db.exec(migration);
     await db.exec(migration); // Safe to re-run.
@@ -138,6 +143,36 @@ test("migration, private storage policies, ownership validation and admin-only c
     await db.exec("select reject_deposit_transaction('gift_reject', 'Card could not be verified')");
     await db.exec("reset role");
     assert.equal((await db.query<any>("select balance from users where id='user_a'")).rows[0].balance, "90");
+
+    // Both storage policies are independent of review status. Exercise crypto
+    // and gift evidence after the actual approval/rejection RPC definitions.
+    await asUser("user_a");
+    await db.exec("insert into storage.objects values ('deposit-proofs','user_a/receipt.png')");
+    await assert.rejects(db.exec("insert into storage.objects values ('deposit-proofs','user_b/forged.png')"), /row-level security/);
+    await db.exec("insert into transactions(id,user_id,type,amount,currency,status) values ('crypto_approve','user_a','deposit',12,'USD','pending'),('crypto_reject','user_a','deposit',13,'USD','pending')");
+    await db.exec("reset role");
+    assert.equal((await db.query<any>("select balance from users where id='user_a'")).rows[0].balance, "90", "uploads and pending deposits never credit balance");
+    await asUser("admin");
+    await db.exec("select approve_deposit_transaction('crypto_approve'); select reject_deposit_transaction('crypto_reject')");
+    for (const owner of ["admin", "user_a"]) {
+      await asUser(owner);
+      for (const bucket of ["deposit-proofs", "gift-card-proofs"]) {
+        assert.equal((await db.query("select * from storage.objects where bucket_id=$1 and name like 'user_a/%'", [bucket])).rows.length, 1);
+      }
+      assert.equal((await db.query("select * from transactions where id in ('gift_1','gift_reject','crypto_approve','crypto_reject')")).rows.length, 4);
+    }
+    await asUser("user_b");
+    for (const bucket of ["deposit-proofs", "gift-card-proofs"]) {
+      assert.equal((await db.query("select * from storage.objects where bucket_id=$1 and name like 'user_a/%'", [bucket])).rows.length, 0);
+    }
+    await assert.rejects(db.exec("select approve_deposit_transaction('crypto_reject')"), /Only an admin/);
+    await db.exec("reset role");
+    assert.equal((await db.query<any>("select balance from users where id='user_a'")).rows[0].balance, "102");
+    assert.equal((await db.query<any>("select public from storage.buckets where id='deposit-proofs'")).rows[0].public, false);
+    await db.exec("update storage.buckets set public=true where id='deposit-proofs'");
+    await assert.rejects(db.exec(proofStorage), /is public/);
+    await db.exec("rollback");
+    assert.equal((await db.query<any>("select public from storage.buckets where id='deposit-proofs'")).rows[0].public, true, "migration refuses to silently overwrite existing bucket settings");
   } finally {
     await db.close();
   }

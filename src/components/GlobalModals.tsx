@@ -1,4 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { useUser } from "@clerk/clerk-react";
+import { useSupabaseClient } from "../lib/supabase";
+import { useDepositProofUpload } from "../hooks/useDepositProofUpload";
+import { proofErrorMessage } from "../services/depositProofService";
+import { DepositProofInput } from "./DepositProofInput";
 import { GiftCardDepositForm } from "./GiftCardDepositForm";
 import { useOrbit } from "../context/OrbitContext";
 import { getDepositWalletLabel } from "../services";
@@ -20,6 +25,10 @@ export function GlobalModals({
 }: GlobalModalsProps) {
   const { user, deposit, withdraw, enabledDepositWallets, insufficientBalanceOpen, setInsufficientBalanceOpen } = useOrbit();
 
+  const { user: clerkUser } = useUser();
+  const supabase = useSupabaseClient();
+  const proofUpload = useDepositProofUpload(supabase, clerkUser?.id);
+
   const [paymentMethod, setPaymentMethod] = useState<"crypto" | "gift_card">("crypto");
   const [depositBusy, setDepositBusy] = useState(false);
   const depositSubmitting = useRef(false);
@@ -30,7 +39,7 @@ export function GlobalModals({
   const [depNetwork, setDepNetwork] = useState("TRC20");
   const [copied, setCopied] = useState(false);
   const [depTxHash, setDepTxHash] = useState("");
-  const [depProofName, setDepProofName] = useState("");
+  const [depProof, setDepProof] = useState<File | null>(null);
   const [wdrAmt, setWdrAmt] = useState("");
   const [wdrCoin, setWdrCoin] = useState("USDT");
   const [wdrNetwork, setWdrNetwork] = useState("TRC20");
@@ -40,6 +49,21 @@ export function GlobalModals({
   const hasActiveModal = depositModalOpen || withdrawModalOpen || insufficientBalanceOpen;
 
   useBodyScrollLock(hasActiveModal);
+
+  const [depositViewport, setDepositViewport] = useState<React.CSSProperties>();
+  useEffect(() => {
+    if (!depositModalOpen || !window.visualViewport) return;
+    const viewport = window.visualViewport;
+    const update = () => setDepositViewport({ top: viewport.offsetTop, height: viewport.height });
+    update();
+    viewport.addEventListener("resize", update);
+    viewport.addEventListener("scroll", update);
+    return () => {
+      viewport.removeEventListener("resize", update);
+      viewport.removeEventListener("scroll", update);
+    };
+  }, [depositModalOpen]);
+
 
   const depositCoins = useMemo(
     () => Array.from(new Set(enabledDepositWallets.map(wallet => wallet.coinName).filter(Boolean))),
@@ -136,21 +160,26 @@ export function GlobalModals({
 
     depositSubmitting.current = true;
     setDepositBusy(true);
-    const success = await deposit(amount, selectedDepositLabel, depTxHash.trim() || undefined);
-    depositSubmitting.current = false;
-    setDepositBusy(false);
-    if (!success) {
-      triggerModalFeedback("Error: Unable to save the deposit. Please try again.");
-      return;
+    setModalFeedback(null);
+    try {
+      const proofPath = depProof ? await proofUpload.upload(depProof) : undefined;
+      const success = await deposit(amount, selectedDepositLabel, depTxHash.trim() || undefined, proofPath);
+      if (!success) throw new Error("Unable to save the deposit. Please try again.");
+      setDepAmt("");
+      setDepTxHash("");
+      setDepProof(null);
+      proofUpload.clear();
+      triggerModalFeedback({
+        title: "Deposit Processing",
+        description: `Your deposit of $${amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} USD equivalent of ${selectedDepositLabel} is being processed. The funds will be credited after admin verification.`,
+        type: "success"
+      });
+    } catch (error) {
+      triggerModalFeedback(`Error: ${proofErrorMessage(error, "Unable to upload or save your deposit. Please retry.")}`);
+    } finally {
+      depositSubmitting.current = false;
+      setDepositBusy(false);
     }
-    setDepAmt("");
-    setDepTxHash("");
-    setDepProofName("");
-    triggerModalFeedback({
-      title: "Deposit Processing",
-      description: `Your deposit of $${amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} USD equivalent of ${selectedDepositLabel} is being processed. The funds will be credited after admin verification.`,
-      type: "success"
-    });
 
   };
 
@@ -194,18 +223,18 @@ export function GlobalModals({
       {/* QUICK DEPOSIT MODAL OUTLAY */}
       {depositModalOpen && (() => {
         return (
-          <div className="fixed inset-0 bg-[#000000]/80 backdrop-blur-sm p-4 z-50 flex items-center justify-center">
-            <div className="bg-orbit-card border border-orbit-border rounded-2xl w-full max-w-md p-6 relative shadow-2xl space-y-5 max-h-[85dvh] overflow-y-auto my-auto scrollbar-none">
+          <div style={depositViewport} className="fixed inset-x-0 top-0 h-dvh bg-[#000000]/80 backdrop-blur-sm p-3 sm:p-4 z-50 flex items-center justify-center">
+            <div className="bg-orbit-card border border-orbit-border rounded-2xl w-full max-w-md min-w-0 p-4 sm:p-6 relative shadow-2xl space-y-5 max-h-full overflow-y-auto overscroll-contain my-auto [overflow-wrap:anywhere]">
               <button 
                 disabled={depositBusy}
                 aria-label="Close deposit"
                 onClick={() => { setDepositModalOpen(false); setModalFeedback(null); }}
-                className="absolute top-4 right-4 text-orbit-gray-text hover:text-orbit-white cursor-pointer"
+                className="absolute top-2 right-2 flex h-11 w-11 items-center justify-center text-orbit-gray-text hover:text-orbit-white cursor-pointer"
               >
                 <X size={18} />
               </button>
 
-              <div>
+              <div className="pr-10">
                 <h3 className="text-base font-bold text-orbit-white flex items-center gap-2">
                   <ArrowUpRight size={18} className="text-orbit-accent shrink-0 transform rotate-180" />
                   Fast Deposit
@@ -218,7 +247,7 @@ export function GlobalModals({
             {paymentMethod === "crypto" && <label className="mb-5 block space-y-2 text-sm font-semibold text-orbit-white">
               <span>Payment Method</span>
               <select aria-label="Payment Method" value={paymentMethod} disabled={depositBusy} onChange={event => setPaymentMethod(event.target.value as "crypto" | "gift_card")}
-                className="w-full rounded-xl border border-orbit-border bg-orbit-bg px-4 py-3.5 text-sm text-orbit-white focus:border-emerald-500 focus:outline-none">
+                className="w-full rounded-xl border border-orbit-border bg-orbit-bg px-4 py-3.5 text-base text-orbit-white focus:border-emerald-500 focus:outline-none">
                 <option value="crypto">Cryptocurrency</option>
                 <option value="gift_card">Gift Card</option>
               </select>
@@ -243,7 +272,7 @@ export function GlobalModals({
                   );
                 }
                 return (
-                  <div className={`p-3 text-xs rounded-lg text-center ${
+                  <div role={modalFeedback.startsWith("Error") ? "alert" : "status"} className={`p-3 text-xs rounded-lg text-center ${
                     modalFeedback.startsWith("Error") 
                       ? "bg-orbit-red/10 border-orbit-red/30 text-orbit-red" 
                       : "bg-orbit-green/10 border-orbit-green/30 text-orbit-green font-semibold"
@@ -254,6 +283,7 @@ export function GlobalModals({
               })()}
 
               <form onSubmit={handleQuickDeposit} className="space-y-5">
+                <fieldset disabled={depositBusy} className="min-w-0 space-y-5 disabled:opacity-60">
                 {/* Step 1: Coin Selection */}
                 <div className="space-y-1.5">
                   <label className="text-[10px] text-slate-400 font-sans uppercase font-bold tracking-wider block">Coin</label>
@@ -360,7 +390,7 @@ export function GlobalModals({
                       value={depAmt}
                       onChange={(e) => setDepAmt(e.target.value)}
                       placeholder={`Min. Deposit: ${(selectedDepositWallet?.minimumDeposit || 0).toLocaleString()} USD`}
-                      className="w-full bg-[#121318] border border-orbit-border/80 focus:border-orbit-accent focus:ring-1 focus:ring-orbit-accent rounded-xl py-2.5 px-3 text-[11px] text-orbit-white font-mono font-semibold transition-all focus:outline-none placeholder:text-[10px] placeholder-slate-500"
+                      className="w-full bg-[#121318] border border-orbit-border/80 focus:border-orbit-accent focus:ring-1 focus:ring-orbit-accent rounded-xl py-2.5 pl-3 pr-12 text-base text-orbit-white font-mono font-semibold transition-all focus:outline-none placeholder:text-[10px] placeholder-slate-500"
                     />
                     <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono font-bold">
                       USD
@@ -375,18 +405,27 @@ export function GlobalModals({
                   </p>
                 </div>
 
+                <label className="block space-y-2 text-sm text-orbit-gray-text">
+                  <span>Transaction Hash (Optional)</span>
+                  <input type="text" value={depTxHash} onChange={event => setDepTxHash(event.target.value)}
+                    className="min-h-11 w-full min-w-0 rounded-xl border border-orbit-border bg-orbit-bg px-3 py-2.5 text-base text-orbit-white" />
+                </label>
+                <DepositProofInput file={depProof} onChange={setDepProof} disabled={depositBusy} />
+
                 <div className="pt-2">
                   <button
                     type="submit"
                     disabled={depositBusy || !selectedDepositWallet}
                     className="w-full py-3.5 bg-orbit-accent hover:opacity-95 disabled:opacity-50 text-orbit-bg font-extrabold font-heading text-xs uppercase rounded-xl transition-all shadow-md shadow-orbit-accent/10 cursor-pointer tracking-wider text-center"
                   >
+                    {depositBusy && <Loader2 size={16} className="mr-2 inline animate-spin" />}
                     {depositBusy ? "SUBMITTING…" : "CONFIRM DEPOSIT"}
                   </button>
                   <p className="text-xs text-neutral-400 text-center mt-2 font-sans">
                     Please only click the Confirm Deposit button if you have already transferred the funds.
                   </p>
                 </div>
+                </fieldset>
               </form>
               </>)}
             </div>

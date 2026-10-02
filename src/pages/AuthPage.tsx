@@ -48,7 +48,7 @@ const TextInput: React.FC<TextInputProps> = ({
   const [show, setShow] = useState(false);
   const actualType = password ? (show ? "text" : "password") : type;
   return (
-    <div className="space-y-1.5">
+    <div className="min-w-0 space-y-1.5">
       <div className="flex items-center justify-between">
         <label className="text-[11px] uppercase font-subheading tracking-wider text-orbit-gray-text">
           {label}{required && <span className="text-orbit-accent ml-0.5">*</span>}
@@ -67,14 +67,14 @@ const TextInput: React.FC<TextInputProps> = ({
           value={value}
           onChange={onChange}
           placeholder={placeholder}
-          className={`w-full bg-transparent rounded-xl py-3 text-orbit-white outline-none placeholder:text-zinc-600 font-sans ${Icon ? "pl-10" : "pl-4"} pr-10`}
+          className={`min-w-0 w-full text-base bg-transparent rounded-xl py-3 text-orbit-white outline-none placeholder:text-zinc-600 font-sans ${Icon ? "pl-10" : "pl-4"} pr-10`}
         />
         {password ? (
           <button
             type="button"
             tabIndex={-1}
             onClick={() => setShow((s) => !s)}
-            className="absolute right-3 text-zinc-500 hover:text-orbit-accent cursor-pointer bg-transparent border-none outline-none"
+            className="absolute right-0 flex h-11 w-11 items-center justify-center text-zinc-500 hover:text-orbit-accent cursor-pointer bg-transparent border-none outline-none"
             aria-label={show ? "Hide password" : "Show password"}
           >
             {show ? <EyeOff size={15} /> : <Eye size={15} />}
@@ -104,15 +104,17 @@ interface SelectInputProps {
 }
 
 const SelectInput: React.FC<SelectInputProps> = ({ label, required, value, onChange, state = "idle", children }) => (
-  <div className="space-y-1.5">
+  <div className="min-w-0 space-y-1.5">
     <label className="text-[11px] uppercase font-subheading tracking-wider text-orbit-gray-text block">
       {label}{required && <span className="text-orbit-accent ml-0.5">*</span>}
     </label>
     <div className={`relative flex items-center rounded-xl bg-orbit-bg border transition-all duration-150 ${stateBorder(state)}`}>
       <select
         value={value}
+        aria-label={label}
+        title={value}
         onChange={onChange}
-        className="w-full bg-transparent rounded-xl px-4 py-3 text-orbit-white cursor-pointer outline-none appearance-none font-sans [&>option]:bg-orbit-card [&>option]:text-orbit-white"
+        className="min-w-0 w-full text-base bg-transparent rounded-xl pl-4 pr-10 py-3 text-orbit-white cursor-pointer outline-none appearance-none font-sans [&>option]:bg-orbit-card [&>option]:text-orbit-white"
       >
         {children}
       </select>
@@ -120,6 +122,7 @@ const SelectInput: React.FC<SelectInputProps> = ({ label, required, value, onCha
         <ChevronDown size={14} />
       </span>
     </div>
+    {value.length > 28 && <p className="text-sm leading-relaxed text-orbit-gray-text [overflow-wrap:anywhere]">{value}</p>}
   </div>
 );
 
@@ -580,11 +583,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
   ];
 
   return (
-    <div className="mx-auto my-8 w-full max-w-5xl px-4 sm:px-6 lg:px-8 font-sans">
-      <div className="grid overflow-hidden rounded-[28px] border border-orbit-border/70 bg-gradient-to-br from-[#12161D] via-[#0D1014] to-[#090B10] shadow-[0_40px_120px_rgba(0,0,0,0.55)] md:grid-cols-[0.92fr_1.08fr]">
+    <div className="mx-auto my-8 w-full max-w-5xl [overflow-wrap:anywhere] px-4 sm:px-6 lg:px-8 font-sans">
+      <div className="grid overflow-hidden rounded-[28px] border border-orbit-border/70 bg-gradient-to-br from-[#12161D] via-[#0D1014] to-[#090B10] shadow-[0_40px_120px_rgba(0,0,0,0.55)] lg:grid-cols-[0.92fr_1.08fr]">
 
         {/* ---------------- LEFT BRAND RAIL ---------------- */}
-        <aside className="relative order-2 flex flex-col overflow-hidden border-t border-orbit-border/50 p-8 md:order-1 md:border-r md:border-t-0 md:p-10">
+        <aside className="relative order-2 flex flex-col overflow-hidden border-t border-orbit-border/50 p-8 lg:order-1 lg:border-r lg:border-t-0 lg:p-10">
           <div
             className="pointer-events-none absolute inset-0"
             style={{
@@ -631,7 +634,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
         </aside>
 
         {/* ---------------- RIGHT FORM PANEL ---------------- */}
-        <section className="order-1 flex flex-col p-7 md:order-2 md:p-10">
+        <section className="order-1 min-w-0 flex flex-col p-5 sm:p-7 lg:order-2 lg:p-10">
 
           {/* Tab switcher — hidden mid-verify / mid-reset / mid-success */}
           {!pendingVerification && !showForgotPassword && !isSuccess && (
@@ -639,7 +642,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
               <button
                 type="button"
                 onClick={() => switchTab("register")}
-                className={`rounded-full px-5 py-2 text-xs font-bold font-subheading transition-all cursor-pointer ${
+                className={`rounded-full min-h-11 px-4 py-2 text-xs font-bold font-subheading transition-all cursor-pointer ${
                   activeTab === "register" ? "bg-orbit-accent text-orbit-bg" : "text-orbit-gray-text hover:text-orbit-white"
                 }`}
               >
@@ -648,7 +651,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
               <button
                 type="button"
                 onClick={() => switchTab("login")}
-                className={`rounded-full px-5 py-2 text-xs font-bold font-subheading transition-all cursor-pointer ${
+                className={`rounded-full min-h-11 px-4 py-2 text-xs font-bold font-subheading transition-all cursor-pointer ${
                   activeTab === "login" ? "bg-orbit-accent text-orbit-bg" : "text-orbit-gray-text hover:text-orbit-white"
                 }`}
               >
@@ -687,7 +690,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
                   {errorMsg}
                 </div>
               )}
-              <div className="space-y-1.5">
+              <div className="min-w-0 space-y-1.5">
                 <label className="block text-[11px] uppercase font-subheading tracking-wider text-orbit-gray-text">
                   Verification code
                 </label>
@@ -820,7 +823,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
                         <TextInput icon={Phone} label="Phone number" required type="tel" inputMode="tel" value={phone}
                           onChange={(e) => setPhone(e.target.value)} placeholder="Phone number" state={phState} />
                       </div>
-                      <div className="mt-1 flex gap-3">
+                      <div className="mt-1 flex flex-col sm:flex-row gap-3">
                         <button type="button" onClick={goBackStep} className="orb-button-secondary py-4">
                           <ArrowLeft size={16} /> Back
                         </button>
@@ -843,7 +846,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
                         <option value="Platinum">Platinum Tier (Elite)</option>
                         <option value="Diamond">Diamond Tier (Pro)</option>
                       </SelectInput>
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div className="grid grid-cols-1 gap-4">
                         <SelectInput label="Country" required value={country} onChange={(e) => setCountry(e.target.value)}
                           state={country !== "Choose Country" ? "ok" : "idle"}>
                           <option disabled value="Choose Country">Choose country</option>
@@ -876,7 +879,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
                           sign-up flows, exactly one per page or it silently fails. */}
                       <div id="clerk-captcha" />
 
-                      <div className="mt-1 flex gap-3">
+                      <div className="mt-1 flex flex-col sm:flex-row gap-3">
                         <button type="button" onClick={goBackStep} className="orb-button-secondary py-4">
                           <ArrowLeft size={16} /> Back
                         </button>
@@ -922,7 +925,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onNavigate, initialTab = "re
                     </>
                   ) : (
                     <>
-                      <div className="space-y-1.5">
+                      <div className="min-w-0 space-y-1.5">
                         <label className="block text-[11px] uppercase font-subheading tracking-wider text-orbit-gray-text">Reset code</label>
                         <input
                           type="text"

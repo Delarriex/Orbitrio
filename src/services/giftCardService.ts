@@ -1,11 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { GiftCardDetails } from "../types";
 
-export const GIFT_CARD_BUCKET = "gift-card-proofs";
+import { GIFT_CARD_BUCKET, PROOF_IMAGE_TYPES, MAX_PROOF_IMAGE_BYTES, uploadProofImage } from "./depositProofService";
+export { GIFT_CARD_BUCKET } from "./depositProofService";
 export const GIFT_CARD_BRANDS = ["Amazon", "Apple", "Steam", "Google Play", "Razer Gold", "Visa"] as const;
 export const MAX_GIFT_CARD_IMAGES = 4;
-export const MAX_GIFT_CARD_IMAGE_BYTES = 5 * 1024 * 1024;
-export const GIFT_CARD_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+export const MAX_GIFT_CARD_IMAGE_BYTES = MAX_PROOF_IMAGE_BYTES;
+export const GIFT_CARD_IMAGE_TYPES = PROOF_IMAGE_TYPES;
 
 export function validateGiftCard(details: GiftCardDetails, amount: number, files: File[]): string | null {
   if (!details.brand.trim() || details.brand.trim().length > 80) return "Enter the gift card brand (up to 80 characters).";
@@ -19,13 +20,5 @@ export function validateGiftCard(details: GiftCardDetails, amount: number, files
 }
 
 export async function uploadGiftCardImage(supabase: SupabaseClient, userId: string, file: File): Promise<string> {
-  if (!userId) throw new Error("Sign in before uploading images.");
-  if (!GIFT_CARD_IMAGE_TYPES.includes(file.type) || !file.size || file.size > MAX_GIFT_CARD_IMAGE_BYTES) {
-    throw new Error("Use JPG, PNG or WebP images no larger than 5 MB.");
-  }
-  const extension = file.type === "image/jpeg" ? "jpg" : file.type === "image/png" ? "png" : "webp";
-  const path = `${userId}/${crypto.randomUUID()}.${extension}`;
-  const { error } = await supabase.storage.from(GIFT_CARD_BUCKET).upload(path, file, { upsert: false, contentType: file.type });
-  if (error) throw error;
-  return path;
+  return uploadProofImage(supabase, GIFT_CARD_BUCKET, userId, file);
 }

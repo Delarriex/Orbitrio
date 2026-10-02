@@ -118,12 +118,7 @@ export async function createUserProfile(supabase: SupabaseClient, profile: NewUs
 // user id (storage policies key off that first path segment to restrict
 // reads/writes to the owner or an admin). Returns the object path — not a
 // public URL. The admin proof viewer signs the path on demand.
-export async function uploadDepositProof(supabase: SupabaseClient, userId: string, file: File): Promise<string> {
-  const path = `${userId}/${crypto.randomUUID()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-  const {error} = await supabase.storage.from('deposit-proofs').upload(path, file, {upsert: false});
-  if (error) throw error;
-  return path;
-}
+export { uploadDepositProof } from "../services/depositProofService";
 
 // Uploads a deposit-wallet QR code image into the public
 // `deposit-wallet-qr` bucket (admin-write only via storage policy) and
