@@ -81,8 +81,8 @@ export const buildDepositTransaction = (
       asset: currency,
       date: todayIsoDate(),
       address: isManual ? adminWallets[currency] : undefined,
-      txHash: txHash || `0xhash${Date.now().toString(16)}`,
-      proofFile: proofFile || (isManual ? "deposit_proof.jpg" : undefined),
+      txHash: txHash || undefined,
+      proofFile: proofFile || undefined,
       userEmail: userEmail || FALLBACK_GUEST_EMAIL
     }, { userEmail }, { currency, relatedReferenceId: txHash || id, timestamp })
   };

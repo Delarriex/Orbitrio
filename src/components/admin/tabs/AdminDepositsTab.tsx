@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useRef } from "react";
 import { motion } from "motion/react";
-import { ArrowDownLeft, Check, ClipboardList, FileText, Hash, Search, X } from "lucide-react";
+import { ArrowDownLeft, Check, ClipboardList, Hash, Search, X, RefreshCw } from "lucide-react";
 import { useOrbit } from "../../../context/OrbitContext";
 import { getDepositWalletLabel } from "../../../services";
+import { DepositProofViewer } from "../DepositProofViewer";
 import type { DepositWallet, Transaction } from "../../../types";
 
 type DepositStatus = "pending" | "approved" | "rejected";
@@ -48,6 +49,9 @@ const resolveDepositMeta = (
   depositWallets: DepositWallet[],
   adminWallets: Record<string, string>
 ) => {
+  if (transaction.paymentMethod === "gift_card") {
+    return { coin: transaction.giftCard?.brand || "Gift card", network: "Gift card", wallet: "Not applicable" };
+  }
   const asset = transaction.asset || "USD";
   const assetKey = normalizeKey(asset);
   const assetUnderscoreKey = assetKey.replace(/\s+/g, "_");
@@ -101,7 +105,10 @@ const buildDepositRows = (
     });
 
 export const AdminDepositsTab: React.FC = () => {
-  const { adminTransactions, adminWallets, depositWallets, adminApproveDeposit, adminRejectDeposit } = useOrbit();
+  const { adminTransactions, adminWallets, depositWallets, adminApproveDeposit, adminRejectDeposit, refreshAdminDeposits } = useOrbit();
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const reviewing = useRef(false);
   const [adminNotes, setAdminNotes] = useState<Record<string, string>>({});
   const [feedback, setFeedback] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<"all" | DepositStatus>("all");
@@ -156,24 +163,27 @@ export const AdminDepositsTab: React.FC = () => {
     setTimeout(() => setFeedback(null), 3500);
   };
 
-  const handleApprove = (deposit: DepositRow) => {
-    adminApproveDeposit(deposit.id, adminNotes[deposit.id] || undefined);
-    showFeedback(`Approved deposit ${deposit.id}`);
-  };
-
-  const handleReject = (deposit: DepositRow) => {
-    adminRejectDeposit(deposit.id, adminNotes[deposit.id] || undefined);
-    showFeedback(`Rejected deposit ${deposit.id}`);
+  const reviewDeposit = async (deposit: DepositRow, approve: boolean) => {
+    if (reviewing.current) return;
+    reviewing.current = true;
+    setBusyId(deposit.id);
+    try {
+      const success = await (approve ? adminApproveDeposit : adminRejectDeposit)(deposit.id, adminNotes[deposit.id] || undefined);
+      if (success) showFeedback(`${approve ? "Approved" : "Rejected"} deposit ${deposit.id}`);
+    } finally {
+      reviewing.current = false;
+      setBusyId(null);
+    }
   };
 
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.3 }} className="space-y-6">
-      <div className="bg-orbit-card border border-orbit-border rounded-2xl p-6 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-5">
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.3 }} className="min-w-0 space-y-6 [overflow-wrap:anywhere]">
+      <div className="bg-orbit-card border border-orbit-border rounded-2xl p-4 sm:p-6 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-5">
         <div>
           <h1 className="text-xl font-bold text-orbit-white flex items-center gap-2">
-            <ArrowDownLeft size={20} className="text-emerald-400" /> Crypto Deposit Management
+            <ArrowDownLeft size={20} className="text-emerald-400" /> Deposit Management
           </h1>
-          <p className="text-xs text-orbit-gray-text mt-1">Review incoming crypto deposits, wallet destinations, hashes, and admin decisions.</p>
+          <p className="text-xs text-orbit-gray-text mt-1">Review crypto and gift card deposits, uploaded images, and admin decisions.</p>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
           <StatBadge label="Total" value={stats.total} />
@@ -197,14 +207,21 @@ export const AdminDepositsTab: React.FC = () => {
             </h2>
             <p className="text-[11px] text-orbit-gray-text mt-1">Pending deposits stay at the top for faster treasury review.</p>
           </div>
-          <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
-            <div className="relative sm:w-72">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 w-full lg:w-auto">
+            <button type="button" disabled={refreshing} onClick={async () => {
+              setRefreshing(true);
+              try { await refreshAdminDeposits(); } finally { setRefreshing(false); }
+            }} className="flex items-center justify-center gap-1 min-h-11 rounded-lg border border-orbit-border px-3 py-2 text-xs text-orbit-accent disabled:opacity-50">
+              <RefreshCw size={13} className={refreshing ? "animate-spin" : ""} /> Refresh
+            </button>
+            <div className="relative min-w-0 sm:flex-1 sm:w-72">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-orbit-gray-text" />
               <input
                 value={searchQuery}
                 onChange={event => setSearchQuery(event.target.value)}
+                aria-label="Search deposits"
                 placeholder="Search deposits"
-                className="w-full pl-9 pr-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-xs text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent"
+                className="min-h-11 w-full pl-9 pr-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-base text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent"
               />
             </div>
             <div className="flex flex-wrap gap-2">
@@ -212,7 +229,7 @@ export const AdminDepositsTab: React.FC = () => {
                 <button
                   key={status}
                   onClick={() => setFilterStatus(status)}
-                  className={`px-3 py-2 text-[10px] font-bold uppercase rounded-lg border transition-colors cursor-pointer ${filterStatus === status ? "bg-orbit-accent text-orbit-bg border-orbit-accent" : "bg-orbit-bg text-orbit-gray-text border-orbit-border hover:border-orbit-accent"}`}
+                  className={`min-h-11 px-3 py-2 text-xs font-bold uppercase rounded-lg border transition-colors cursor-pointer ${filterStatus === status ? "bg-orbit-accent text-orbit-bg border-orbit-accent" : "bg-orbit-bg text-orbit-gray-text border-orbit-border hover:border-orbit-accent"}`}
                 >
                   {status === "all" ? "All" : statusLabels[status]}
                 </button>
@@ -221,79 +238,82 @@ export const AdminDepositsTab: React.FC = () => {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1280px] text-left">
-            <thead className="bg-orbit-bg/60 border-b border-orbit-border">
+        <div className="p-3 sm:p-4">
+          <table className="deposit-review w-full text-left">
+            <thead className="sr-only">
               <tr className="text-[10px] uppercase tracking-wider text-orbit-gray-text">
                 <th className="px-5 py-3 font-bold">Deposit ID</th>
                 <th className="px-4 py-3 font-bold">User</th>
                 <th className="px-4 py-3 font-bold">Email</th>
-                <th className="px-4 py-3 font-bold">Coin</th>
-                <th className="px-4 py-3 font-bold">Network</th>
+                <th className="px-4 py-3 font-bold">Coin / Card brand</th>
+                <th className="px-4 py-3 font-bold">Network / Method</th>
                 <th className="px-4 py-3 font-bold">Wallet</th>
                 <th className="px-4 py-3 font-bold">Amount</th>
-                <th className="px-4 py-3 font-bold">Transaction Hash</th>
+                <th className="px-4 py-3 font-bold">Payment evidence</th>
                 <th className="px-4 py-3 font-bold">Date</th>
                 <th className="px-4 py-3 font-bold">Status</th>
                 <th className="px-5 py-3 font-bold">Admin Notes</th>
                 <th className="px-5 py-3 font-bold text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-orbit-border/70">
+            <tbody className="grid grid-cols-1 xl:grid-cols-2 gap-4">
               {filteredDeposits.map(deposit => (
-                <tr key={deposit.id} className="hover:bg-orbit-bg/40 transition-colors align-top">
-                  <td className="px-5 py-4">
+                <tr key={deposit.id} className="grid sm:grid-cols-2 gap-x-4 min-w-0 content-start rounded-xl border border-orbit-border bg-orbit-bg/30 p-3 sm:p-4">
+                  <td data-label="Deposit ID" className="px-5 py-4">
                     <div className="flex items-center gap-2 text-xs font-bold text-orbit-white">
                       <Hash size={12} className="text-orbit-gray-text" />
                       <span title={deposit.id}>{shortValue(deposit.id, 12, 5)}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-4 text-xs font-bold text-orbit-white">{deposit.userName}</td>
-                  <td className="px-4 py-4 text-xs text-orbit-gray-text">{deposit.userEmail}</td>
-                  <td className="px-4 py-4 text-xs font-bold text-orbit-white">{deposit.coin}</td>
-                  <td className="px-4 py-4 text-xs text-orbit-accent font-bold">{deposit.network}</td>
-                  <td className="px-4 py-4">
-                    <span title={deposit.wallet} className="block max-w-[180px] truncate text-xs text-orbit-white">{deposit.wallet}</span>
+                  <td data-label="User" className="px-4 py-4 text-xs font-bold text-orbit-white">{deposit.userName}</td>
+                  <td data-label="Email" className="sm:col-span-2 px-4 py-4 text-xs text-orbit-gray-text">{deposit.userEmail}</td>
+                  <td data-label="Coin / Card brand" className="sm:col-span-2 px-4 py-4 text-xs font-bold text-orbit-white">{deposit.coin}</td>
+                  <td data-label="Network / Method" className="px-4 py-4 text-xs text-orbit-accent font-bold">{deposit.network}</td>
+                  <td data-label="Wallet" className="sm:col-span-2 px-4 py-4">
+                    <span title={deposit.wallet} className="block break-all text-xs text-orbit-white">{deposit.wallet}</span>
                   </td>
-                  <td className="px-4 py-4 text-xs font-bold text-orbit-white">{formatMoney(deposit.amount)}</td>
-                  <td className="px-4 py-4">
-                    <span title={deposit.txHash || "No hash submitted"} className="block max-w-[170px] truncate text-xs text-orbit-accent font-bold">
+                  <td data-label="Amount" className="px-4 py-4 text-xs font-bold text-orbit-white">
+                    {formatMoney(deposit.amount)}
+                    {deposit.paymentMethod === "gift_card" && deposit.giftCard && <p className="mt-1 text-[10px] font-normal text-orbit-gray-text">Card face value: {deposit.giftCard.faceValue} {deposit.giftCard.currency}</p>}
+                  </td>
+                  <td data-label="Payment evidence" className="sm:col-span-2 px-4 py-4">
+                    {deposit.paymentMethod !== "gift_card" && <span title={deposit.txHash || "No hash submitted"} className="block break-all text-xs text-orbit-accent font-bold">
                       {deposit.txHash ? shortValue(deposit.txHash, 14, 7) : "No hash"}
-                    </span>
-                    {deposit.proofFile && (
-                      <span className="mt-1 inline-flex items-center gap-1 text-[10px] text-orbit-gray-text">
-                        <FileText size={10} /> Proof attached
-                      </span>
-                    )}
+                    </span>}
+                    <DepositProofViewer transaction={deposit} />
                   </td>
-                  <td className="px-4 py-4 text-xs text-orbit-gray-text">{deposit.date}</td>
-                  <td className="px-4 py-4">
+                  <td data-label="Date" className="px-4 py-4 text-xs text-orbit-gray-text">{deposit.date}</td>
+                  <td data-label="Status" className="px-4 py-4">
                     <span className={`inline-flex items-center px-2.5 py-1 rounded-full border text-[10px] font-bold ${statusStyles[deposit.displayStatus]}`}>
                       {statusLabels[deposit.displayStatus]}
                     </span>
                   </td>
-                  <td className="px-5 py-4">
+                  <td data-label="Admin notes" className="sm:col-span-2 px-5 py-4">
                     {deposit.displayStatus === "pending" ? (
                       <textarea
                         rows={2}
+                        aria-label={`Admin notes for deposit ${deposit.id}`}
                         placeholder="Optional admin notes"
                         value={adminNotes[deposit.id] || ""}
                         onChange={event => setNote(deposit.id, event.target.value)}
-                        className="w-[220px] px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-xs text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent resize-none"
+                        className="w-full min-w-0 px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-base text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent resize-none"
                       />
                     ) : (
-                      <p className="max-w-[220px] text-[11px] text-orbit-gray-text">{deposit.notes || "No admin notes"}</p>
+                      <p className="max-w-full min-w-0 text-[11px] text-orbit-gray-text">{deposit.notes || "No admin notes"}</p>
                     )}
                   </td>
-                  <td className="px-5 py-4">
+                  <td data-label="Actions" className="sm:col-span-2 px-5 py-4">
                     {deposit.displayStatus === "pending" ? (
-                      <div className="flex justify-end gap-2">
-                        <button onClick={() => handleApprove(deposit)} className="flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-500 text-white font-bold text-[10px] uppercase rounded-lg hover:bg-emerald-600 cursor-pointer">
+                      <div className="space-y-2">
+                        {deposit.paymentMethod === "gift_card" && <p className="max-w-full text-[10px] text-orbit-gray-text">Verify the card and USD value. Approve credits {formatMoney(deposit.amount)}.</p>}
+                        <div className="flex flex-wrap gap-2">
+                        <button disabled={busyId !== null} onClick={() => reviewDeposit(deposit, true)} className="flex min-h-11 flex-1 items-center justify-center gap-1.5 px-3 py-2 disabled:opacity-50 bg-emerald-500 text-white font-bold text-xs uppercase rounded-lg hover:bg-emerald-600 cursor-pointer">
                           <Check size={12} /> Approve
                         </button>
-                        <button onClick={() => handleReject(deposit)} className="flex items-center justify-center gap-1.5 px-3 py-2 bg-red-500 text-white font-bold text-[10px] uppercase rounded-lg hover:bg-red-600 cursor-pointer">
+                        <button disabled={busyId !== null} onClick={() => reviewDeposit(deposit, false)} className="flex min-h-11 flex-1 items-center justify-center gap-1.5 px-3 py-2 disabled:opacity-50 bg-red-500 text-white font-bold text-xs uppercase rounded-lg hover:bg-red-600 cursor-pointer">
                           <X size={12} /> Reject
                         </button>
+                        </div>
                       </div>
                     ) : (
                       <p className="text-right text-[10px] font-bold uppercase text-orbit-gray-text">Reviewed</p>

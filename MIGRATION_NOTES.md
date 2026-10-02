@@ -4,6 +4,16 @@
 
 ## High-level architecture
 
+### September 2026: countries and gift-card deposits
+
+`gift_card_deposits.sql` adds gift-card metadata and image paths to transactions,
+creates the private `gift-card-proofs` bucket and validates image ownership at
+the database boundary. Run it before deploying the corresponding frontend.
+`DepositProofViewer` now creates short-lived signed URLs for admins to view both
+gift-card images and stored crypto proof paths. This supersedes the historical
+note below that admin proofs are only shown as a static label.
+See `docs/countries-gift-cards-release.md` for release order and test coverage.
+
 - **Auth**: Clerk. Fully migrated. `AuthPage.tsx` uses Clerk's `useSignUp`/`useSignIn` hooks directly (not prebuilt Clerk components, to preserve custom styling).
 - **Identity/role**: `src/hooks/useCurrentUser.ts` — combines Clerk's `isSignedIn` with a Supabase `users.role` lookup. This is the single source of truth for "is this user an admin" used in routing guards (`App.tsx`, `DashboardAdmin.tsx`).
 - **Data layer pattern**: each migrated feature gets its own hook in `src/hooks/data/`, following a consistent shape: fetch on mount, expose CRUD functions, use Supabase RPC functions for anything that touches balance (atomicity). `OrbitContext.tsx` calls these hooks and exposes their data/functions through `useOrbit()`, so consuming components didn't need to change.

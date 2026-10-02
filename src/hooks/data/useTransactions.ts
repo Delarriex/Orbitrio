@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Transaction } from "../../types";
+import type { GiftCardSubmission, Transaction } from "../../types";
 
 function rowToTransaction(row: any): Transaction {
   return {
@@ -18,6 +18,9 @@ function rowToTransaction(row: any): Transaction {
     address: row.address,
     txHash: row.tx_hash,
     proofFile: row.proof_file,
+    paymentMethod: row.payment_method || "crypto",
+    giftCard: row.gift_card_details || undefined,
+    giftCardImagePaths: row.gift_card_image_paths || [],
     notes: row.notes,
     destinationTag: row.destination_tag,
     bankDetails: row.bank_details,
@@ -63,11 +66,9 @@ export function useTransactions(
   const createDepositTransaction = async (input: {
     id: string; userId: string; userEmail: string; userName: string;
     amount: number; currency: string; asset: string; status: "pending" | "completed";
-    txHash?: string; proofFile?: string;
+    txHash?: string; proofFile?: string; giftCard?: GiftCardSubmission;
   }) => {
-    // Always insert as pending — RLS only allows users to create their own
-    // transactions in "pending" status. Instant-complete deposits are then
-    // flipped via the same admin-gated RPC used for manual approval.
+    // Always insert as pending. Only an admin can credit a verified payment.
     const { error } = await supabase.from("transactions").insert({
       id: input.id,
       user_id: input.userId,
@@ -79,7 +80,12 @@ export function useTransactions(
       asset: input.asset,
       status: "pending",
       tx_hash: input.txHash || null,
-      proof_file: input.proofFile || null
+      proof_file: input.proofFile || null,
+      ...(input.giftCard ? {
+        payment_method: "gift_card",
+        gift_card_details: input.giftCard.details,
+        gift_card_image_paths: input.giftCard.imagePaths
+      } : {})
     });
     if (error) throw error;
 
