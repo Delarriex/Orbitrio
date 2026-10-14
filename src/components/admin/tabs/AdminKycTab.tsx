@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from "react";
 import { useOrbit } from "../../../context/OrbitContext";
 import { motion } from "motion/react";
-import { UserCheck, Check, X, Search, Eye, FileText, ExternalLink } from "lucide-react";
+import { UserCheck, Check, X, Search, Eye } from "lucide-react";
+import { KycImageViewer } from "../KycImageViewer";
+import { kycErrorMessage, needsBackImage } from "../../../services/kycService";
 import type { KycSubmission, KycStatus } from "../../../types";
 import type { CoreUserProfile } from "../../../hooks/data/useUsersDirectory";
 
@@ -24,7 +26,7 @@ const formatDate = (value?: string) => {
 const getDocumentCount = (kyc?: KycSubmission) => [kyc?.frontImage, kyc?.backImage, kyc?.proofOfAddressImage].filter(Boolean).length;
 
 export const AdminKycTab: React.FC = () => {
-  const { usersDirectory, allKycSubmissions, adminKycReview } = useOrbit();
+  const { usersDirectory, allKycSubmissions, adminKycReview, kycLoading, kycError, refreshKyc, refreshUsersDirectory, isLoadingUsersDirectory } = useOrbit();
   const [searchQuery, setSearchQuery] = useState("");
   const [adminNotes, setAdminNotes] = useState<Record<string, string>>({});
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -69,23 +71,26 @@ export const AdminKycTab: React.FC = () => {
     const note = adminNotes[user.email] || "Verified by admin.";
     setReviewingEmail(user.email);
     try {
-      await adminKycReview(user.email, "approved", note);
+      await adminKycReview(user.email, "approved", note, user.kyc?.revision);
+      setAdminNotes(prev => ({ ...prev, [user.email]: "" }));
       showFeedback(`KYC approved for ${user.email}`);
-    } catch {
-      showFeedback(`Unable to approve KYC for ${user.email}`);
+    } catch (error) {
+      showFeedback(kycErrorMessage(error, `Unable to approve KYC for ${user.email}`));
     } finally {
       setReviewingEmail(null);
     }
   };
 
   const reject = async (user: KycRow) => {
-    const reason = adminNotes[user.email] || "Documents not sufficient.";
+    const reason = (adminNotes[user.email] || "").trim();
+    if (!reason) { showFeedback("Enter a rejection reason in the notes field first."); return; }
     setReviewingEmail(user.email);
     try {
-      await adminKycReview(user.email, "rejected", reason);
+      await adminKycReview(user.email, "rejected", reason, user.kyc?.revision);
+      setAdminNotes(prev => ({ ...prev, [user.email]: "" }));
       showFeedback(`KYC rejected for ${user.email}`);
-    } catch {
-      showFeedback(`Unable to reject KYC for ${user.email}`);
+    } catch (error) {
+      showFeedback(kycErrorMessage(error, `Unable to reject KYC for ${user.email}`));
     } finally {
       setReviewingEmail(null);
     }
@@ -107,13 +112,16 @@ export const AdminKycTab: React.FC = () => {
         </div>
       </div>
 
+      <button type="button" disabled={kycLoading || isLoadingUsersDirectory || !!reviewingEmail} onClick={() => void Promise.all([refreshKyc(), refreshUsersDirectory()])} className="min-h-11 text-sm text-orbit-accent disabled:opacity-50">{kycLoading || isLoadingUsersDirectory ? "Loading submissions…" : "Refresh submissions"}</button>
+      {kycError && <p role="alert" className="text-sm text-orbit-red">Unable to load submissions: {kycError}</p>}
+
       {feedback && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} role="status" className="p-3 rounded-xl bg-orbit-bg border border-orbit-border text-orbit-white text-xs font-bold">
           {feedback}
         </motion.div>
       )}
 
-      <div className="bg-orbit-card border border-orbit-border rounded-2xl overflow-hidden">
+      {!kycError && <div className="bg-orbit-card border border-orbit-border rounded-2xl overflow-hidden">
         <div className="px-5 py-4 border-b border-orbit-border flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <div className="relative lg:w-80">
             <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-orbit-gray-text" />
@@ -147,7 +155,6 @@ export const AdminKycTab: React.FC = () => {
               {filtered.map(user => {
                 const kyc = user.kyc;
                 const isExpanded = expandedUser === user.email;
-                const isReviewing = reviewingEmail === user.email;
                 return (
                   <React.Fragment key={user.email}>
                     <tr className="hover:bg-orbit-bg/40 transition-colors align-top">
@@ -169,7 +176,8 @@ export const AdminKycTab: React.FC = () => {
                       </td>
                       <td className="px-4 py-4">
                         <input
-                          value={adminNotes[user.email] ?? kyc?.adminNotes ?? kyc?.rejectionReason ?? ""}
+                          aria-label={`Review notes for ${user.email}`} maxLength={2000} disabled={!!reviewingEmail || kycLoading || isLoadingUsersDirectory}
+                          value={adminNotes[user.email] ?? (kyc?.status === "pending" ? "" : kyc?.adminNotes ?? kyc?.rejectionReason ?? "")}
                           onChange={event => setAdminNotes(prev => ({ ...prev, [user.email]: event.target.value }))}
                           placeholder="Approval note or rejection reason"
                           className="w-[250px] px-3 py-2 bg-orbit-bg border border-orbit-border rounded-lg text-xs text-orbit-white placeholder:text-orbit-gray-text focus:outline-none focus:border-orbit-accent"
@@ -178,10 +186,10 @@ export const AdminKycTab: React.FC = () => {
                       <td className="px-5 py-4">
                         {kyc?.status === "pending" ? (
                           <div className="flex justify-end gap-2">
-                            <button onClick={() => approve(user)} disabled={isReviewing} className="flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-500 text-white font-bold text-[10px] uppercase rounded-lg hover:bg-emerald-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                            <button onClick={() => approve(user)} title="Open the documents and review the images before approval" disabled={!!reviewingEmail || kycLoading || isLoadingUsersDirectory || !!kycError || !isExpanded || !kyc.frontImage || (needsBackImage(kyc.documentType || kyc.idType) && !kyc.backImage)} className="flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-500 text-white font-bold text-[10px] uppercase rounded-lg hover:bg-emerald-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
                               <Check size={12} /> Approve
                             </button>
-                            <button onClick={() => reject(user)} disabled={isReviewing} className="flex items-center justify-center gap-1.5 px-3 py-2 bg-red-500 text-white font-bold text-[10px] uppercase rounded-lg hover:bg-red-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                            <button onClick={() => reject(user)} disabled={!!reviewingEmail || kycLoading || isLoadingUsersDirectory || !!kycError} className="flex items-center justify-center gap-1.5 px-3 py-2 bg-red-500 text-white font-bold text-[10px] uppercase rounded-lg hover:bg-red-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
                               <X size={12} /> Reject
                             </button>
                           </div>
@@ -193,7 +201,7 @@ export const AdminKycTab: React.FC = () => {
                     {isExpanded && kyc && (
                       <tr className="bg-orbit-bg/50">
                         <td colSpan={7} className="px-5 py-5">
-                          <DocumentPanel kyc={kyc} />
+                          <DocumentPanel kyc={kyc} ownerId={user.id} />
                         </td>
                       </tr>
                     )}
@@ -205,12 +213,12 @@ export const AdminKycTab: React.FC = () => {
         </div>
 
         {filtered.length === 0 && <div className="py-14 text-center text-sm text-orbit-gray-text">No verification records match this view.</div>}
-      </div>
+      </div>}
     </motion.div>
   );
 };
 
-const DocumentPanel: React.FC<{ kyc: KycSubmission }> = ({ kyc }) => (
+const DocumentPanel: React.FC<{ kyc: KycSubmission; ownerId: string }> = ({ kyc, ownerId }) => (
   <div className="space-y-4">
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-[11px]">
       <Info label="Document Number" value={kyc.idNumber || "Not captured"} />
@@ -219,9 +227,9 @@ const DocumentPanel: React.FC<{ kyc: KycSubmission }> = ({ kyc }) => (
       <Info label="Address" value={[kyc.address, kyc.city].filter(Boolean).join(", ") || "Not captured"} />
     </div>
     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-      <DocumentLink title="Primary Document" url={kyc.frontImage} />
-      <DocumentLink title="Back Document" url={kyc.backImage} />
-      <DocumentLink title="Proof of Address" url={kyc.proofOfAddressImage} optional />
+      <KycImageViewer ownerId={ownerId} title={kyc.documentType === "Passport" ? "Passport photo page" : "Front of identity document"} path={kyc.frontImage} />
+      {needsBackImage(kyc.documentType || kyc.idType) && <KycImageViewer ownerId={ownerId} title="Back of identity document" path={kyc.backImage} />}
+      <KycImageViewer ownerId={ownerId} title="Proof of address (optional)" path={kyc.proofOfAddressImage} />
     </div>
   </div>
 );
@@ -230,18 +238,5 @@ const Info: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div className="bg-orbit-card border border-orbit-border rounded-lg p-3">
     <p className="text-[9px] uppercase tracking-wider text-orbit-gray-text font-bold">{label}</p>
     <p className="mt-1 text-orbit-white font-bold break-words">{value}</p>
-  </div>
-);
-
-const DocumentLink: React.FC<{ title: string; url?: string; optional?: boolean }> = ({ title, url, optional }) => (
-  <div className="bg-orbit-card border border-orbit-border rounded-xl p-3 min-h-[120px]">
-    <p className="text-[10px] text-orbit-gray-text uppercase font-bold mb-2 flex items-center gap-1"><FileText size={11} /> {title}</p>
-    {url ? (
-      <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-bold text-orbit-accent hover:text-orbit-white">
-        Open uploaded document <ExternalLink size={12} />
-      </a>
-    ) : (
-      <p className="text-xs text-orbit-gray-text">{optional ? "Not provided" : "Missing document"}</p>
-    )}
   </div>
 );

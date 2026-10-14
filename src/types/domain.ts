@@ -218,6 +218,7 @@ export interface AuditLog {
 }
 
 export interface KycSubmission {
+  revision?: number;
   idType: string;
   documentType?: KycDocumentType | string;
   idNumber: string;

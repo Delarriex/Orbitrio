@@ -4,6 +4,17 @@
 
 ## High-level architecture
 
+### October 2026: KYC image review (local feature branch)
+
+`kyc_image_review.sql` adds a private `kyc-documents` bucket, submission validation,
+restrictive access policies, and the revision-checked `review_kyc_submission` RPC.
+`useKyc` now owns KYC loading/refresh as well as submission and review. User uploads
+and admin previews are implemented; no KYC details are written to localStorage.
+See `KYC_LOCAL_SETUP.md` for test prerequisites, rollout notes and known limits.
+This supersedes the historical notes below that KYC has no image upload flow.
+The migration has been tested locally; it has not been applied to a hosted project.
+
+
 ### September 2026: countries and gift-card deposits
 
 `gift_card_deposits.sql` adds gift-card metadata and image paths to transactions,

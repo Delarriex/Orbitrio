@@ -155,7 +155,7 @@ interface OrbitContextType {
   adminUpdateUserBalance: (email: string, amount: number, txData?: { type: "credit" | "debit"; amount: number; label: string; notes: string; }) => Promise<void>;
   adminChangeUserStatus: (email: string, status: "active" | "suspended" | "banned") => void;
   adminResetUserPassword: (email: string) => void;
-  adminKycReview: (email: string, status: "approved" | "rejected", reason?: string) => Promise<void>;
+  adminKycReview: (email: string, status: "approved" | "rejected", reason?: string, revision?: number) => Promise<void>;
 
   adminCreatePlan: (plan: Omit<InvestmentPlan, "id">) => Promise<void>;
   adminUpdatePlan: (plan: InvestmentPlan) => Promise<void>;
@@ -187,6 +187,10 @@ interface OrbitContextType {
   adminActiveInvestments: AdminActiveInvestment[];
   adminCopyTrades: AdminCopyTrade[];
   allKycSubmissions: Record<string, KycSubmission>;
+  myKyc: KycSubmission | null;
+  kycLoading: boolean;
+  kycError: string | null;
+  refreshKyc: () => Promise<void>;
 
   addNotification: (text: string, options?: BuildNotificationOptions) => void;
   clearNotifications: () => void;
@@ -389,6 +393,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         u.copyTrades = Array.isArray(u.copyTrades) ? u.copyTrades : [];
         u.readAnnouncementIds = Array.isArray(u.readAnnouncementIds) ? u.readAnnouncementIds : [];
         delete u.recoveryPhrase;
+        delete u.kyc; // Identity documents and details are fetched per session, never restored from disk.
         return u;
       } catch (e) {}
     }
@@ -591,10 +596,11 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Persist the local user cache so a refresh has something to show
   // before the profile-loader effect below re-fetches from Supabase.
   useEffect(() => {
-    localStorage.setItem("orbitrio_user", JSON.stringify(user));
+    const { kyc: _privateKyc, ...cachedUser } = user;
+    localStorage.setItem("orbitrio_user", JSON.stringify(cachedUser));
   }, [user]);
 
-  // Loads the signed-in user's profile. Identity/status/role/KYC/read-announcements
+  // Loads the signed-in user's profile. Identity/status/role/read-announcements
   // come from Supabase (Clerk drives sign-in state). balance, transactions,
   // activeInvestments, copyTrades, portfolio, and tickets start at zero/empty
   // here and are filled in a moment later by each field's own sync effect
@@ -615,9 +621,8 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       await ensureUserRow(supabase, clerkUser);
 
-      const [{ data: profileRow }, { data: kycRow }, { data: readRows }] = await Promise.all([
+      const [{ data: profileRow }, { data: readRows }] = await Promise.all([
         supabase.from("users").select("*").eq("id", clerkUser.id).maybeSingle(),
-        supabase.from("kyc_submissions").select("*").eq("user_id", clerkUser.id).maybeSingle(),
         supabase.from("user_read_announcements").select("announcement_id").eq("user_id", clerkUser.id)
       ]);
 
@@ -655,23 +660,6 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         connectedWalletName: profileRow?.connected_wallet_name || "",
         referralCount: profileRow?.referral_count || 0,
         points: profileRow?.points || 0,
-        kyc: kycRow ? {
-          idType: kycRow.id_type,
-          documentType: kycRow.document_type,
-          idNumber: kycRow.id_number,
-          dob: kycRow.dob,
-          address: kycRow.address,
-          city: kycRow.city,
-          country: kycRow.country,
-          frontImage: kycRow.front_image,
-          backImage: kycRow.back_image,
-          proofOfAddressImage: kycRow.proof_of_address_image,
-          submissionDate: kycRow.submission_date,
-          status: kycRow.status,
-          adminNotes: kycRow.admin_notes,
-          rejectionReason: kycRow.rejection_reason,
-          reviewedAt: kycRow.reviewed_at
-        } : prev.kyc,
         readAnnouncementIds: (readRows || []).map((r: any) => r.announcement_id)
       }));
       setAuthReady(true);
@@ -1505,10 +1493,16 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   } = useTransactions(supabase, authReady, currentSupabaseUserId, currentUserIsAdmin);
   const {
     myKyc,
+    kycLoading,
+    kycError,
+    refreshKyc,
     allKycSubmissions,
     submitMyKyc,
     adminReviewKycByEmail
   } = useKyc(supabase, authReady, currentSupabaseUserId, currentUserIsAdmin);
+  useEffect(() => {
+    setUser(prev => ({ ...prev, kyc: myKyc || undefined }));
+  }, [myKyc]);
   const {
     activeInvestments,
     adminActiveInvestments,
@@ -1762,13 +1756,13 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     addNotification(`Sent reset token dispatch to ${email}.`);
   };
 
-  const adminKycReview = async (email: string, status: "approved" | "rejected", reason?: string): Promise<void> => {
+  const adminKycReview = async (email: string, status: "approved" | "rejected", reason?: string, revision?: number): Promise<void> => {
     try {
       const targetProfile = usersDirectory.find(item => item.email.toLowerCase() === email.toLowerCase());
       if (!targetProfile?.id) throw new Error(`No Supabase user record found for ${email}.`);
       const notes = reason || (status === "approved" ? "Verified by admin." : "Documents not sufficient.");
 
-      const reviewedKyc = await adminReviewKycByEmail(email, targetProfile.id, status, notes);
+      const reviewedKyc = await adminReviewKycByEmail(email, targetProfile.id, status, notes, revision ?? allKycSubmissions[email]?.revision);
 
       if (user.email && user.email.toLowerCase() === email.toLowerCase()) {
         setUser(prev => ({ ...prev, kyc: reviewedKyc }));
@@ -1789,7 +1783,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       const submission = await submitMyKyc(currentSupabaseUserId, kyc);
 
-      setUser(prev => ({ ...prev, kyc: submission }));
+      // useKyc owns the session-scoped KYC state and synchronizes it above.
       addNotification("Your KYC submission has been received and is being reviewed.", { title: "KYC submitted", type: "info", eventKey: `kyc:submitted:${submission.submissionDate || user.email}`, action: { label: "View KYC", view: "dashboard-kyc" } });
       dispatchTransactionalEmail(user.email, "KYC_SUBMITTED", `kyc:submitted:${submission.submissionDate || user.email}`, { name: user.name, documentType: submission.documentType || submission.idType, status: "pending" });
       notifyAdmins(`${user.email} submitted KYC documents for review.`, { title: "KYC requires review", type: "warning", eventKey: `kyc:review:${user.email}:${submission.submissionDate || submission.idNumber}`, action: { label: "Review KYC", view: "dashboard-admin" } });
@@ -2152,6 +2146,10 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       adminActiveInvestments,
       adminCopyTrades,
       allKycSubmissions,
+      myKyc,
+      kycLoading,
+      kycError,
+      refreshKyc,
 
       addNotification,
       clearNotifications,
