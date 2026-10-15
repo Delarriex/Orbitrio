@@ -1,153 +1,56 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { KycSubmission, KycStatus } from "../../types";
 import { USE_MOCK_DATA } from "../../services";
+import { rowToKyc, saveKycSubmission, reviewKycSubmission, kycErrorMessage } from "../../services/kycService";
 
-function rowToKyc(row: any): KycSubmission {
-  return {
-    idType: row.id_type,
-    documentType: row.document_type,
-    idNumber: row.id_number,
-    dob: row.dob,
-    address: row.address,
-    city: row.city,
-    country: row.country,
-    frontImage: row.front_image,
-    backImage: row.back_image,
-    proofOfAddressImage: row.proof_of_address_image,
-    submissionDate: row.submission_date,
-    status: row.status,
-    adminNotes: row.admin_notes,
-    rejectionReason: row.rejection_reason,
-    reviewedAt: row.reviewed_at
-  };
-}
-
-function kycToRow(kyc: KycSubmission, userId: string): Record<string, any> {
-  const documentType = kyc.documentType || kyc.idType || "Government ID";
-  return {
-    user_id: userId,
-    id_type: kyc.idType || documentType,
-    document_type: documentType,
-    id_number: kyc.idNumber,
-    dob: kyc.dob,
-    address: kyc.address,
-    city: kyc.city,
-    country: kyc.country,
-    front_image: kyc.frontImage,
-    back_image: kyc.backImage,
-    proof_of_address_image: kyc.proofOfAddressImage,
-    submission_date: kyc.submissionDate || new Date().toISOString(),
-    status: kyc.status || "pending",
-    admin_notes: kyc.adminNotes || "",
-    rejection_reason: kyc.rejectionReason || ""
-  };
-}
-
-/**
- * KYC submissions — self-contained, no balance/transaction coupling.
- * Backed entirely by Supabase's `kyc_submissions` table. No Firebase.
- */
 export function useKyc(supabase: SupabaseClient, authReady: boolean, currentUserId: string | null, isAdmin: boolean) {
-  const [myKyc, setMyKyc] = useState<KycSubmission | null>(null);
-  const [allKycSubmissions, setAllKycSubmissions] = useState<Record<string, KycSubmission>>({});
-
-  useEffect(() => {
-    if (USE_MOCK_DATA || !authReady || !currentUserId) {
-      setMyKyc(null);
+  const [state, setState] = useState<{ scope: string; myKyc: KycSubmission | null; all: Record<string, KycSubmission>; loading: boolean; error: string | null }>({ scope: "", myKyc: null, all: {}, loading: true, error: null });
+  const scope = `${currentUserId || ""}:${isAdmin}`;
+  const generation = useRef(0);
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
+  const refreshKyc = useCallback(async () => {
+    const request = ++generation.current;
+    if (!authReady || !currentUserId || USE_MOCK_DATA) {
+      setState({ scope, myKyc: null, all: {}, loading: false, error: USE_MOCK_DATA ? "KYC testing requires mock data to be disabled." : null });
       return;
     }
-
-    let cancelled = false;
-    (async () => {
-      const { data, error } = await supabase
-        .from("kyc_submissions")
-        .select("*")
-        .eq("user_id", currentUserId)
-        .maybeSingle();
-
-      if (cancelled) return;
-      if (error) {
-        console.error("Failed to load KYC submission:", error);
-        return;
-      }
-      setMyKyc(data ? rowToKyc(data) : null);
-    })();
-
-    return () => { cancelled = true; };
-  }, [authReady, currentUserId]);
-
-  useEffect(() => {
-    if (USE_MOCK_DATA || !authReady || !isAdmin) {
-      setAllKycSubmissions({});
-      return;
+    setState(prev => ({ ...(prev.scope === scope ? prev : { scope, myKyc: null, all: {} }), loading: true, error: null }));
+    try {
+      const { data, error } = isAdmin
+        ? await supabase.from("kyc_submissions").select("*, users!inner(email)")
+        : await supabase.from("kyc_submissions").select("*").eq("user_id", currentUserId);
+      if (error) throw error;
+      if (request !== generation.current || scopeRef.current !== scope) return;
+      const all: Record<string, KycSubmission> = {};
+      for (const row of data || []) if (row.users?.email) all[row.users.email] = rowToKyc(row);
+      const own = data?.find(row => row.user_id === currentUserId);
+      setState({ scope, myKyc: own ? rowToKyc(own) : null, all, loading: false, error: null });
+    } catch (error) {
+      if (request === generation.current && scopeRef.current === scope) setState(prev => ({ ...prev, loading: false, error: kycErrorMessage(error, "Unable to load KYC. Please retry.") }));
     }
+  }, [supabase, authReady, currentUserId, isAdmin, scope]);
+  useEffect(() => { void refreshKyc(); return () => { generation.current++; }; }, [refreshKyc]);
 
-    let cancelled = false;
-    (async () => {
-      const { data, error } = await supabase.from("kyc_submissions").select("*, users!inner(email)");
-      if (cancelled) return;
-      if (error) {
-        console.error("Failed to load KYC submissions for admin:", error);
-        return;
-      }
-      const map: Record<string, KycSubmission> = {};
-      (data || []).forEach((row: any) => {
-        const email = row.users?.email;
-        if (email) map[email] = rowToKyc(row);
-      });
-      setAllKycSubmissions(map);
-    })();
-
-    return () => { cancelled = true; };
-  }, [authReady, isAdmin]);
-
-  const submitMyKyc = async (userId: string, kyc: KycSubmission): Promise<KycSubmission> => {
-    const payload = { ...kyc, status: "pending" as KycStatus, submissionDate: new Date().toISOString(), adminNotes: "", rejectionReason: "" };
-    const { error } = await supabase
-      .from("kyc_submissions")
-      .upsert(kycToRow(payload, userId), { onConflict: "user_id" });
-    if (error) throw error;
-    setMyKyc(payload);
+  const submitMyKyc = async (userId: string, kyc: KycSubmission) => {
+    if (!authReady || !currentUserId || currentUserId !== userId) throw new Error("Please sign in before submitting.");
+    const payload = await saveKycSubmission(supabase, userId, kyc);
+    if (scopeRef.current === scope) {
+      generation.current++;
+      setState(prev => ({ ...prev, scope, myKyc: payload, loading: false, error: null }));
+    }
     return payload;
   };
-
-  const adminReviewKycByEmail = async (
-    email: string,
-    userId: string,
-    status: Extract<KycStatus, "approved" | "rejected">,
-    adminNotes = ""
-  ): Promise<KycSubmission> => {
-    const { data: current, error: fetchError } = await supabase
-      .from("kyc_submissions")
-      .select("*")
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (fetchError) throw fetchError;
-    if (!current) throw new Error(`No KYC submission found for ${email}`);
-
-    const reviewed: KycSubmission = {
-      ...rowToKyc(current),
-      status,
-      adminNotes,
-      rejectionReason: status === "rejected" ? adminNotes : "",
-      reviewedAt: new Date().toISOString()
-    };
-
-    const { error } = await supabase
-      .from("kyc_submissions")
-      .update({
-        status: reviewed.status,
-        admin_notes: reviewed.adminNotes,
-        rejection_reason: reviewed.rejectionReason,
-        reviewed_at: reviewed.reviewedAt
-      })
-      .eq("user_id", userId);
-    if (error) throw error;
-
-    setAllKycSubmissions(prev => ({ ...prev, [email]: reviewed }));
+  const adminReviewKycByEmail = async (email: string, userId: string, status: Extract<KycStatus, "approved" | "rejected">, notes = "", revision: number) => {
+    if (!authReady || !isAdmin) throw new Error("Admin access is required.");
+    const reviewed = await reviewKycSubmission(supabase, userId, status, notes, revision);
+    if (scopeRef.current === scope) {
+      generation.current++;
+      setState(prev => ({ ...prev, all: { ...prev.all, [email]: reviewed }, loading: false, error: null }));
+    }
     return reviewed;
   };
-
-  return { myKyc, allKycSubmissions, submitMyKyc, adminReviewKycByEmail };
+  const matches = state.scope === scope;
+  return { myKyc: matches ? state.myKyc : null, allKycSubmissions: matches ? state.all : {}, kycLoading: !matches || state.loading, kycError: matches ? state.error : null, refreshKyc, submitMyKyc, adminReviewKycByEmail };
 }
