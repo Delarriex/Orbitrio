@@ -1,5 +1,7 @@
 -- Run in the TEST Supabase SQL editor first. No users/balances/auth settings change.
 -- Prerequisites: existing public.users (id text) and trusted public.is_admin().
+-- The helper must work with an empty search_path. For the original Orbitrio
+-- helper, run kyc_admin_helper_fix.sql first (see KYC_LOCAL_SETUP.md).
 -- This migration is additive and safe to repeat. Keep legacy records for review.
 begin;
 

@@ -15,24 +15,24 @@ export const DashboardKYC: React.FC = () => {
   const { user } = useUser();
   const { session } = useSession();
   const current = myKyc || emptyKyc;
-  return <div className="space-y-5 pb-6">
-    <div className="flex items-center justify-between gap-3 border-b border-orbit-border pb-5">
-      <h1 className="flex items-center gap-3 text-2xl font-bold text-orbit-white"><Shield className="text-orbit-accent" />Identity Verification</h1>
-      <button type="button" disabled={kycLoading} onClick={() => void refreshKyc()} className="flex min-h-11 items-center gap-2 text-xs text-orbit-accent disabled:opacity-50"><RefreshCw size={16} />Refresh status</button>
+  return <div className="mx-auto w-full max-w-3xl space-y-5 pb-6">
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-orbit-border pb-4">
+      <h1 className="flex items-center gap-2 text-xl font-bold text-orbit-white sm:text-2xl"><Shield className="shrink-0 text-emerald-400" size={22} />Identity Verification</h1>
+      <button type="button" disabled={kycLoading} onClick={() => void refreshKyc()} className="flex min-h-11 shrink-0 items-center gap-2 text-xs text-orbit-accent disabled:opacity-50"><RefreshCw size={16} />Refresh status</button>
     </div>
     {kycError && <div role="alert" className="rounded-xl border border-orbit-red p-4 text-sm text-orbit-red">Unable to load verification: {kycError} Use Refresh status to retry.</div>}
     {kycLoading && <p role="status" className="flex items-center gap-2 text-sm text-orbit-gray-text"><Loader2 size={16} className="animate-spin" />Loading verification…</p>}
     {!kycLoading && !kycError && <>
       <div className="space-y-4 rounded-2xl border border-orbit-border bg-orbit-card p-4 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-bold text-orbit-white">Current KYC status</h2>
-          <span className={`rounded-full border px-3 py-1.5 text-xs font-bold ${current.status === "approved" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : current.status === "rejected" ? "border-red-500/30 bg-red-500/10 text-red-400" : "border-yellow-500/30 bg-yellow-500/10 text-yellow-300"}`}>{current.status.toUpperCase()}</span>
+          <h2 className="text-sm font-semibold text-orbit-white">Verification status</h2>
+          <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold ${current.status === "approved" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : current.status === "pending" ? "border-yellow-500/30 bg-yellow-500/10 text-yellow-300" : "border-red-500/30 bg-red-500/10 text-red-400"}`}><span className="h-2 w-2 rounded-full bg-current" aria-hidden="true" />{current.status.toUpperCase()}</span>
         </div>
-        <dl className="grid gap-3 text-xs text-orbit-gray-text sm:grid-cols-3">
+        {myKyc && <dl className="grid gap-3 text-xs text-orbit-gray-text sm:grid-cols-3">
           <div><dt>Submitted</dt><dd className="mt-1 text-orbit-white">{formatDate(current.submissionDate)}</dd></div>
           <div><dt>Reviewed</dt><dd className="mt-1 text-orbit-white">{formatDate(current.reviewedAt)}</dd></div>
           <div><dt>Document</dt><dd className="mt-1 text-orbit-white">{myKyc ? current.documentType || current.idType : "Not submitted"}</dd></div>
-        </dl>
+        </dl>}
         {current.status === "pending" && <p className="text-sm text-yellow-300">Your documents are awaiting review. Use Refresh status to check for a decision.</p>}
         {current.status === "approved" && <p className="text-sm text-emerald-400">Your identity verification has been approved.</p>}
         {(current.adminNotes || current.rejectionReason) && <p className="break-words text-sm text-orbit-white"><strong>{current.status === "rejected" ? "Rejection reason" : "Review notes"}:</strong> {current.rejectionReason || current.adminNotes}</p>}
@@ -68,32 +68,37 @@ function KycForm({ ownerId, current }: { ownerId: string; current: KycSubmission
       setError(kycErrorMessage(err, "Unable to submit. Please retry.") + " If your connection was interrupted during submission, refresh your status before retrying.");
     } finally { submitting.current = false; setBusy(false); setProgress(""); }
   };
-  const field = (name: "idNumber" | "dob" | "address" | "city" | "country", label: string, maxLength?: number) => <label className="space-y-2 text-xs text-orbit-gray-text">
+  const field = (name: "idNumber" | "dob" | "address" | "city" | "country", label: string, maxLength?: number) => <label className="min-w-0 space-y-2 text-sm text-orbit-gray-text">
     <span className="block">{label} *</span>
     <input required type={name === "dob" ? "date" : "text"} maxLength={maxLength} max={name === "dob" ? new Date().toISOString().slice(0,10) : undefined}
       value={form[name]} onChange={event => setForm(prev => ({ ...prev, [name]: event.target.value }))}
-      className="w-full rounded-lg border border-orbit-border bg-orbit-bg p-3 text-sm text-orbit-white focus:border-orbit-accent focus:outline-none" />
+      className="min-h-12 w-full min-w-0 rounded-xl border border-orbit-border bg-orbit-bg p-3 text-base text-orbit-white focus:border-emerald-400 focus:outline-none" />
   </label>;
   return <form onSubmit={handleSubmit} className="space-y-5 rounded-2xl border border-orbit-border bg-orbit-card p-4 sm:p-6">
     <h2 className="text-lg font-bold text-orbit-white">{current.status === "rejected" ? "Resubmit your documents" : "Verify your identity"}</h2>
-    <p className="text-sm text-orbit-gray-text">Upload clear photos of your original documents. Your documents are stored privately for verification. Fields marked * are required.</p>
+    <p className="text-sm leading-relaxed text-orbit-gray-text">Upload clear photos with all text and corners visible. Your ID images are stored privately. Fields marked * are required.</p>
     {current.status === "rejected" && <p className="text-sm text-orbit-gray-text">Review the reason above and attach new images for this submission.</p>}
-    <fieldset disabled={busy} className="space-y-5 disabled:opacity-60">
+    <fieldset disabled={busy} className="min-w-0 space-y-6 disabled:opacity-60">
       <legend className="sr-only">Identity information and document images</legend>
-      <div className="grid gap-4 md:grid-cols-2">
-        <label className="space-y-2 text-xs text-orbit-gray-text"><span className="block">Document type *</span>
-          <select value={documentType} onChange={event => { setForm(prev => ({ ...prev, documentType: event.target.value, idType: event.target.value })); setFiles({ frontImage: null, backImage: null, proofOfAddressImage: files.proofOfAddressImage }); }} className="w-full rounded-lg border border-orbit-border bg-orbit-bg p-3 text-sm text-orbit-white">{KYC_DOCUMENT_TYPES.map(type => <option key={type}>{type}</option>)}</select>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="min-w-0 space-y-2 text-sm text-orbit-gray-text"><span className="block">ID type *</span>
+          <select value={documentType} onChange={event => { setForm(prev => ({ ...prev, documentType: event.target.value, idType: event.target.value })); setFiles({ frontImage: null, backImage: null, proofOfAddressImage: null }); }} className="min-h-12 w-full min-w-0 rounded-xl border border-orbit-border bg-orbit-bg p-3 text-base text-orbit-white focus:border-emerald-400 focus:outline-none">{KYC_DOCUMENT_TYPES.map(type => <option key={type}>{type}</option>)}</select>
         </label>
-        {field("idNumber", "Document number", 100)}{field("dob", "Date of birth")}{field("address", "Residential address", 500)}{field("city", "City", 120)}{field("country", "Country", 120)}
+        {field("idNumber", "ID number", 100)}
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        <KycImageInput title={documentType === "Passport" ? "Passport photo page" : "Front of identity document"} required file={files.frontImage} disabled={busy} onChange={file => setFiles(prev => ({ ...prev, frontImage: file }))} />
-        {needsBackImage(documentType) && <KycImageInput title="Back of identity document" required file={files.backImage} disabled={busy} onChange={file => setFiles(prev => ({ ...prev, backImage: file }))} />}
-        <KycImageInput title="Proof of address" file={files.proofOfAddressImage} disabled={busy} onChange={file => setFiles(prev => ({ ...prev, proofOfAddressImage: file }))} />
+      <div className={`grid gap-5 ${needsBackImage(documentType) ? "sm:grid-cols-2" : ""}`}>
+        <KycImageInput title={documentType === "Passport" ? "Passport photo page" : "Front of ID"} required file={files.frontImage} disabled={busy} onChange={file => setFiles(prev => ({ ...prev, frontImage: file }))} />
+        {needsBackImage(documentType) && <KycImageInput title="Back of ID" required file={files.backImage} disabled={busy} onChange={file => setFiles(prev => ({ ...prev, backImage: file }))} />}
+      </div>
+      <div className="space-y-4 border-t border-orbit-border pt-5">
+        <h3 className="text-sm font-semibold text-orbit-white">Personal details</h3>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {field("dob", "Date of birth")}{field("address", "Residential address", 500)}{field("city", "City", 120)}{field("country", "Country", 120)}
+        </div>
       </div>
     </fieldset>
     {error && <p role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">{error}</p>}
-    <button type="submit" disabled={busy} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-orbit-accent p-3 font-bold text-orbit-bg disabled:opacity-60">{busy && <Loader2 size={18} className="animate-spin" />}{busy ? progress || "Preparing documents…" : current.status === "rejected" ? "Resubmit verification" : "Submit verification"}</button>
+    <button type="submit" disabled={busy} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-orbit-accent p-3 text-base font-bold text-zinc-950 transition-colors hover:bg-orbit-accent/90 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-orbit-accent disabled:opacity-60">{busy && <Loader2 size={18} className="shrink-0 animate-spin" />}{busy ? progress || "Preparing documents…" : current.status === "rejected" ? "Resubmit verification" : "Submit verification"}</button>
     {busy && <p role="status" className="text-xs text-orbit-gray-text">Keep this page open until your submission is confirmed.</p>}
   </form>;
 }

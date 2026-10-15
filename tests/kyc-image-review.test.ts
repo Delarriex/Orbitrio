@@ -97,10 +97,14 @@ test("SQL: private storage, ownership, state transitions, resubmission, stale re
       create role authenticated; create role anon;
       create schema auth; create schema storage;
       create function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('test.jwt',true),''),'{}')::jsonb $$;
-      create function public.is_admin() returns boolean language sql stable as $$ select coalesce(auth.jwt()->>'sub'='admin',false) $$;
       create function storage.foldername(name text) returns text[] language sql immutable as $$ select string_to_array(name,'/') $$;
-      create table public.users(id text primary key);
-      insert into users values ('user_a'),('user_b'),('admin'),('legacy');
+      create table public.users(id text primary key, role text default 'user');
+      insert into users(id) values ('user_a'),('user_b'),('admin'),('legacy');
+      update public.users set role='admin' where id='admin';
+      -- Match the existing hosted helper, including its unqualified table name.
+      create function public.is_admin() returns boolean language sql stable security definer as $$
+        select exists(select 1 from users where id=auth.jwt()->>'sub' and role='admin')
+      $$;
       create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
       create table storage.objects(bucket_id text,name text,primary key(bucket_id,name));
       alter table storage.objects enable row level security;
@@ -112,6 +116,23 @@ test("SQL: private storage, ownership, state transitions, resubmission, stale re
     const migration = await readFile(new URL("../kyc_image_review.sql", import.meta.url), "utf8");
     await db.exec(migration);
     await db.exec(migration);
+    // The KYC RPC's empty search_path exposed this hosted integration failure.
+    // A JWT-only mock of is_admin() previously hid it from the test suite.
+    await db.query("select set_config('test.jwt',$1,false)", [JSON.stringify({ sub: "admin" })]);
+    await assert.rejects(db.query("select public.review_kyc_submission('user_a','approved','Test',1)"), /relation "users" does not exist/);
+    const helperAccess = () => db.query("select proowner, proacl from pg_proc where oid='public.is_admin()'::regprocedure");
+    const accessBefore = (await helperAccess()).rows;
+    const helperFix = await readFile(new URL("../kyc_admin_helper_fix.sql", import.meta.url), "utf8");
+    await db.exec(helperFix);
+    await db.exec(helperFix);
+    assert.deepEqual((await helperAccess()).rows, accessBefore, "helper fix preserves owner and execution grants");
+    await db.exec("set search_path = ''");
+    assert.equal((await db.query<{ allowed: boolean }>("select public.is_admin() as allowed")).rows[0].allowed, true);
+    await db.query("select set_config('test.jwt',$1,false)", [JSON.stringify({ sub: "user_a" })]);
+    // A temporary table must not shadow public.users and grant admin status.
+    await db.exec("create temporary table users(id text, role text); insert into pg_temp.users values ('user_a','admin')");
+    assert.equal((await db.query<{ allowed: boolean }>("select public.is_admin() as allowed")).rows[0].allowed, false);
+    await db.exec("drop table pg_temp.users; reset search_path");
     const bucket = (await db.query<any>("select * from storage.buckets where id='kyc-documents'")).rows[0];
     assert.equal(bucket.public, false); assert.equal(Number(bucket.file_size_limit), 5242880);
     assert.deepEqual(bucket.allowed_mime_types, ["image/jpeg", "image/png", "image/webp"]);

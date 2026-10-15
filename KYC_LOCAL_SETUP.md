@@ -9,8 +9,10 @@ Feature branch: `feature/kyc-image-review`.
 ## What changed
 
 - Users select and preview ID images: front required; back required for Government
-  ID and Driver's License; passport photo page only for Passport. Proof of address
-  is optional. No selfie requirement was added.
+  ID and Driver's License; passport photo page only for Passport. The form uses
+  large dashed upload cards, stacked on mobile, with image replacement/removal.
+  New submissions have no proof-of-address upload. Existing proof-of-address
+  images remain available to admins. No selfie requirement was added.
 - JPEG, PNG and WebP, at most 5 MB per image. File type, size and basic image
   signatures are checked before upload; the private bucket enforces MIME and size.
 - Images are uploaded to `kyc-documents` under the signed-in Clerk user ID, using
@@ -52,6 +54,15 @@ https://supabase.com/docs/guides/auth/third-party/clerk
 
 ## 2. Run the KYC migration in the TEST database
 
+First run `kyc_admin_helper_fix.sql` for the original Orbitrio admin helper.
+It preserves the existing rule (the Clerk subject's `public.users` row must have
+`role = 'admin'`), explicitly qualifies `public.users`, and pins the helper's
+search path. The existing function owner and execution grants are preserved.
+Without this correction, the original helper's unqualified `users` reference
+fails inside the KYC review function with `relation "users" does not exist`.
+If another environment has customized admin rules, inspect its `is_admin()`
+definition before applying this helper fix; preserve those rules.
+
 Open your test Supabase project's SQL Editor. Run the complete contents of:
 
 `kyc_image_review.sql`
@@ -62,6 +73,10 @@ preserves existing rows and leaves balances and authentication configuration
 alone. If an existing `kyc-documents` bucket has different settings, the migration
 stops and rolls back instead of silently changing those settings. Review the
 reported mismatch in the test project before retrying.
+
+If `kyc_image_review.sql` is already installed and reviews fail with the error
+above, run only `kyc_admin_helper_fix.sql`, refresh the admin submissions, and
+retry the decision. Existing pending submissions and uploaded images remain.
 
 Do not run this migration against production as part of the local test.
 Do not apply every older SQL file just to install this update.

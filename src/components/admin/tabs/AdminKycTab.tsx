@@ -226,10 +226,10 @@ const DocumentPanel: React.FC<{ kyc: KycSubmission; ownerId: string }> = ({ kyc,
       <Info label="Country" value={kyc.country || "Not captured"} />
       <Info label="Address" value={[kyc.address, kyc.city].filter(Boolean).join(", ") || "Not captured"} />
     </div>
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+    <div className={`grid grid-cols-1 gap-3 ${kyc.proofOfAddressImage ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
       <KycImageViewer ownerId={ownerId} title={kyc.documentType === "Passport" ? "Passport photo page" : "Front of identity document"} path={kyc.frontImage} />
       {needsBackImage(kyc.documentType || kyc.idType) && <KycImageViewer ownerId={ownerId} title="Back of identity document" path={kyc.backImage} />}
-      <KycImageViewer ownerId={ownerId} title="Proof of address (optional)" path={kyc.proofOfAddressImage} />
+      {kyc.proofOfAddressImage && <KycImageViewer ownerId={ownerId} title="Proof of address" path={kyc.proofOfAddressImage} />}
     </div>
   </div>
 );
