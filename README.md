@@ -58,6 +58,48 @@ npm run build   # vite build + esbuild-bundled server (dist/)
 npm run lint    # tsc --noEmit (typecheck)
 ```
 
+## Account suspension alerts
+
+Admin → Users → open a user → Suspend saves the account status, then creates an
+unread notification for that user and sends an `ACCOUNT_SUSPENDED` email through
+the existing Resend endpoint. The directory refreshes after the change. Repeated
+clicks are disabled while saving and for accounts already suspended. User
+notifications refresh every 15 seconds while the page is visible and on focus.
+
+Alerts use the existing `users` update permissions and `notification_functions.sql`
+table/policies. Failed status writes are shown
+as errors and do not send alerts. If either delivery channel fails, the admin
+sees which channel failed; the saved suspension remains in place. Delivery is
+attempted from the admin session and has no background retry queue.
+
+Real email delivery requires `VITE_LOCAL_DEV=false`, `RESEND_API_KEY`, and a
+verified `RESEND_FROM_EMAIL`. Restart/rebuild after changing these settings.
+Local mode stubs email successfully without sending. `npm test` covers status
+write failures, duplicate actions, delivery failures, and the suspension template.
+
+## Enforcing account suspension
+
+Run **`account_suspension.sql` in the Supabase SQL editor** after the existing
+financial migrations, then deploy the updated app. The migration is safe to rerun.
+It requires the existing `users`, `portfolio_assets`, `active_investments`,
+`copy_trades`, and `transactions` tables and the existing admin-only protection
+for changing `users.status`/`users.role`.
+
+Suspended and banned accounts cannot buy or sell assets, start investments,
+top up investments, start copy trades, or request withdrawals. Database triggers
+enforce the rule for both RPC calls and direct table writes. They lock the user
+row when checking status, and a rejection rolls back the whole transaction,
+including balance changes. Pending withdrawals cannot be approved during a
+suspension; an admin can still reject them and refund the reserved balance.
+Reactivating the account restores these actions.
+
+The app checks current status on every financial action, refreshes status with
+notifications, and displays a suspension notice with a support link. Withdrawal
+success messages and emails now wait for a successful database response.
+Local Postgres tests exercise the actual financial RPCs, direct writes, rollback,
+rejection/refund, reactivation, and rerunning the migration. The hosted migration
+must be applied separately; a frontend check alone cannot secure direct API calls.
+
 ## Project structure
 
 ```

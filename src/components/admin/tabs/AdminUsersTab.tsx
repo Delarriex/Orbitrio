@@ -522,11 +522,11 @@ const UserDrawer: React.FC<{
 
           <Section title="Account Actions" icon={<AlertTriangle size={15} className="text-yellow-400" />}>
             <div className="flex flex-wrap gap-2">
-              <button onClick={onActivate} className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold rounded-lg hover:bg-emerald-500/20 cursor-pointer">
-                <UserCheck size={12} /> Activate
+              <button onClick={onActivate} disabled={Boolean(busyAction) || user.status === "active"} className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold rounded-lg hover:bg-emerald-500/20 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                <UserCheck size={12} /> {busyAction === `status-active-${user.email}` ? "Activating…" : "Activate"}
               </button>
-              <button onClick={onSuspend} className="flex items-center gap-1.5 px-3 py-2 bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-[10px] font-bold rounded-lg hover:bg-yellow-500/20 cursor-pointer">
-                <Ban size={12} /> Suspend
+              <button onClick={onSuspend} disabled={Boolean(busyAction) || user.status === "suspended"} className="flex items-center gap-1.5 px-3 py-2 bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-[10px] font-bold rounded-lg hover:bg-yellow-500/20 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                <Ban size={12} /> {busyAction === `status-suspended-${user.email}` ? "Suspending…" : "Suspend"}
               </button>
               <button onClick={onResetPassword} className="flex items-center gap-1.5 px-3 py-2 bg-orbit-accent/10 border border-orbit-accent/30 text-orbit-accent text-[10px] font-bold rounded-lg hover:bg-orbit-accent/20 cursor-pointer">
                 <Key size={12} /> Reset Password

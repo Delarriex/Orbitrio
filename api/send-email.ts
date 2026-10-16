@@ -104,6 +104,18 @@ const resolveEvent = (eventType: string, metadata: any) => {
           { label: "Device", value: metadata.device || "Web session" }
         ]
       };
+    case "ACCOUNT_SUSPENDED":
+      return {
+        subject: `Your account has been suspended - ${metadata.companyName}`,
+        heading: "Your account has been suspended",
+        intro: "Your account has been suspended by an administrator. Please contact our support team if you have questions or need assistance.",
+        accent: "#f59e0b",
+        details: [
+          { label: "Account", value: metadata.email },
+          { label: "Support", value: metadata.supportEmail },
+          ...commonDetails
+        ]
+      };
     case "DEPOSIT_SUBMITTED":
       return {
         subject: `Deposit submitted - ${metadata.companyName}`,
@@ -373,7 +385,7 @@ const resolveEvent = (eventType: string, metadata: any) => {
   }
 };
 
-function buildEmail(eventType: string, metadata: any = {}): { subject: string; html: string } {
+export function buildEmail(eventType: string, metadata: any = {}): { subject: string; html: string } {
   const companyName = metadata.companyName || process.env.ORBITRIO_COMPANY_NAME || "Orbitrio Trades";
   const supportEmail = metadata.supportEmail || process.env.ORBITRIO_SUPPORT_EMAIL || "support@orbitriotrades.com";
   const senderName = metadata.senderName || companyName;

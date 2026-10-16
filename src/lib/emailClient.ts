@@ -4,6 +4,7 @@ export type TransactionalEmailEvent =
   | "WELCOME"
   | "EMAIL_VERIFICATION"
   | "SECURITY_ALERT"
+  | "ACCOUNT_SUSPENDED"
   | "DEPOSIT_SUBMITTED"
   | "DEPOSIT_APPROVED"
   | "DEPOSIT_REJECTED"

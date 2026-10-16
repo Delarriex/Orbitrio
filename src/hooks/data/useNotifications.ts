@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { NotificationItem } from "../../services";
-import { normalizeNotification } from "../../services";
+import { normalizeNotification, type NotificationItem } from "../../services/notificationsService";
 
 function rowToNotification(row: any): NotificationItem {
   return normalizeNotification({
@@ -44,22 +43,20 @@ function notificationToRow(notification: NotificationItem): Record<string, any> 
  * save, mark-read, delete — leaving OrbitContext's existing business
  * logic untouched.
  *
- * No live push: unlike the old Firestore `onSnapshot` subscription, this
- * is fetch-on-mount only, same as every other migrated feature. A
- * notification for a different user's session shows up on their next
- * natural refetch, not instantly.
+ * OrbitContext refreshes on mount, focus and every 15 seconds while visible,
+ * so cross-user notifications arrive without requiring a page reload.
  */
 export function useNotifications(supabase: SupabaseClient) {
   const fetchNotifications = async (recipientEmail: string): Promise<NotificationItem[]> => {
     const { data, error } = await supabase
       .from("notifications")
       .select("*")
-      .eq("recipient_email", recipientEmail)
+      .ilike("recipient_email", recipientEmail.replace(/[\\%_]/g, "\\$&"))
       .order("timestamp", { ascending: false });
 
     if (error) {
       console.error("Failed to load notifications:", error);
-      return [];
+      throw error;
     }
     return (data || []).map(rowToNotification);
   };

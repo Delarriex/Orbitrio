@@ -79,6 +79,8 @@ import {
   SETTINGS_DOC_PATH
 } from "../services";
 import { useEmailNotifications } from "../hooks/useEmailNotifications";
+import { changeAccountStatus } from "../services/accountStatusService";
+import { getFinancialAccessError, financialActionError } from "../services/accountAccessService";
 import type { TransactionalEmailEvent } from "../lib/emailClient";
 import { useSupabaseClient, ensureUserRow } from "../lib/supabase";
 import { useCurrentUser } from "../hooks/useCurrentUser";
@@ -117,11 +119,11 @@ interface OrbitContextType {
     destinationTag?: string,
     bankDetails?: { accountNumber: string; bankName: string; accountName: string; routingCode: string },
     paypalEmail?: string
-  ) => { success: boolean; message: string };
+  ) => Promise<{ success: boolean; message: string }>;
   investInPlan: (planId: string, amount: number) => Promise<{ success: boolean; message: string }>;
   claimPlanPayout: (investmentId: string) => void;
   claimAirdrop: (airdropId: string, token: string, rewardAmount: string) => void;
-  withdrawEarnings: () => void;
+  withdrawEarnings: () => Promise<void>;
   topUpInvestment: (investmentId: string, amount: number) => Promise<{ success: boolean; message: string }>;
   copyTrader: (traderId: string, amount: number) => Promise<{ success: boolean; message: string }>;
   uncopyTrader: (traderId: string) => Promise<{ success: boolean; message: string }>;
@@ -153,7 +155,7 @@ interface OrbitContextType {
   adminSaveDepositWallet: (wallet: DepositWallet | Omit<DepositWallet, "id">) => Promise<void>;
   adminDeleteDepositWallet: (walletId: string) => Promise<void>;
   adminUpdateUserBalance: (email: string, amount: number, txData?: { type: "credit" | "debit"; amount: number; label: string; notes: string; }) => Promise<void>;
-  adminChangeUserStatus: (email: string, status: "active" | "suspended" | "banned") => void;
+  adminChangeUserStatus: (email: string, status: "active" | "suspended" | "banned") => Promise<void>;
   adminResetUserPassword: (email: string) => void;
   adminKycReview: (email: string, status: "approved" | "rejected", reason?: string, revision?: number) => Promise<void>;
 
@@ -564,7 +566,12 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     notifyAdmins(`${user.email || "A user"} submitted an airdrop claim for ${newClaim.token}.`, { title: "Airdrop claim requires review", type: "warning", eventKey: `airdrop:review:${newClaim.id}`, action: { label: "Review airdrops", view: "dashboard-admin" } });
     toast.success("Airdrop claim submitted successfully");
   };
-  const withdrawEarnings = () => {
+  const withdrawEarnings = async () => {
+    const accessError = await getFinancialAccessError(supabase, currentSupabaseUserId);
+    if (accessError) {
+      toast.error(accessError);
+      return;
+    }
     if (!user.points || user.points < 100) return;
     const usdAmount = user.points * 1;
     setUser(prev => ({
@@ -694,13 +701,38 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     let cancelled = false;
-    fetchNotifications(user.email).then(items => {
-      if (!cancelled) setNotifications(items);
-    }).catch(error => {
-      console.error("Notification sync error:", error);
-    });
-    return () => { cancelled = true; };
-  }, [authReady, user.isLoggedIn, user.email]);
+    let loading = false;
+    const refresh = async () => {
+      if (loading || document.visibilityState === "hidden") return;
+      loading = true;
+      try {
+        const [items, account] = await Promise.all([
+          fetchNotifications(user.email!),
+          supabase.from("users").select("status").eq("id", currentSupabaseUserId).single()
+        ]);
+        if (!cancelled) {
+          setNotifications(items);
+          if (!account.error && ["active", "suspended", "banned"].includes(account.data?.status)) {
+            setUser(prev => ({ ...prev, status: account.data.status }));
+          }
+        }
+      } catch (error) {
+        console.error("Notification sync error:", error);
+      } finally {
+        loading = false;
+      }
+    };
+    void refresh();
+    const interval = window.setInterval(refresh, 15000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [authReady, user.isLoggedIn, user.email, currentSupabaseUserId, supabase]);
 
   // Load Markets Data
   const loadMarketsData = async () => {
@@ -1013,16 +1045,18 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return true;
   };
 
-  const withdraw = (
+  const withdraw = async (
     amount: number,
     currency: string,
     address?: string,
     destinationTag?: string,
     bankDetails?: { accountNumber: string; bankName: string; accountName: string; routingCode: string },
     paypalEmail?: string
-  ): { success: boolean; message: string } => {
+  ): Promise<{ success: boolean; message: string }> => {
+    const accessError = await getFinancialAccessError(supabase, currentSupabaseUserId);
+    if (accessError) return { success: false, message: accessError };
     if (user.kyc?.status !== "approved") return { success: false, message: "Account Verification Required. Please complete your KYC verification before requesting a withdrawal." };
-    if (amount <= 0) return { success: false, message: "Invalid amount specified." };
+    if (!Number.isFinite(amount) || amount <= 0) return { success: false, message: "Invalid amount specified." };
     if (!currentSupabaseUserId) return { success: false, message: "Not signed in." };
     const currentBalance = currentUserProfile?.balance ?? user.balance;
     if (currentBalance < amount) return { success: false, message: "Insufficient withdrawable balance." };
@@ -1030,22 +1064,23 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const displayAddress = formatWithdrawalAddress(currency, address, destinationTag, bankDetails, paypalEmail);
     const newTx = buildWithdrawalTransaction(amount, currency, user.email, displayAddress, destinationTag, bankDetails, paypalEmail);
 
-    createWithdrawalTransaction({
-      id: newTx.id,
-      userId: currentSupabaseUserId,
-      amount,
-      currency,
-      asset: currency,
-      address: displayAddress,
-      destinationTag,
-      bankDetails,
-      paypalEmail
-    }).then(() => {
-      refetchCurrentUserProfile();
-    }).catch(error => {
+    try {
+      await createWithdrawalTransaction({
+        id: newTx.id,
+        userId: currentSupabaseUserId,
+        amount,
+        currency,
+        asset: currency,
+        address: displayAddress,
+        destinationTag,
+        bankDetails,
+        paypalEmail
+      });
+      await refetchCurrentUserProfile();
+    } catch (error) {
       console.error("Withdrawal failed:", error);
-      toast.error(error?.message?.includes("Insufficient") ? "Insufficient balance." : "Failed to submit withdrawal.");
-    });
+      return { success: false, message: financialActionError(error, "Failed to submit withdrawal. Please check your balance and try again.") };
+    }
 
     handleLog("Asset Withdrawal Action", `Requested payout of $${amount} ${currency} to ${displayAddress}. Queued for Review.`, user.email || "system", "warning");
     addNotification(`Your withdrawal request of $${amount} ${currency} has been submitted for review.`, { title: "Withdrawal submitted", type: "info", eventKey: `withdrawal:submitted:${newTx.id}`, action: { label: "View wallet", view: "dashboard-wallet" } });
@@ -1057,6 +1092,8 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const investInPlan = async (planId: string, amount: number): Promise<{ success: boolean; message: string }> => {
+    const accessError = await getFinancialAccessError(supabase, currentSupabaseUserId);
+    if (accessError) return { success: false, message: accessError };
     const selectedPlan = plans.find(p => p.id === planId);
     if (!selectedPlan) return { success: false, message: "Selected plan not recognized." };
     if (!selectedPlan.enabled || selectedPlan.status !== "active") return { success: false, message: "This yield program is temporarily locked by platform nodes." };
@@ -1111,8 +1148,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch (error) {
       releaseBalanceDebit(actionKey, debitAmount);
       console.error("Failed to purchase investment:", error);
-      toast.error("Failed to start investment. Please try again.");
-      return { success: false, message: "Failed to process investment. Please try again." };
+      return { success: false, message: financialActionError(error, "Failed to process investment. Please try again.") };
     }
 
     handleLog("Compound Allocation Enrolled", `Subscribed to ${selectedPlan.name} worth $${amount}.`, user.email || "system", "success");
@@ -1144,6 +1180,8 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!user.isLoggedIn || !user.email) {
       return { success: false, message: "AUTH_REQUIRED" };
     }
+    const accessError = await getFinancialAccessError(supabase, currentSupabaseUserId);
+    if (accessError) return { success: false, message: accessError };
     if (amount <= 0 || isNaN(amount)) {
       return { success: false, message: "Please enter a valid amount." };
     }
@@ -1178,7 +1216,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch (error) {
       releaseBalanceDebit(actionKey, topUpAmount);
       console.error("Failed to top up investment:", error);
-      return { success: false, message: "Failed to process top-up. Please try again." };
+      return { success: false, message: financialActionError(error, "Failed to process top-up. Please try again.") };
     }
 
     const topUpEventId = `investment:topup:${investmentId}:${Date.now()}`;
@@ -1193,6 +1231,8 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!user.isLoggedIn || !user.email) {
       return { success: false, message: "AUTH_REQUIRED" };
     }
+    const accessError = await getFinancialAccessError(supabase, currentSupabaseUserId);
+    if (accessError) return { success: false, message: accessError };
 
     const copyAmount = Number(amount);
     if (!Number.isFinite(copyAmount) || copyAmount <= 0) {
@@ -1244,7 +1284,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch (error) {
       releaseBalanceDebit(actionKey, copyAmount);
       console.error("Failed to start copy trade:", error);
-      return { success: false, message: "Failed to start copy trade. Please try again." };
+      return { success: false, message: financialActionError(error, "Failed to start copy trade. Please try again.") };
     }
 
     handleLog("Mirror Allocator Armed", `Allocated $${copyAmount} to copy ${t.name}.`, user.email, "success");
@@ -1306,6 +1346,8 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!user.isLoggedIn || !user.email) {
       return { success: false, message: "AUTH_REQUIRED" };
     }
+    const accessError = await getFinancialAccessError(supabase, currentSupabaseUserId);
+    if (accessError) return { success: false, message: accessError };
     if (amount <= 0 || isNaN(amount)) {
       return { success: false, message: "Please specify a valid trade amount." };
     }
@@ -1322,7 +1364,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         await refetchCurrentUserProfile();
       } catch (error) {
         console.error("Failed to execute buy order:", error);
-        return { success: false, message: "Failed to execute trade. Please try again." };
+        return { success: false, message: financialActionError(error, "Failed to execute trade. Please try again.") };
       }
 
       handleLog("Market Order Fulfilled", `Purchased $${amount} of ${symbol} at $${price}`, user.email, "success");
@@ -1345,7 +1387,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         await refetchCurrentUserProfile();
       } catch (error) {
         console.error("Failed to execute sell order:", error);
-        return { success: false, message: "Failed to execute trade. Please try again." };
+        return { success: false, message: financialActionError(error, "Failed to execute trade. Please try again.") };
       }
 
       handleLog("Market Sale Settled", `Liquidated ${quantity} ${symbol.split("/")[0]} for $${amount}`, user.email, "success");
@@ -1734,20 +1776,35 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const adminChangeUserStatus = async (email: string, statusText: "active" | "suspended" | "banned") => {
+    if (!currentUserIsAdmin || !currentSupabaseUserId) throw new Error("Only an administrator can change account status.");
+    const targetProfile = usersDirectory.find(item => item.email.toLowerCase() === email.toLowerCase());
+    if (!targetProfile) throw new Error(`No user record found for ${email}.`);
+    const actionKey = `account-status:${targetProfile.id}`;
+    if (pendingActionKeysRef.current.has(actionKey)) throw new Error("An account status change is already in progress.");
+    pendingActionKeysRef.current.add(actionKey);
     try {
-      const targetUserId = usersDirectory.find(item => item.email.toLowerCase() === email.toLowerCase())?.id;
-      if (targetUserId) {
-        const { error } = await supabase.from("users").update({ status: statusText }).eq("id", targetUserId);
-        if (error) console.error("Failed to sync status to Supabase:", error);
-      }
-
+      const result = await changeAccountStatus(supabase, targetProfile, statusText, {
+        saveNotification: async notification => {
+          await saveNotificationToDb(notification);
+          if (shouldShowNotificationLocally(notification)) syncNotificationLocally(notification);
+        },
+        sendSuspensionEmail: (to, metadata) => sendTransactionalEmail(to, "ACCOUNT_SUSPENDED", {
+          ...emailSettingsMetadata(), ...metadata
+        })
+      });
       if (user.email && user.email.toLowerCase() === email.toLowerCase()) {
         setUser(prev => ({ ...prev, status: statusText }));
       }
-      handleLog("User Access Permissions Changed", `Restructured status of ${email} to ${statusText}.`, user.email || "admin", "alert");
-      addNotification(`Safety rules enforced: account [${email}] set to ${statusText}.`);
-    } catch (e) {
-      console.error("Error updating user status:", e);
+      await refreshUsersDirectory();
+      if (result.changed) {
+        handleLog("User Access Permissions Changed", `Changed status of ${email} to ${statusText}.`, user.email || "admin", "alert");
+        addNotification(`Account [${email}] set to ${statusText}.`);
+      }
+      if (result.failedDeliveries.length) {
+        throw new Error(`Account is ${statusText}, but delivery failed for: ${result.failedDeliveries.join(" and ")}.`);
+      }
+    } finally {
+      pendingActionKeysRef.current.delete(actionKey);
     }
   };
 
