@@ -1,6 +1,6 @@
 import React, { useEffect, useCallback, useState, Suspense, lazy } from "react";
 import { Routes, Route, Navigate, useNavigate, useLocation, useSearchParams } from "react-router-dom";
-import { OrbitProvider } from "./context/OrbitContext";
+import { OrbitProvider, useOrbit } from "./context/OrbitContext";
 import { Navigation } from "./components/Navigation";
 import { MobileNav } from "./components/MobileNav";
 import { Footer } from "./components/Footer";
@@ -137,6 +137,7 @@ function AppShell() {
   // Identity & role come entirely from Clerk (signed-in state) + Supabase
   // (role) — the single source of truth for the route guards below.
   const { isLoggedIn, isAdmin, isReady } = useCurrentUser();
+  const { user } = useOrbit();
   const navigate = useNavigate();
   const location = useLocation();
   const localDev = import.meta.env.VITE_LOCAL_DEV === "true";
@@ -281,6 +282,13 @@ function AppShell() {
             ? "pb-24 sm:pb-28"
             : "max-w-7xl mx-auto px-3 sm:px-5 lg:px-6 mt-2 pb-20 sm:pb-24"
       }`}>
+        {isLoggedIn && (user.status === "suspended" || user.status === "banned") && (
+          <div role="alert" className="my-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-200">
+            <strong>{user.status === "suspended" ? "Your account is suspended." : "Your account is restricted."}</strong>{" "}
+            Trading, investing and withdrawals are disabled.{" "}
+            <button onClick={() => handleNavigate("dashboard-support")} className="underline font-semibold cursor-pointer">Contact support</button>
+          </div>
+        )}
         <Suspense fallback={<RouteSpinner />}>
           <Routes>
             <Route path="/" element={guestOnly(<PublicHome onNavigate={handleNavigate} />)} />

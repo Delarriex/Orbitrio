@@ -4,6 +4,23 @@
 
 ## High-level architecture
 
+### October 2026: account suspension enforcement
+
+Apply `account_suspension.sql` after the existing financial migrations. It adds
+active-account checks at the table-write boundary, covering buy/sell, investment
+creation/top-ups, copy-trade creation, withdrawal creation and withdrawal approval
+even from security-definer RPCs. Checks lock the account row and failed operations
+roll back all balance/position changes. Admin rejection/refund and passive
+investment progress updates remain available. Existing protection of user status
+and role fields must remain enabled. The app checks fresh status before financial
+actions and only reports withdrawal success after the RPC succeeds. Tested with
+the actual SQL RPC bodies in local PGlite. The user subsequently applied the
+migration. Browser tests against the configured test services confirmed suspension,
+user notification, blocked buy/sell/withdrawal UI, blocked direct financial writes,
+rollback, self-reactivation prevention, and admin reactivation. Test account funds
+were unchanged; the account was restored to active. Real email delivery remains
+unverified because local email is stubbed and Resend credentials are absent.
+
 ### October 2026: KYC image review (local feature branch)
 
 `kyc_image_review.sql` adds a private `kyc-documents` bucket, submission validation,
