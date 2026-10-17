@@ -317,7 +317,8 @@ export const DashboardPlans: React.FC = () => {
                 {user.activeInvestments.map((inv) => {
                   const isMaturedComplete = inv.status === "Completed" || inv.status === "completed";
                   const isPaid = isMaturedComplete && Boolean(inv.payoutTransactionId);
-                  const isClaimable = isMaturedComplete && !inv.payoutTransactionId;
+                  const isPaused = Boolean(inv.pausedAt);
+                  const isClaimable = isMaturedComplete && !inv.payoutTransactionId && !isPaused && user.status === "active";
                   const isClaiming = claimingId === inv.id;
                   const expectedProfit = inv.expectedProfit ?? inv.accumulatedProfit;
                   const totalReturn = inv.totalReturn ?? inv.amount + expectedProfit;
@@ -343,7 +344,7 @@ export const DashboardPlans: React.FC = () => {
 
                       <div className="flex justify-between text-[9px] text-orbit-gray-text font-data">
                         <span>Funded: ${inv.amount.toLocaleString()}</span>
-                        <span className="font-subheading">{isPaid ? "Completed" : isClaimable ? "Matured" : `${remainingDays}d left`}</span>
+                        <span className="font-subheading">{isPaid ? "Completed" : isPaused ? `Paused · ${remainingDays}d left` : isClaimable ? "Matured" : `${remainingDays}d left`}</span>
                       </div>
                       {isClaimable && (
                         <button

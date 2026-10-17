@@ -117,10 +117,10 @@ const parseInvestmentTimestamp = (value: string) => {
   return Date.parse(`${value}T00:00:00.000Z`);
 };
 
-const investmentDurationMs = (investment: Pick<ActiveInvestment, "startDate" | "endDate">) => {
+const investmentDurationMs = (investment: Pick<ActiveInvestment, "startDate" | "endDate" | "pausedAt" | "pausedSeconds">) => {
   const start = parseInvestmentTimestamp(investment.startDate);
   const end = parseInvestmentTimestamp(investment.endDate);
-  return Math.max(end - start, DAY_MS);
+  return Math.max(end - start - (investment.pausedSeconds ?? 0) * 1000, DAY_MS);
 };
 
 export const isInvestmentRunning = (investment: Pick<ActiveInvestment, "status">) =>
@@ -129,18 +129,18 @@ export const isInvestmentRunning = (investment: Pick<ActiveInvestment, "status">
 export const isInvestmentCompleted = (investment: Pick<ActiveInvestment, "status">) =>
   investment.status === "Completed" || investment.status === INVESTMENT_STATUSES.COMPLETED;
 
-export const getInvestmentRemainingDays = (investment: Pick<ActiveInvestment, "endDate">, now = Date.now()) => {
+export const getInvestmentRemainingDays = (investment: Pick<ActiveInvestment, "endDate" | "pausedAt">, now = Date.now()) => {
   const end = parseInvestmentTimestamp(investment.endDate);
-  return Math.max(0, Math.ceil((end - now) / DAY_MS));
+  return Math.max(0, Math.ceil((end - (investment.pausedAt ? Date.parse(investment.pausedAt) : now)) / DAY_MS));
 };
 
-export const getInvestmentProgress = (investment: Pick<ActiveInvestment, "startDate" | "endDate">, now = Date.now()) => {
+export const getInvestmentProgress = (investment: Pick<ActiveInvestment, "startDate" | "endDate" | "pausedAt" | "pausedSeconds">, now = Date.now()) => {
   const start = parseInvestmentTimestamp(investment.startDate);
-  const elapsed = Math.max(0, now - start);
+  const elapsed = Math.max(0, (investment.pausedAt ? Date.parse(investment.pausedAt) : now) - start - (investment.pausedSeconds ?? 0) * 1000);
   return Math.min(100, roundMoney((elapsed / investmentDurationMs(investment)) * 100));
 };
 
-export const getInvestmentAccruedProfit = (investment: Pick<ActiveInvestment, "startDate" | "endDate"> & { expectedProfit: number }, now = Date.now()) =>
+export const getInvestmentAccruedProfit = (investment: Pick<ActiveInvestment, "startDate" | "endDate" | "pausedAt" | "pausedSeconds"> & { expectedProfit: number }, now = Date.now()) =>
   roundMoney(investment.expectedProfit * (getInvestmentProgress(investment, now) / 100));
 
 export const normalizeActiveInvestment = (
@@ -165,7 +165,7 @@ export const normalizeActiveInvestment = (
     : roundMoney(investment.amount + expectedProfit);
   const progress = getInvestmentProgress(investment, now);
   const matured = getInvestmentRemainingDays(investment, now) === 0 || progress >= 100;
-  const completed = isInvestmentCompleted(investment) || Boolean(investment.payoutTransactionId) || Boolean(investment.completedAt) || matured;
+  const completed = isInvestmentCompleted(investment) || Boolean(investment.payoutTransactionId) || Boolean(investment.completedAt) || (!investment.pausedAt && matured);
 
   return {
     ...investment,
@@ -200,7 +200,7 @@ export const settleMaturedInvestments = (
   let payoutAmount = 0;
 
   const settledInvestments = syncInvestmentCountdowns(investments, plans, now).map((investment) => {
-    if (!isInvestmentCompleted(investment) || investment.payoutTransactionId) return investment;
+    if (investment.pausedAt || !isInvestmentCompleted(investment) || investment.payoutTransactionId) return investment;
 
     const payoutTx = buildPayoutTransaction(
       investment.totalReturn,

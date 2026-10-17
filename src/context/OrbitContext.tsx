@@ -708,7 +708,9 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       try {
         const [items, account] = await Promise.all([
           fetchNotifications(user.email!),
-          supabase.from("users").select("status").eq("id", currentSupabaseUserId).single()
+          supabase.from("users").select("status").eq("id", currentSupabaseUserId).single(),
+          refreshActiveInvestments(),
+          refreshCopyTrades()
         ]);
         if (!cancelled) {
           setNotifications(items);
@@ -1161,6 +1163,8 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
 
   const claimPlanPayout = async (investmentId: string) => {
+    const accessError = await getFinancialAccessError(supabase, currentSupabaseUserId);
+    if (accessError) { toast.error(accessError); return; }
     const item = activeInvestments.find(inv => inv.id === investmentId);
     if (!item) return;
 
@@ -1172,7 +1176,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       toast.success("Payout claimed successfully");
     } catch (error) {
       console.error("Failed to claim investment payout:", error);
-      toast.error("Failed to claim payout. Please try again.");
+      toast.error(financialActionError(error, "Failed to claim payout. Please try again."));
     }
   };
 
@@ -1298,6 +1302,9 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
        return { success: false, message: "Authentication required." };
     }
 
+    const accessError = await getFinancialAccessError(supabase, currentSupabaseUserId);
+    if (accessError) return { success: false, message: accessError };
+
     const activeTrade = copyTrades.find(trade => trade.traderId === traderId && trade.status === "Running" && !trade.payoutCompleted);
     if (!activeTrade) {
       return { success: false, message: "No running copy trade found for this trader." };
@@ -1310,7 +1317,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       await refetchCurrentUserProfile();
     } catch (error) {
       console.error("Failed to cancel copy trade:", error);
-      return { success: false, message: "Failed to cancel copy trade. Please try again." };
+      return { success: false, message: financialActionError(error, "Failed to cancel copy trade. Please try again.") };
     }
 
     addNotification(`Copy trading was cancelled and $${refundAmount} returned to your wallet balance.`, { title: "Copy trade cancelled", type: "warning", eventKey: `copy:cancelled:${activeTrade.id}` });
@@ -1320,6 +1327,8 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const claimCopyTradePayout = async (copyTradeId: string) => {
+    const accessError = await getFinancialAccessError(supabase, currentSupabaseUserId);
+    if (accessError) { toast.error(accessError); return; }
     const item = copyTrades.find(trade => trade.id === copyTradeId);
     if (!item) return;
 
@@ -1331,7 +1340,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       toast.success("Payout claimed successfully");
     } catch (error) {
       console.error("Failed to claim copy trade payout:", error);
-      toast.error("Failed to claim payout. Please try again.");
+      toast.error(financialActionError(error, "Failed to claim payout. Please try again."));
     }
   };
 
@@ -1550,7 +1559,9 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     adminActiveInvestments,
     purchaseInvestment,
     claimInvestmentPayout,
-    topUpInvestmentRpc
+    topUpInvestmentRpc,
+    refreshActiveInvestments,
+    refreshAdminActiveInvestments
   } = useActiveInvestments(supabase, authReady, currentSupabaseUserId, currentUserIsAdmin);
   const { portfolio, buyAsset, sellAsset } = usePortfolio(supabase, authReady, currentSupabaseUserId);
   const {
@@ -1558,7 +1569,9 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     adminCopyTrades,
     startCopyTrade,
     cancelCopyTrade,
-    claimCopyTradePayout: claimCopyTradePayoutRpc
+    claimCopyTradePayout: claimCopyTradePayoutRpc,
+    refreshCopyTrades,
+    refreshAdminCopyTrades
   } = useCopyTrades(supabase, authReady, currentSupabaseUserId, currentUserIsAdmin);
   const {
     myTickets: supabaseTickets,
@@ -1607,7 +1620,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // (bug #17). Money fields (amountInvested, roiPercent, expectedProfit,
   // totalReturn) are preserved as-is; this only re-derives display values.
   useEffect(() => {
-    const derived = syncCopyTradeCountdowns(copyTrades, liveClock);
+    const derived = syncCopyTradeCountdowns(copyTrades, Date.now());
     setUser(prev => prev.isLoggedIn ? { ...prev, copyTrades: derived } : prev);
   }, [copyTrades, liveClock, user.isLoggedIn]);
 
@@ -1645,7 +1658,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // fields (amount, roiPercent, expectedProfit, totalReturn) are the source of
   // truth and are preserved as-is — this only re-derives the display values.
   useEffect(() => {
-    const derived = syncInvestmentCountdowns(activeInvestments, plans, liveClock);
+    const derived = syncInvestmentCountdowns(activeInvestments, plans, Date.now());
     setUser(prev => prev.isLoggedIn ? { ...prev, activeInvestments: derived } : prev);
   }, [activeInvestments, plans, liveClock, user.isLoggedIn]);
 
@@ -1795,7 +1808,7 @@ export const OrbitProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (user.email && user.email.toLowerCase() === email.toLowerCase()) {
         setUser(prev => ({ ...prev, status: statusText }));
       }
-      await refreshUsersDirectory();
+      await Promise.all([refreshUsersDirectory(), refreshAdminActiveInvestments(), refreshAdminCopyTrades()]);
       if (result.changed) {
         handleLog("User Access Permissions Changed", `Changed status of ${email} to ${statusText}.`, user.email || "admin", "alert");
         addNotification(`Account [${email}] set to ${statusText}.`);

@@ -27,7 +27,7 @@ export async function changeAccountStatus(
   const eventKey = `account:suspended:${account.id}:${crypto.randomUUID()}`;
   const notification = buildNotification({
     title: "Account suspended",
-    message: "Your account has been suspended by an administrator. Please contact support for assistance.",
+    message: "Your account has been suspended by an administrator. Your active investments and copy trades are paused, including earnings and maturity countdowns. Trading and withdrawals are disabled. Please contact support for assistance.",
     type: "warning",
     recipientEmail: data.email,
     audience: "user",

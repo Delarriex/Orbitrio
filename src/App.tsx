@@ -285,7 +285,7 @@ function AppShell() {
         {isLoggedIn && (user.status === "suspended" || user.status === "banned") && (
           <div role="alert" className="my-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-200">
             <strong>{user.status === "suspended" ? "Your account is suspended." : "Your account is restricted."}</strong>{" "}
-            Trading, investing and withdrawals are disabled.{" "}
+            Active investments and copy trades are paused. Earnings and maturity countdowns resume when your account is activated. Trading, investing and withdrawals are disabled.{" "}
             <button onClick={() => handleNavigate("dashboard-support")} className="underline font-semibold cursor-pointer">Contact support</button>
           </div>
         )}

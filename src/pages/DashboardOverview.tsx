@@ -374,7 +374,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               {user.activeInvestments.map((inv) => {
                 const isCompleted = inv.status === "Completed" || inv.status === "completed";
                 const isPaid = isCompleted && Boolean(inv.payoutTransactionId);
-                const isClaimable = isCompleted && !inv.payoutTransactionId;
+                const isPaused = Boolean(inv.pausedAt);
+                const isClaimable = isCompleted && !inv.payoutTransactionId && !isPaused && user.status === "active";
                 const isClaimingInv = claimingInvId === inv.id;
                 const expectedProfit = inv.expectedProfit ?? inv.accumulatedProfit;
                 const totalReturn = inv.totalReturn ?? inv.amount + expectedProfit;
@@ -388,7 +389,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                       <div>
                         <span className="font-bold text-orbit-white font-subheading">{inv.name}</span>
                         <span className="block text-[9px] text-orbit-gray-text font-data">
-                          Matures: {inv.endDate}
+                          {isPaused ? "Maturity countdown paused" : `Matures: ${inv.endDate}`}
                         </span>
                       </div>
                       <div className="text-right">
@@ -403,8 +404,8 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                     <div className="flex items-center justify-between text-[10px] mt-2">
                       <span className="text-orbit-gray-text">Allocated: ${inv.amount.toLocaleString()}</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-orbit-gray-text">{isPaid ? "Completed" : isClaimable ? "Matured" : `${remainingDays}d left`}</span>
-                        {!isCompleted && (<button
+                        <span className="text-orbit-gray-text">{isPaid ? "Completed" : isPaused ? `Paused · ${remainingDays}d left` : isClaimable ? "Matured" : `${remainingDays}d left`}</span>
+                        {!isCompleted && !isPaused && user.status === "active" && (<button
                           onClick={() => setTopUpTarget(topUpTarget === inv.id ? null : inv.id)}
                           className="text-[9px] text-orbit-accent border border-orbit-accent/30 bg-orbit-accent/10 px-2 py-0.5 rounded flex items-center gap-1 hover:bg-orbit-accent/20 transition-colors"
                         >
@@ -414,7 +415,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                     </div>
 
                     {/* Top Up Inline Form */}
-                    {!isCompleted && topUpTarget === inv.id && (
+                    {!isCompleted && !isPaused && user.status === "active" && topUpTarget === inv.id && (
                       <div className="pt-2 mt-2 border-t border-orbit-border/50 flex gap-2 animate-in slide-in-from-top-2">
                         <input 
                           type="number"
@@ -525,16 +526,17 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {runningCopyTrades.map(trade => {
-              const isClaimable = trade.status === "Completed" && !trade.payoutCompleted;
+              const isPaused = Boolean(trade.pausedAt);
+              const isClaimable = trade.status === "Completed" && !trade.payoutCompleted && !isPaused && user.status === "active";
               const isClaiming = claimingCopyId === trade.id;
               return (
               <div key={trade.id} className="p-4 border border-orbit-border bg-orbit-darkcard/50 rounded-xl space-y-3 text-xs">
                 <div className="flex justify-between items-start gap-3">
                   <div>
                     <span className="font-bold text-orbit-white font-subheading">{trade.traderName}</span>
-                    <span className="block text-[9px] text-orbit-gray-text font-data">Ends: {new Date(trade.endTimestamp).toLocaleString()}</span>
+                    <span className="block text-[9px] text-orbit-gray-text font-data">{isPaused ? "Maturity countdown paused" : `Ends: ${new Date(trade.endTimestamp).toLocaleString()}`}</span>
                   </div>
-                  <span className={`px-2 py-1 rounded text-[10px] font-bold font-subheading border ${isClaimable ? "bg-orbit-green/10 border-orbit-green/30 text-orbit-green" : "bg-orbit-accent/10 border-orbit-accent/30 text-orbit-accent"}`}>{isClaimable ? "Matured" : trade.status}</span>
+                  <span className={`px-2 py-1 rounded text-[10px] font-bold font-subheading border ${isClaimable ? "bg-orbit-green/10 border-orbit-green/30 text-orbit-green" : "bg-orbit-accent/10 border-orbit-accent/30 text-orbit-accent"}`}>{isPaused ? "Paused" : isClaimable ? "Matured" : trade.status}</span>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] font-data">
@@ -545,7 +547,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                 </div>
 
                 <div className="flex items-center justify-between text-[10px] text-orbit-gray-text">
-                  <span>{isClaimable ? "Matured" : `${trade.remainingDays}d remaining`}</span>
+                  <span>{isPaused ? `Paused · ${trade.remainingDays}d remaining` : isClaimable ? "Matured" : `${trade.remainingDays}d remaining`}</span>
                   <span>{trade.progress}%</span>
                 </div>
                 <div className="w-full bg-orbit-bg rounded-full h-1.5">

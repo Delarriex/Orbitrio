@@ -249,17 +249,18 @@ export const DashboardPortfolio: React.FC<DashboardPortfolioProps> = ({ onNaviga
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {activeCopyTrades.map(trade => {
-              const isClaimable = trade.status === "Completed" && !trade.payoutCompleted;
+              const isPaused = Boolean(trade.pausedAt);
+              const isClaimable = trade.status === "Completed" && !trade.payoutCompleted && !isPaused && user.status === "active";
               const isClaiming = claimingId === trade.id;
               return (
               <div key={trade.id} className="p-4 rounded-xl border border-orbit-border bg-orbit-bg/40 space-y-3 text-xs">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <strong className="text-orbit-white font-subheading block">{trade.traderName}</strong>
-                    <span className="text-[10px] text-orbit-gray-text font-data">{isClaimable ? "Matured" : `${trade.remainingDays}d remaining`}</span>
+                    <span className="text-[10px] text-orbit-gray-text font-data">{isPaused ? `Paused · ${trade.remainingDays}d remaining` : isClaimable ? "Matured" : `${trade.remainingDays}d remaining`}</span>
                   </div>
                   <span className={`px-2 py-1 rounded font-bold font-subheading text-[10px] border ${isClaimable ? "bg-orbit-green/10 text-orbit-green border-orbit-green/30" : "bg-orbit-accent/10 text-orbit-accent border-orbit-accent/30"}`}>
-                    {isClaimable ? "Matured" : trade.status}
+                    {isPaused ? "Paused" : isClaimable ? "Matured" : trade.status}
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-[11px] font-data">
@@ -271,7 +272,7 @@ export const DashboardPortfolio: React.FC<DashboardPortfolioProps> = ({ onNaviga
                 <div className="w-full bg-orbit-border h-1.5 rounded-full overflow-hidden">
                   <div className="bg-orbit-accent h-full" style={{ width: `${trade.progress}%` }} />
                 </div>
-                <p className="text-[10px] text-orbit-gray-text font-data">Ends: {new Date(trade.endTimestamp).toLocaleString()}</p>
+                <p className="text-[10px] text-orbit-gray-text font-data">{isPaused ? "Maturity countdown paused" : `Ends: ${new Date(trade.endTimestamp).toLocaleString()}`}</p>
                 {isClaimable && (
                   <button
                     type="button"
