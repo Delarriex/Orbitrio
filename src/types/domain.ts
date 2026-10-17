@@ -83,6 +83,8 @@ export interface ActiveInvestment {
   dailyRoiPercent?: number;
   completedAt?: string;
   payoutTransactionId?: string;
+  pausedAt?: string | null;
+  pausedSeconds?: number;
 }
 export interface CopyTrade {
   id: string;
@@ -100,6 +102,8 @@ export interface CopyTrade {
   progress: number;
   completedAt?: string;
   payoutTransactionId?: string;
+  pausedAt?: string | null;
+  pausedSeconds?: number;
 }
 
 

@@ -4,6 +4,44 @@
 
 ## High-level architecture
 
+### October 2026: pause existing positions during account suspension
+
+Apply `account_position_suspension.sql` **after** `account_suspension.sql` and the
+existing investment/copy-trade claim migrations, then deploy the frontend. This
+is an incremental migration; the original suspension SQL alone does not pause
+existing positions. The new file includes both updated claim RPC definitions.
+
+A user status update now atomically stamps `paused_at` on every unpaid running
+investment/copy trade. Earnings and countdown displays use that instant until
+activation. Activation clears `paused_at`, accumulates `paused_seconds`, and
+extends the maturity timestamp by the exact pause duration. Original purchase
+dates, principal and promised returns remain unchanged. Already paid/cancelled
+positions stay untouched. Repeated status changes and migration reruns do not
+reset the pause clock. Open user tabs refresh positions on the 15-second status
+poll and on focus. Existing suspended accounts pause from migration time;
+past suspension time cannot be reconstructed.
+
+Position write guards block claims, cancellation/refunds, top-ups, progress
+updates and deletion while restricted, including through security-definer RPCs.
+Claim RPCs lock the account before reading maturity to serialize with suspension
+and activation. Pause metadata cannot be changed directly by an API caller.
+Existing spot holdings remain in the portfolio and their market prices still
+move; account suspension blocks buying/selling, not external price movement.
+
+Local PGlite tests cover upgrade/backfill, frozen positions, payout/refund
+rollback, metadata tampering, authenticated calls, repeat cycles, and exactly-once
+claims after activation. Display tests cover frozen earnings and countdowns and
+resumption with the original earning duration. Apply and verify in the test
+Supabase project before the live migration and release. This extension has not
+yet been deployed to production. Hosted test verification on October 17 passed
+pause/resume, blocked claims/refunds, live UI updates, and unchanged balances.
+The user confirmed hosted cleanup: the test account is active, its balance is
+unchanged at 1001.11, and all four temporary positions and the disabled test plan
+are removed. Evidence and cleanup history are recorded outside the repository
+in `verification/position-suspension-2026-10-17/`. On October 17 the user reported
+successfully applying the live position-suspension migration before this frontend
+release. Real inbox delivery remains unverified; local email is stubbed.
+
 ### October 2026: account suspension enforcement
 
 Apply `account_suspension.sql` after the existing financial migrations. It adds

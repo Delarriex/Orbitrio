@@ -25,7 +25,9 @@ function rowToInvestment(row: any): ActiveInvestment {
     progress: row.progress,
     dailyRoiPercent: row.daily_roi_percent,
     completedAt: row.completed_at,
-    payoutTransactionId: row.payout_transaction_id
+    payoutTransactionId: row.payout_transaction_id,
+    pausedAt: row.paused_at,
+    pausedSeconds: Number(row.paused_seconds ?? 0)
   };
 }
 

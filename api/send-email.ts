@@ -108,7 +108,7 @@ const resolveEvent = (eventType: string, metadata: any) => {
       return {
         subject: `Your account has been suspended - ${metadata.companyName}`,
         heading: "Your account has been suspended",
-        intro: "Your account has been suspended by an administrator. Please contact our support team if you have questions or need assistance.",
+        intro: "Your account has been suspended by an administrator. Your active investments and copy trades are paused, including earnings and maturity countdowns. Trading and withdrawals are disabled. Please contact our support team if you have questions or need assistance.",
         accent: "#f59e0b",
         details: [
           { label: "Account", value: metadata.email },

@@ -483,7 +483,7 @@ const UserDrawer: React.FC<{
                 title: investment.name,
                 meta: `${formatDate(investment.startDate)} - ${formatDate(investment.endDate)}`,
                 value: formatMoney(investment.amount),
-                status: `${investment.progress}%`
+                status: investment.pausedAt ? "Paused" : `${investment.progress}%`
               }))}
             />
           </Section>
@@ -496,7 +496,7 @@ const UserDrawer: React.FC<{
                 title: copyTrade.traderName || "Copy trade",
                 meta: `${formatDate(copyTrade.startTimestamp)} - ${formatDate(copyTrade.endTimestamp)}`,
                 value: formatMoney(copyTrade.amountInvested),
-                status: copyTrade.status
+                status: copyTrade.pausedAt ? "Paused" : copyTrade.status
               }))}
             />
           </Section>

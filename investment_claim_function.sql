@@ -12,11 +12,15 @@ create or replace function public.claim_investment_payout(p_investment_id text)
   returns void
   language plpgsql
   security definer
+set search_path = public
 as $function$
 declare
   v_inv record;
   v_caller text := auth.jwt()->>'sub';
 begin
+  -- Lock the account before the position, so suspension/resumption cannot race
+  -- the maturity check or the credit. Read the updated maturity after this lock.
+  perform public.require_active_account(v_caller);
   select * into v_inv from active_investments where id = p_investment_id for update;
   if not found then
     raise exception 'Investment not found';

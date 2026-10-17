@@ -29,7 +29,9 @@ function rowToCopyTrade(row: any): CopyTrade {
     payoutCompleted: row.payout_completed,
     progress: row.progress,
     completedAt: row.completed_at,
-    payoutTransactionId: row.payout_transaction_id
+    payoutTransactionId: row.payout_transaction_id,
+    pausedAt: row.paused_at,
+    pausedSeconds: Number(row.paused_seconds ?? 0)
   };
 }
 

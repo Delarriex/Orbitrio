@@ -15,20 +15,20 @@ const parseTradeTimestamp = (value: string) => {
   return Number.isFinite(parsed) ? parsed : Date.parse(`${value}T00:00:00.000Z`);
 };
 
-const getCopyDurationMs = (trade: Pick<CopyTrade, "startTimestamp" | "endTimestamp">) => {
+const getCopyDurationMs = (trade: Pick<CopyTrade, "startTimestamp" | "endTimestamp" | "pausedAt" | "pausedSeconds">) => {
   const start = parseTradeTimestamp(trade.startTimestamp);
   const end = parseTradeTimestamp(trade.endTimestamp);
-  return Math.max(end - start, DAY_MS);
+  return Math.max(end - start - (trade.pausedSeconds ?? 0) * 1000, DAY_MS);
 };
 
-export const getCopyTradeRemainingDays = (trade: Pick<CopyTrade, "endTimestamp">, now = Date.now()) => {
+export const getCopyTradeRemainingDays = (trade: Pick<CopyTrade, "endTimestamp" | "pausedAt">, now = Date.now()) => {
   const end = parseTradeTimestamp(trade.endTimestamp);
-  return Math.max(0, Math.ceil((end - now) / DAY_MS));
+  return Math.max(0, Math.ceil((end - (trade.pausedAt ? Date.parse(trade.pausedAt) : now)) / DAY_MS));
 };
 
-export const getCopyTradeProgress = (trade: Pick<CopyTrade, "startTimestamp" | "endTimestamp">, now = Date.now()) => {
+export const getCopyTradeProgress = (trade: Pick<CopyTrade, "startTimestamp" | "endTimestamp" | "pausedAt" | "pausedSeconds">, now = Date.now()) => {
   const start = parseTradeTimestamp(trade.startTimestamp);
-  const elapsed = Math.max(0, now - start);
+  const elapsed = Math.max(0, (trade.pausedAt ? Date.parse(trade.pausedAt) : now) - start - (trade.pausedSeconds ?? 0) * 1000);
   return Math.min(100, roundMoney((elapsed / getCopyDurationMs(trade)) * 100));
 };
 
@@ -46,7 +46,7 @@ export const normalizeCopyTrade = (trade: CopyTrade, now = Date.now()): CopyTrad
 
   const progress = getCopyTradeProgress(trade, now);
   const matured = getCopyTradeRemainingDays(trade, now) === 0 || progress >= 100;
-  const completed = trade.status === "Completed" || trade.payoutCompleted || matured;
+  const completed = trade.status === "Completed" || trade.payoutCompleted || (!trade.pausedAt && matured);
 
   return {
     ...trade,
@@ -97,7 +97,7 @@ export const settleMaturedCopyTrades = (
   let payoutAmount = 0;
 
   const settledTrades = syncCopyTradeCountdowns(trades, now).map(trade => {
-    if (trade.status !== "Completed" || trade.payoutCompleted) return trade;
+    if (trade.pausedAt || trade.status !== "Completed" || trade.payoutCompleted) return trade;
 
     const payoutTx = buildCopyPayoutTransaction(trade.totalReturn, trade.traderName, userEmail, trade.id);
     payoutTransactions.push(payoutTx);
